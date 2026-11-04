@@ -26,7 +26,7 @@ gh api -H 'Accept: application/vnd.github.raw+json' \
 
 The installer detects macOS/Linux and the native architecture, selects a compatible release artifact, downloads its archive and SHA-256 checksum, verifies it, and installs the binary. Authenticated GitHub CLI access supports private draft releases. Without that access, the HTTPS download path requires a publicly accessible published release. No token is requested or read from Godmode's credential file. A compatible prebuilt artifact must exist; the installer does not build from source or substitute another architecture.
 
-Download installs start interactive `godmode init` using the controlling terminal, even when the script arrived through a pipe. `--no-setup` installs without prompts. Without a controlling terminal, installation prints the setup command for later. `--version vX.Y.Z` pins a release instead of selecting one automatically.
+Download installs start interactive `godmode init` using the controlling terminal, even when the script arrived through a pipe. `--no-setup` installs without prompts. If it cannot resolve a usable terminal device, installation prints the setup command for later. `--version vX.Y.Z` pins a release instead of selecting one automatically.
 
 Only Apple Silicon macOS artifacts have been built and verified for the current private draft. The four-target workflow is available for later releases; its presence is not proof that the other artifacts exist.
 

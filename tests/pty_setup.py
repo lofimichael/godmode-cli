@@ -3,7 +3,9 @@
 
 No normal Godmode state, browser, provider account, or installed binary is used.
 The raw transcript stays in memory and assertions never print secret values.
+An optional second argument selects an installer script for regression checks.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -56,11 +58,14 @@ class Terminal(BoardTerminal):
 def main():
     binary = Path(sys.argv[1] if len(sys.argv) > 1 else 'target/debug/godmode').resolve()
     assert binary.is_file(), 'build the binary before running setup PTY checks'
+    installer = Path(sys.argv[2] if len(sys.argv) > 2 else Path(__file__).resolve().parent.parent / 'install.sh').resolve()
+    assert installer.is_file(), 'installer script is missing'
     sessions = []
     token = 'github_pat_SETUP_SYNTHETIC_31a7df8c'
     replacement = 'github_pat_REPLACED_SYNTHETIC_64e02fc1'
     cancelled = 'CANCELLED_SETUP_SENTINEL_937e021a'
     wrong_prompt = 'MISPLACED_CREDENTIAL_SENTINEL_c8821be9'
+    installed_token = 'github_pat_INSTALL_PIPE_SENTINEL_f41a7db5'
     invalid = 'INVALID_SETUP_SENTINEL_59f2\nSECOND_LINE'
     large = json.dumps({'type': 'service_account',
                         'private_key': 'JSON_SETUP_SENTINEL_4e28_' + 'z' * 14000,
@@ -236,6 +241,46 @@ def main():
             assert stored['GH_TOKEN'] == replacement, 'JSON save changed an unrelated key'
             assert rules.read_bytes() == b'SYNTHETIC_RULES_PRESERVE_BYTES\n', 'setup changed operating rules'
             assert browser_log.read_text().splitlines() == expected_links, 'an unrequested link opened'
+            # Exercise the actual Rust binary through the piped installer. A shell
+            # fixture can read /dev/tty successfully while macOS kqueue cannot poll
+            # that alias; this must use the real event reader and controlling PTY.
+            digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+            preserved = env_file.read_bytes()
+            for action in ['save', 'cancel']:
+                installed_home = root / ('installed-' + action)
+                install_args = ['sh', '-s', '--', '--binary', str(binary), '--sha256', digest,
+                                '--home', str(installed_home), '--setup']
+                pipeline = 'cat ' + shlex.quote(str(installer)) + ' | ' + shlex.join(install_args)
+                launched = Terminal(['sh', '-c', pipeline], env)
+                sessions.append(launched)
+                launched.expect('Starting interactive setup...')
+                launched.expect('No existing Godmode setup found')
+                launched.expect('Type GODMODE to continue')
+                launched.send(b'GODMODE\r')
+                launched.expect('Provider number or name')
+                launched.send(b'github\r')
+                launched.expect('Enter to add keys;')
+                launched.send(b'\r')
+                key_prompt(launched, 'GH_TOKEN')
+                installed_env = installed_home / '.env.godmode'
+                before = installed_env.read_bytes()
+                launched.paste(installed_token)
+                launched.quiet()
+                assert installed_env.read_bytes() == before, 'installer-launched paste submitted before Enter'
+                if action == 'save':
+                    launched.send(b'\r')
+                    launched.expect('GH_TOKEN saved.')
+                    launched.send(b'\r')
+                    launched.done()
+                    assert values(installed_env)['GH_TOKEN'] == installed_token, 'installer-launched setup did not save'
+                    assert installed_env.stat().st_mode & 0o777 == 0o600
+                else:
+                    launched.send(b'\x1b')
+                    launched.done(expected=2)
+                    assert installed_env.read_bytes() == before, 'installer-launched cancellation changed credentials'
+                assert (installed_home / 'bin/godmode').read_bytes() == binary.read_bytes(), 'installer changed binary bytes'
+                assert env_file.read_bytes() == preserved, 'installer setup changed the other configuration'
+
             # Finite commands use the same terminal-aware palette; JSON remains machine-readable.
             def finite(args, no_color=False):
                 command_env = dict(env)
@@ -266,13 +311,13 @@ def main():
                 assert not SGR.search(output.stdout), 'redirected command output contains terminal styles'
 
             for session in sessions:
-                for sentinel in [token, replacement, cancelled, wrong_prompt,
+                for sentinel in [token, replacement, cancelled, wrong_prompt, installed_token,
                                  'INVALID_SETUP_SENTINEL_59f2', 'JSON_SETUP_SENTINEL_4e28_']:
                     assert sentinel.encode() not in plain_text(session.capture), 'setup exposed synthetic credential input'
             print('Setup PTY passed: default/init routing, first-run cancel/ack, exact requested links, '
                   'masked paste, Enter-only save, clipboard CRLF, keep/skip/replace, invalid retry, '
                   'Ctrl-U/Backspace, Esc/Ctrl-C, 14 KB JSON, styled input/commands, plain JSON/redirection, '
-                  'NO_COLOR, TERM=dumb and terminal restoration.')
+                  'NO_COLOR, TERM=dumb, actual piped-installer save/cancel and terminal restoration.')
         finally:
             for session in sessions:
                 session.close()

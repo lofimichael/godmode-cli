@@ -231,6 +231,7 @@ program = scratch / 'tty-fixture'
 program.write_text('''#!/bin/sh
 [ -t 0 ] && [ -t 1 ] && [ -t 2 ] || exit 91
 printf '%s\\n' "$@" > "$GODMODE_TEST_SETUP_LOG"
+tty > "$GODMODE_TEST_SETUP_LOG.tty"
 printf 'SETUP_WAITING\\n'
 read -r reply
 [ "$reply" = finish ] || exit 92
@@ -254,6 +255,7 @@ def session():
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 for mode in ['offline', 'automatic', 'no-color', 'dumb']:
     master, slave = os.openpty()
+    device_name = os.ttyname(slave)
     root = scratch / ('tty-home-'+mode)
     env = dict(os.environ, GODMODE_TEST_SETUP_LOG=str(scratch/'setup-args'),
                PATH=str(scratch/'mock-bin')+':'+os.environ['PATH'])
@@ -280,6 +282,7 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb']:
         wait_for(b'SETUP_FINISHED')
         assert process.wait(timeout=5) == 0
         assert (scratch/'setup-args').read_text().splitlines() == ['--home', str(root), 'init']
+        assert (scratch/'setup-args.tty').read_text().strip() == device_name, 'setup used a controlling-TTY alias instead of the concrete device'
         assert not (root/'.env.godmode').exists()
         if mode in ['no-color', 'dumb']:
             assert b'\x1b[' not in output, 'color opt-out was ignored'

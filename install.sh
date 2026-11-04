@@ -51,6 +51,22 @@ setup_command() {
     fi
     printf ' %s\n' "${1:-init}"
 }
+tty_device() {
+    # Descriptor 3 holds the caller's stdout before command substitution captures
+    # descriptor 1. tty only inspects it; the wizard reopens the device for reads.
+    for descriptor in 0 3 2; do
+        case "$descriptor" in
+            0) device=$(tty 2>/dev/null) || device= ;;
+            3) device=$(tty <&3 2>/dev/null) || device= ;;
+            2) device=$(tty <&2 2>/dev/null) || device= ;;
+        esac
+        case "$device" in
+            /dev/tty|'') ;; # macOS kqueue cannot poll the controlling-TTY alias.
+            /dev/*) if [ -c "$device" ]; then printf '%s\n' "$device"; return 0; fi ;;
+        esac
+    done
+    return 1
+}
 cleanup() {
     [ -z "$staged" ] || rm -f "$staged"
     [ -z "$download_dir" ] || rm -rf "$download_dir"
@@ -239,16 +255,21 @@ case ":${PATH:-}:" in
         ;;
 esac
 if [ "$setup" = yes ]; then
-    if ( : </dev/tty >/dev/tty ) 2>/dev/null; then
+    exec 3>&1
+    setup_tty=$(tty_device) || setup_tty=
+    exec 3>&-
+    if [ -n "$setup_tty" ]; then
         printf '\n'
         say '1;36' 'Starting interactive setup...'
         if [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; then
-            "$destination" --home "$godmode_home" init </dev/tty >/dev/tty 2>&1
+            # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
+            "$destination" --home "$godmode_home" init <"$setup_tty" >"$setup_tty" 2>&1
         else
-            "$destination" init </dev/tty >/dev/tty 2>&1
+            # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
+            "$destination" init <"$setup_tty" >"$setup_tty" 2>&1
         fi
     else
-        printf '\nNo interactive terminal is attached; run the setup command above in a terminal.\n'
+        printf '\nNo usable terminal device was found; run the setup command above in a terminal.\n'
     fi
 fi
 }
