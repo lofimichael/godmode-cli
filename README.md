@@ -1,12 +1,12 @@
 # Godmode
 
-An interactive editor for `.env.godmode`, with provider links and masked input. It is an ordinary text file: edit it in nano whenever you like. Your agents do not need this CLI.
+Paste keys behind a mask. Save them to one ordinary `.env.godmode` file. The CLI is readable Python; your agents do not need it.
 
 ![Interactive setup using a synthetic key](docs/images/setup.gif)
 
 ## Install
 
-Apple Silicon macOS. Requires [GitHub CLI](https://cli.github.com/) signed in with access to this private repo.
+macOS/Linux, Python 3.9+. Requires [GitHub CLI](https://cli.github.com/) signed in with access to this private repo.
 
 ```sh
 gh api -H 'Accept: application/vnd.github.raw+json' \

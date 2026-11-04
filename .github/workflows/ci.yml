@@ -14,38 +14,29 @@ concurrency:
 
 jobs:
   check:
-    # Private repositories must opt in after checking their included Actions budget.
+    # Private repositories opt in after checking their included Actions budget.
     if: github.event_name == 'workflow_dispatch' || !github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Rust toolchain
-        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
-      - name: Formatting
-        run: cargo +1.96.0 fmt --all -- --check
-      - name: Lints
-        run: cargo +1.96.0 clippy --locked --all-targets -- -D warnings
-      - name: Tests
-        run: cargo +1.96.0 test --locked
-      - name: Python shlex compatibility fixtures
-        shell: bash
-        run: |
-          python3 tests/gen_shlex_vectors.py > "$RUNNER_TEMP/shlex_vectors.json"
-          cmp tests/shlex_vectors.json "$RUNNER_TEMP/shlex_vectors.json"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test readable source and terminal input
+        run: python3 -m unittest discover -s tests -p 'test_simple*.py'
       - name: Installer and managed updates
         run: |
+          sh -n install.sh
           sh tests/install.sh
           sh tests/install-update.sh
-      - name: Release build
-        run: cargo +1.96.0 build --release --locked
-      - name: Real terminal onboarding and secret masking
+      - name: Assemble the plain-text executable
         run: |
-          python3 tests/pty_smoke.py target/release/godmode
-          python3 tests/pty_setup.py target/release/godmode
+          python3 scripts/build.py --output target/godmode
+          target/godmode --version

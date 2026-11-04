@@ -22,7 +22,7 @@ import pyte
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tests"))
-from pty_setup import Terminal  # noqa: E402
+from pty_support import Terminal  # noqa: E402
 
 SYNTHETIC = "github_pat_DEMO_ONLY_NOT_A_REAL_CREDENTIAL_6d8f"
 THEMES = {
@@ -188,7 +188,7 @@ class Recorder:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=REPO / "target/release/godmode")
+    parser.add_argument("--binary", type=Path, default=REPO / "target/godmode")
     parser.add_argument("--output", type=Path, default=REPO / "docs/images/setup.gif")
     parser.add_argument("--font", type=Path)
     parser.add_argument("--theme", choices=THEMES, default="dark", help="terminal palette for the recording")
@@ -196,7 +196,7 @@ def main() -> None:
     args = parser.parse_args()
     binary = args.binary.resolve()
     if not binary.is_file():
-        parser.error("Build the release binary first")
+        parser.error("Build the readable script first")
     font = font_path(args.font)
     temp_parent = "/private/tmp" if Path("/private/tmp").is_dir() else None
     with tempfile.TemporaryDirectory(prefix="godmode-demo-", dir=temp_parent) as temp:
@@ -218,9 +218,9 @@ def main() -> None:
             recorder.capture(400)
             terminal.send(b"\r")
             recorder.wait_for("Enter to add keys;")
-            recorder.wait_for("Sign in:")
-            recorder.wait_for("API keys:")
-            recorder.wait_for("Docs:")
+            recorder.wait_for("[l] Sign in")
+            recorder.wait_for("[o] API keys")
+            recorder.wait_for("[d] Documentation")
             recorder.capture(1600)
             terminal.send(b"\r")
             recorder.wait_for("Paste GH_TOKEN (masked;")
@@ -231,10 +231,10 @@ def main() -> None:
             assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
             terminal.send(b"\r")
             recorder.wait_for("GH_TOKEN saved.")
-            recorder.wait_for("1. GitHub (1/1 keys saved)")
+            recorder.wait_for("1/1 saved")
             recorder.capture(1900)
             terminal.send(b"\r")
-            recorder.wait_for("Setup finished. Saved 1 key this session.")
+            recorder.wait_for("Setup finished.")
             terminal.done()
             recorder.capture(800)
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"

@@ -1,6 +1,6 @@
 #!/bin/sh
 # godmode-installer-format: 1
-# Install a native release; the installed copy is the godmodeup command.
+# Install the readable CLI script; the installed copy is the godmodeup command.
 # Explicit local-artifact modes remain offline. Never reads stored credentials.
 set -eu
 umask 077
@@ -13,14 +13,15 @@ Usage:
   sh install.sh --archive PATH --checksum SHA256SUMS [--home DIR | --bin-dir DIR] [--setup]
   sh install.sh --binary PATH --sha256 HEX [--home DIR | --bin-dir DIR] [--setup]
 
-With no artifact flags, download the newest compatible native GitHub release,
-verify its checksum, install it and start interactive masked setup. An existing
+With no artifact flags, download the newest compatible GitHub release,
+verify its checksum, install it and start interactive masked setup. Python 3.9+
+is required; no Python packages are installed. An existing
 GitHub CLI login can access private/draft releases; public releases use HTTPS.
 Default destination: ~/.godmode/bin/godmode (or $GODMODE_HOME/bin/godmode).
 --home DIR selects a home; --bin-dir DIR changes only the executable directory.
 --no-setup installs only; --setup also opens setup for an offline installation.
-godmodeup updates only binaries matching its install receipt; setup is opt-in.
-Unknown existing binaries require --force. Symlinks are always refused.
+godmodeup updates only files matching its install receipt; setup is opt-in.
+Unknown existing files require --force. Symlinks are always refused.
 --path adds one source line for the generated env file to your shell startup file.
 Without --path, shell profiles stay unchanged. Credentials are never migrated.
 USAGE
@@ -109,6 +110,7 @@ godmode_home=${GODMODE_HOME:-${HOME:?HOME must be set}/.godmode}
 bin_dir=
 home_option=no
 bin_option=no
+home_record=automatic
 force=no
 update=no
 path_setup=no
@@ -142,17 +144,29 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$home_option:$bin_option" != yes:yes ] || fail "--home and --bin-dir cannot be combined"
+if ! command -v python3 >/dev/null 2>&1 || ! python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
+    fail "Python 3.9 or later is required; nothing installed"
+fi
 case "$godmode_home" in /*) ;; *) godmode_home=$PWD/$godmode_home ;; esac
+if [ "$bin_option" = no ] && { [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; }; then
+    home_record=explicit
+fi
 if [ "$bin_option:$home_option:$update" = no:no:yes ]; then
     bin_dir=$(CDPATH='' cd -L "$(dirname "$0")" && pwd -L)
     bin_option=yes
-    # The installed command remains attached to its own home after PATH changes.
-    case "$bin_dir" in
-        */bin)
-            godmode_home=${bin_dir%/bin}
-            [ "$godmode_home" = "$HOME/.godmode" ] || home_option=yes
-            ;;
-    esac
+    home_record=automatic
+    # --bin-dir never selects a configuration home, even when it ends in /bin.
+    # Only a recorded --home (or GODMODE_HOME) preserves an explicit selection.
+    if [ -f "$bin_dir/.godmode-install-receipt" ] && [ ! -L "$bin_dir/.godmode-install-receipt" ]; then
+        recorded_home=$(awk '$1 == "home" { value=$2; count++ } END { if (count == 1) print value }' "$bin_dir/.godmode-install-receipt")
+        if [ "$recorded_home" = explicit ]; then
+            case "$bin_dir" in
+                */bin) godmode_home=${bin_dir%/bin}; home_option=yes; home_record=explicit ;;
+            esac
+        elif [ -z "$recorded_home" ] && [ "$bin_dir" != "$godmode_home/bin" ]; then
+            say '33' 'Older install receipt: using normal configuration discovery. Select a home with godmode --home DIR if needed.'
+        fi
+    fi
 fi
 [ "$bin_option" = yes ] || bin_dir=$godmode_home/bin
 case "$bin_dir" in /*) ;; *) bin_dir=$PWD/$bin_dir ;; esac
@@ -219,12 +233,14 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     if [ -n "$version" ]; then
         valid_version "$version" || fail "version must be vX.Y.Z"
     fi
+    # New releases are portable scripts. Native names remain for old version pins.
     case "$(uname -s):$(uname -m)" in
         Darwin:arm64|Darwin:aarch64) target=aarch64-apple-darwin ;;
         Darwin:x86_64) target=x86_64-apple-darwin ;;
         Linux:x86_64) target=x86_64-unknown-linux-musl ;;
         Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-musl ;;
-        *) fail "no prebuilt release target for this operating system/architecture" ;;
+        Darwin:*|Linux:*) target=unix ;;
+        *) fail "Godmode supports macOS and Linux" ;;
     esac
     download_dir=$(mktemp -d "${TMPDIR:-/tmp}/godmode-download.XXXXXX")
     transport=curl
@@ -234,7 +250,7 @@ if [ -z "$archive$binary$checksum$expected" ]; then
         if [ -n "$version" ]; then
             query="$query | map(select(.tag_name == \"$version\"))"
         fi
-        query="$query | map(. as \$r | select(any(.assets[]; .name == (\"godmode-\" + \$r.tag_name + \"-$target.tar.gz\"))) | select(any(.assets[]; .name == \"SHA256SUMS\"))) | .[0].tag_name // empty"
+        query="$query | map(. as \$r | select(any(.assets[]; .name == (\"godmode-\" + \$r.tag_name + \"-unix.tar.gz\") or .name == (\"godmode-\" + \$r.tag_name + \"-$target.tar.gz\"))) | select(any(.assets[]; .name == \"SHA256SUMS\"))) | .[0].tag_name // empty"
         if selected=$(gh api --hostname github.com "repos/$repository/releases?per_page=100" --jq "$query" 2>/dev/null); then
             [ -n "$selected" ] || fail "no compatible $target release archive and checksum are available to your GitHub login"
             version=$selected
@@ -251,14 +267,21 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     fi
     # Validate remote metadata before it can become a URL, pattern or filename.
     valid_version "$version" || fail "release tag must be vX.Y.Z"
-    name=godmode-$version-$target.tar.gz
-    say '36' "Downloading Godmode $version for $target..."
-    if [ "$transport" = gh ]; then
-        gh release download "$version" --repo "github.com/$repository" --pattern "$name" --pattern SHA256SUMS --dir "$download_dir" >/dev/null 2>&1 || fail "cannot download the release archive and checksum; nothing installed"
-    else
-        base=https://github.com/$repository/releases/download/$version
-        curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/$name" "$base/$name" 2>/dev/null || fail "no downloadable $target archive for $version; nothing installed"
-        curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null || fail "cannot download the release checksum; nothing installed"
+    fetch_archive() {
+        name=$1
+        if [ "$transport" = gh ]; then
+            gh release download "$version" --repo "github.com/$repository" --pattern "$name" --pattern SHA256SUMS --dir "$download_dir" >/dev/null 2>&1
+        else
+            base=https://github.com/$repository/releases/download/$version
+            curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/$name" "$base/$name" 2>/dev/null &&
+            curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null
+        fi
+    }
+    say '36' "Downloading Godmode $version..."
+    if ! fetch_archive "godmode-$version-unix.tar.gz"; then
+        [ "$target" != unix ] || fail "no downloadable portable archive for $version; nothing installed"
+        rm -f "$download_dir/SHA256SUMS"
+        fetch_archive "godmode-$version-$target.tar.gz" || fail "cannot download the release archive and checksum; nothing installed"
     fi
     archive=$download_dir/$name
     checksum=$download_dir/SHA256SUMS
@@ -329,7 +352,7 @@ if [ -s "$updater_staged" ]; then
     chmod 755 "$updater_staged"
 fi
 receipt_staged=$(mktemp "$bin_dir/.godmode-receipt.XXXXXX")
-printf 'format 1\ngodmode %s\n' "$(hash_file "$staged")" > "$receipt_staged"
+printf 'format 1\nhome %s\ngodmode %s\n' "$home_record" "$(hash_file "$staged")" > "$receipt_staged"
 if [ -s "$updater_staged" ]; then
     printf 'godmodeup %s\n' "$(hash_file "$updater_staged")" >> "$receipt_staged"
 fi
@@ -461,7 +484,7 @@ case ":${PATH:-}:" in
             *)
                 printf '\n'
                 say '36' 'For this shell, add the bin directory to PATH:'
-                if [ -f "$env_file" ]; then
+                if [ -f "$env_file" ] && { [ "$bin_option" != yes ] || [ "$path_setup" = yes ]; }; then
                     printf '  . '
                     shell_quote "$env_file"
                     printf '\n'

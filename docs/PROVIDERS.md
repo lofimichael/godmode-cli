@@ -1,71 +1,20 @@
-# Add a provider
+# Provider help
 
-You can save any valid key immediately with `godmode set ACME_ACCOUNT_ADMIN_TOKEN`. A registry entry is optional; it adds a named row, setup guidance and value metadata to the terminal interface.
+Choose a provider in `godmode`, or use `godmode setup github`. Press `l` for sign-in, `o` for API keys, `d` for documentation, or `?` to print the full links and setup instructions. Browsers open only when requested.
 
-Generate a starting point:
+Any key works without provider registration:
 
 ```sh
-godmode providers-template > ./providers.toml
-GODMODE_REGISTRY="$PWD/providers.toml" godmode providers
+godmode set ACME_ACCOUNT_ADMIN_TOKEN
 ```
 
-Edit that new file locally, then either keep using `GODMODE_REGISTRY` or place it at `<config-dir>/providers.toml`. An explicit environment path takes precedence over the default overlay. Never put credentials in a registry file. Do not redirect the template over an existing overlay you want to preserve.
+Paste the value at the masked prompt. Enter keeps an existing value. `godmode edit` opens nano for manual changes or removing keys.
 
-```toml
-schema = 1
-
-[[provider]]
-id = "acme"
-name = "Acme"
-purpose = "Manage the operator's Acme projects"
-login = "https://example.com/login"
-console = "https://example.com/settings/tokens"
-docs = "https://example.com/docs/authentication"
-notes = ["Use the account that owns your projects."]
-
-[[provider.key]]
-name = "ACME_ACCOUNT_ADMIN_TOKEN"
-kind = "secret"
-required = true
-usage = "Create projects and manage their configuration"
-scope = "Account access with project administration permissions"
-steps = ["Open the token page", "Create a token for the required scope", "Paste the token into Godmode"]
-format = "Opaque token issued by Acme"
-verify = "Use the authenticated client to read the account identity"
-```
-
-Providers merge by `id`. Reusing an existing ID replaces its entire entry; a new ID appends a provider. IDs are lowercase slugs, and key names must be unique across the merged catalog. The schema rejects unknown fields. `login`, `console` and `docs` links must be HTTPS. `login` is optional for older overlays; when omitted or empty, the console link is used for sign-in. Guidance is data: the CLI does not execute setup steps, verification hints or commands from a catalog.
-
-Provider links:
-
-| Field | Meaning |
-| --- | --- |
-| `login` | Account sign-in page; optional, with `console` as the fallback |
-| `console` | Direct credential-management or API-key page |
-| `docs` | Official setup or authentication documentation |
-
-In interactive setup, `l` opens sign-in, `o` opens the key page and `d` opens documentation for the selected provider. The links are also displayed as text so you can copy them. Browsers open only after a keypress; entering a credential never opens a browser. If you prefer a plain command, `godmode guide PROVIDER` prints all three URLs and the setup instructions.
-
-Key metadata:
-
-| Field | Meaning |
-| --- | --- |
-| `name` | Literal environment-variable name; include scope or environment where useful |
-| `kind` | Display description, usually `secret`, `public` or `identity` |
-| `required` | Needed for this provider's intended workflow; no provider is mandatory |
-| `usage`, `scope` | What the credential enables and the permissions to select |
-| `steps` | Short instructions for obtaining it |
-| `format` | A human-readable hint; avoid undocumented fixed lengths |
-| `prefixes` | Optional format hints, not proof of authentication |
-| `forbid_prefixes` | Prefixes refused for this key, such as live credentials under a test name |
-| `json` | When true, accept a raw JSON object and compact it before storage |
-| `verify` | Read-only manual verification guidance; never executed by Godmode |
-
-Avoid storing derivable account IDs or duplicating product runtime keys merely to fill a form. Keep reusable account credentials local, and send product-specific runtime credentials directly to the product's own secret store when operating that product.
+The bundled provider list is static help in [providers.json](../providers.json). It does not authenticate, validate account permissions, enroll OAuth, or impose token-prefix rules. Runtime catalogs and overlays are no longer needed. Never put credentials in this help file.
 
 ## Bundled guides
 
-The bundled [registry](../registry/providers.toml) covers the following providers. Public sign-in and documentation entry points were checked on **2026-11-04**. This was a link review without signing in or submitting credentials; some provider pages require JavaScript. Interfaces and permission models can change, so confirm the account and scope in the provider before relying on a credential.
+The bundled [guidance](../providers.json) covers the following providers. Public sign-in and documentation entry points were checked on **2026-11-04**. This was a link review without signing in or submitting credentials; some provider pages require JavaScript. Interfaces and permission models can change, so confirm the account and scope in the provider before relying on a credential.
 
 | Provider | Sign in | Official documentation |
 | --- | --- | --- |

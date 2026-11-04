@@ -1,46 +1,29 @@
-# Storage and authority
+# What happens to a pasted value
 
-The credentials you store here may allow agents to create and delete infrastructure, spend money, publish, send mail and commit as you. Check those permissions at the provider. Godmode records the keys you choose; it does not sandbox the programs using them or enforce a spending limit.
+1. The terminal reads it with echo disabled and displays only a mask. A bracketed paste does not save until you press Enter.
+2. The storage helper validates the key name, quotes the value, and replaces that key's assignment in `.env.godmode`.
+3. A private temporary file is atomically renamed over the original. Unrelated lines are preserved.
 
-The credential inventory is plaintext. Mode 0600 prevents other ordinary users from reading the file; it does not prevent your own user, unrestricted agents, privileged processes, backups or a compromised machine from accessing it. Select appropriate provider scopes, protect the host and revoke exposed credentials at their source. Saving a live key is not authorization to spend money or publish.
+That is the credential flow. No provider login, remote verification, telemetry, synchronization, database, daemon or command runner participates. The installed script is readable Python source; its file writer is [godmode_store.py](../lib/godmode_store.py), and its input handling is [godmode_terminal.py](../lib/godmode_terminal.py). Readability helps inspection; it is not a security guarantee.
 
-## One ordinary file
+## The file
 
-`.env.godmode` is the source of truth. You can create or edit it in nano or another editor, and your agents can read it directly. Manual changes are read on the next command; there is no import, sync, credential database or required runtime. Uninstalling the CLI leaves the file usable. Provider guidance, the terminal board, Picard and the updater are optional conveniences.
+`.env.godmode` is ordinary plaintext with shell-compatible quoting. Nano and your agents can use it without this CLI. No value is evaluated as shell code. Existing ownership, mode 0600, regular-file type and symlink checks apply before reads or writes. New directories are private. Git checkouts must ignore the credential file and must not track it.
 
-The first-use acknowledgement and writer locks govern edits made through the CLI; they are not required to read or use the file. Keep the file private (mode 0600).
+An existing file is read again before saving; a directory lock coordinates cooperating CLI writers, and a changed file aborts the save. There are no persistent writer-lock or acknowledgement files. The new-home notice is shown before interactive creation. `set KEY --stdin` is an explicit noninteractive write; credentials are never accepted as positional arguments.
 
-## What the CLI does
+The file is limited to 1 MiB. A pasted multiline JSON object is compacted to one line; names ending in `_JSON` also require an object. Other values cannot contain control characters. Provider names and links are static help, not a validation or authorization system. There are no token-prefix rules or provider-specific credential factories.
 
-- Stores one flat `.env.godmode`, with shell-compatible quoting and no evaluation of shell expressions.
-- Preserves unrelated content during edits and checks ownership, permissions, file type, size and symlink components.
-- Serializes cooperating writers and replaces the file atomically; temporary credential files are private.
-- Requires an acknowledgment before mutations. A fresh setup shows the stronger first-run notice; existing setups use the ordinary storage disclosure. Acknowledgment is a local receipt, not an enforceable authorization boundary.
-- Prints names and local states. Masked input has no reveal control, and parsing errors suppress credential content.
-- Makes no provider API calls and sends no telemetry. Provider verification guidance is for a separate manual operation. Explicit Picard picture/audio requests download pinned media from YTMND; the standalone commands do not read credentials, and no credentials are sent. Browser links open only on command.
+The populator writes one assignment per line. Existing multiline or unfinished shell quoting is left untouched with a `godmode edit` instruction; nano can edit that file directly. Newly pasted JSON is compacted to a single line.
 
-Use `doctor` for offline file checks. Its success does not demonstrate that a provider accepts a token, that the token belongs to the intended account, or that a requested operation is authorized. Provider-specific prefix hints are not authentication. Wrong-environment prefixes declared in the catalog are refused; arbitrary providers can declare their own metadata.
+Mode 0600 keeps other ordinary users out. Programs running as you, privileged processes, backups and a compromised machine can still read the file. Python does not guarantee erasing every copy of a value from process memory. Use appropriate provider scopes and revoke exposed keys with the provider.
 
-The CLI reads at most 1 MiB of credential input and refuses oversized credential files. Ordinary values cannot contain control characters. Keys marked `json = true` accept a JSON object and compact it to one line before quoting.
+## Optional external actions
 
-## Child processes and other applications
+Provider pages open only after you choose their browser action. The browser and nano receive a small ordinary process environment, not a loaded credential inventory. Nano displays the file's values while editing.
 
-`run` passes only the selected stored credentials plus a small basic process environment to a child. The child is an ordinary process running as you: it can access your files, make network requests, print secrets, write logs or start more processes. Its output is not filtered. This command reduces accidental environment sharing; it does not confine the child.
+Picard is a separate, explicitly requested media feature. Its code never opens the credential file. It downloads only its pinned image/audio assets and starts only its own foreground player. See [Picard](PICARD.md).
 
-Do not run an untrusted command merely because its environment is restricted. Avoid putting credentials directly into argv or shell history. Use masked input, stdin or a private file when importing them.
+The updater downloads release code and verifies its checksum. It updates only managed files unless replacement is explicitly requested. A checksum checks bytes against the published digest; it cannot protect against a compromised publisher. Shell-profile changes require `--path`. Credentials, operating rules and OAuth grants are never migrated by an update.
 
-## Existing installations
-
-The installer downloads and checksum-verifies a native release; explicit local-artifact installation is offline. `godmodeup` updates only files matching its install receipt. Replacing an unknown or modified executable requires `--force`; symlink destinations are refused. Checksums establish integrity relative to the supplied digest, not publisher identity.
-
-The CLI does not install hooks, replace operating rules, synchronize credentials or enroll OAuth sessions. The installer changes shell profiles only with `--path`. New installs keep the binary, credentials and state under `~/.godmode`. Existing `~/.config/godmode` is detected when the new home has no configuration markers; the binary alone is not such a marker. No existing setup is moved. Use `--home DIR` for an isolated setup, and `--state-dir DIR` if a separate state path is wanted.
-
-## Reporting a problem
-
-For a suspected credential leak, revoke or rotate the affected key with its provider first. Share a minimal reproduction using synthetic values. Never include your credential file, real tokens, OAuth grants, authorization URLs or unredacted terminal recordings in an issue.
-
-MIT license warranty and liability terms are in [LICENSE](../LICENSE).
-
-## Picard media
-
-Picard mode is optional. It downloads the pinned source image or recording only when that item is requested and caches it under the CLI state directory. Neither source asset is bundled in the executable or release archive. The image is decoded with size limits and rendered as terminal cells; it does not run page scripts or emit downloaded terminal control sequences. The local player is an owned child process; stopping it does not search for or kill arbitrary audio processes. Playback ends when its foreground controller or provider board exits. External `picard stop` uses a private local control socket, not a remembered process ID. See [PICARD.md](PICARD.md) for the source and current playback requirements.
+For a problem report, use synthetic keys. Do not include real credentials, OAuth grants or unredacted recordings. The MIT license is in [LICENSE](../LICENSE).

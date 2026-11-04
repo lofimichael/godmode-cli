@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.6.1                                                      |
+| version .. 0.7.0                                                      |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -28,10 +28,10 @@
   replace them. Esc or Ctrl-C cancels the current input. No editor opens.
   Colors follow your terminal, with restrained accents; NO_COLOR opts out.
 
-  godmode setup github goes straight to GitHub. The full-screen board is
-  still available through godmode onboard, including its Picard controls.
-  A fresh setup shows the warning before creating files; type GODMODE to
-  acknowledge it. Browser links open only when you ask.
+  godmode setup github goes straight to GitHub. Use godmode edit for nano,
+  or godmode path to print the file location.
+  A fresh setup shows the warning before creating the file; type GODMODE
+  to continue. There is no separate setup state. Browser links open only when you ask.
 
 [ before adding keys ]
 
@@ -45,9 +45,8 @@
   those programs or impose a spending limit. Saving a live key does not
   authorize charges or public actions.
 
-  The run command passes only the keys you select, plus basic process
-  context. Its output is not filtered. A child that prints its environment
-  can therefore print those keys. Keep the file out of Git and bug reports.
+  The program only edits the file. Your agents read it themselves.
+  Keep the file out of Git, shell history and bug reports.
   Revoke exposed keys at the provider; deleting the file won't revoke them.
 
 [ picard ]
@@ -58,7 +57,6 @@
   godmode picard play     loop the original audio excerpt
   godmode picard stop     stop this state directory's player
 
-  The board has i for the picture, p for audio and v for the original site.
   Picture and audio are separate requests. Nothing plays on startup.
   The first request downloads the relevant asset from YTMND into a local
   cache. Neither asset is included in this archive. Use the same --state-dir

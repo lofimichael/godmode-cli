@@ -117,6 +117,7 @@ esac
 MOCK
 cat > "$scratch/mock-bin/gh" <<'MOCK'
 #!/bin/sh
+set -e
 printf '%s\n' "$*" >> "$GODMODE_TEST_NETWORK_LOG"
 case "$1" in
     api)
@@ -174,11 +175,28 @@ export TMPDIR="$scratch/downloads"
 mock_path=$scratch/mock-bin:$PATH
 HOME="$scratch/automatic-home" GODMODE_HOME='' PATH="$mock_path" sh "$repo/install.sh" --no-setup > "$scratch/automatic-output"
 cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
-grep -q 'Downloading Godmode v7.6.5 for aarch64-apple-darwin' "$scratch/automatic-output"
+grep -q 'Downloading Godmode v7.6.5' "$scratch/automatic-output"
 grep -q -- ' init$' "$scratch/automatic-output"
 [ ! -e "$scratch/automatic-home/.godmode/.env.godmode" ]
 [ ! -e "$scratch/automatic-home/.godmode/state" ]
 [ -z "$(ls -A "$scratch/downloads")" ]
+
+# A portable archive is preferred when both new and legacy asset names exist.
+universal_name=godmode-v7.6.5-unix.tar.gz
+cp "$scratch/godmode-test.tar.gz" "$scratch/fixtures/$universal_name"
+printf '%s  %s\n%s  %s\n' "$archive_digest" "$fixture_name" "$archive_digest" "$universal_name" > "$scratch/fixtures/SHA256SUMS"
+: > "$GODMODE_TEST_NETWORK_LOG"
+PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-home" > /dev/null
+cmp "$scratch/artifact/godmode" "$scratch/universal-home/bin/godmode"
+grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"
+if grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"; then
+    echo 'legacy archive was downloaded despite an available portable script' >&2; exit 1
+fi
+# A portable script does not depend on a known native CPU architecture.
+GODMODE_TEST_ARCH=riscv64 PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-cpu-home" > /dev/null
+cmp "$scratch/artifact/godmode" "$scratch/universal-cpu-home/bin/godmode"
+rm "$scratch/fixtures/$universal_name"
+printf '%s  %s\n' "$archive_digest" "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
 
 # Re-running never fetches or replaces an existing installation.
 : > "$GODMODE_TEST_NETWORK_LOG"
@@ -265,12 +283,13 @@ def session():
     import fcntl
     os.setsid()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-for mode in ['offline', 'automatic', 'no-color', 'dumb']:
+for mode in ['offline', 'automatic', 'no-color', 'dumb', 'bin-only-update', 'legacy-bin-update', 'explicit-home-update']:
     master, slave = os.openpty()
     device_name = os.ttyname(slave)
     root = scratch / ('tty-home-'+mode)
     env = dict(os.environ, GODMODE_TEST_SETUP_LOG=str(scratch/'setup-args'),
                PATH=str(scratch/'mock-bin')+':'+os.environ['PATH'])
+    env.pop('GODMODE_HOME', None)
     env.pop('NO_COLOR', None)
     env['TERM'] = 'dumb' if mode == 'dumb' else 'xterm-256color'
     if mode == 'no-color':
@@ -278,7 +297,24 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb']:
     args = ['--home', str(root)]
     if mode != 'automatic':
         args += ['--binary', str(program), '--sha256', digest, '--setup']
-    process = subprocess.Popen([sys.executable, '-c', wrapper, str(repo/'install.sh'), *args],
+    command = [sys.executable, '-c', wrapper, str(repo/'install.sh'), *args]
+    expected_args = ['--home', str(root), 'init']
+    if mode.endswith('-update'):
+        account = scratch / ('account-'+mode)
+        legacy = account / '.config/godmode'
+        legacy.mkdir(parents=True)
+        (legacy/'.env.godmode').write_text('SYNTHETIC_KEY=unchanged\n')
+        env['HOME'] = str(account)
+        selection = ['--home', str(root)] if mode == 'explicit-home-update' else ['--bin-dir', str(root/'bin')]
+        subprocess.run(['sh', str(repo/'install.sh'), *selection, '--binary', str(program), '--sha256', digest],
+                       env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        if mode == 'legacy-bin-update':
+            receipt = root/'bin/.godmode-install-receipt'
+            receipt.write_text(''.join(line for line in receipt.read_text().splitlines(True) if not line.startswith('home ')))
+        command = [str(root/'bin/godmodeup'), '--binary', str(program), '--sha256', digest, '--setup']
+        if mode != 'explicit-home-update':
+            expected_args = ['init']
+    process = subprocess.Popen(command,
                                stdin=slave, stdout=slave, stderr=slave, env=env, preexec_fn=session)
     output = bytearray()
     def wait_for(expected):
@@ -293,7 +329,7 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb']:
         os.write(master, b'finish\n')
         wait_for(b'SETUP_FINISHED')
         assert process.wait(timeout=5) == 0
-        assert (scratch/'setup-args').read_text().splitlines() == ['--home', str(root), 'init']
+        assert (scratch/'setup-args').read_text().splitlines() == expected_args, 'updater selected the wrong configuration home'
         assert (scratch/'setup-args.tty').read_text().strip() == device_name, 'setup used a controlling-TTY alias instead of the concrete device'
         assert not (root/'.env.godmode').exists()
         if mode in ['no-color', 'dumb']:
@@ -303,7 +339,11 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb']:
                 assert color in output, 'interactive installer styling missing'
             if mode == 'automatic':
                 assert b'\x1b[36mDownloading' in output
-        commands = [line for line in output.splitlines() if line.startswith(b"  '") and line.endswith(b' init')]
+        if mode in ['bin-only-update', 'legacy-bin-update']:
+            assert (legacy/'.env.godmode').read_text() == 'SYNTHETIC_KEY=unchanged\n'
+            assert not (root/'env').exists(), 'bin-only update created a configuration home'
+            assert b' --home ' not in b'\n'.join(line for line in output.splitlines() if line.startswith(b"  '")), 'Run command selected a bin directory as a home'
+        commands = [line for line in output.splitlines() if line.startswith(b"  '") and (line.endswith(b' init') or mode.endswith('-update'))]
         assert len(commands) == 1 and b'\x1b' not in commands[0], 'copyable setup command was styled'
     finally:
         if process.poll() is None:
@@ -336,4 +376,22 @@ for name in ['automatic-output', 'public-output', 'repeat-output']:
     assert b'\x1b[' not in (scratch/name).read_bytes(), 'redirected output contained styling'
 
 PY
-printf '%s\n' 'Installer tests passed (offline artifacts, automatic GitHub/public download, platform/tag/checksum refusal, no-clobber, symlinks, home/PATH, piped PTY setup, TTY colors and opt-outs).'
+
+# Missing/old Python fails before download, directory creation or replacement.
+mkdir "$scratch/old-python"
+printf '%s\n' '#!/bin/sh' 'exit 1' > "$scratch/old-python/python3"
+chmod 755 "$scratch/old-python/python3"
+: > "$GODMODE_TEST_NETWORK_LOG"
+if PATH="$scratch/old-python:$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/python-home" > "$scratch/python-error" 2>&1; then
+    echo 'unsupported Python was accepted' >&2; exit 1
+fi
+grep -q 'Python 3.9 or later is required' "$scratch/python-error"
+[ ! -e "$scratch/python-home" ]
+[ ! -s "$GODMODE_TEST_NETWORK_LOG" ]
+
+mkdir "$scratch/no-python"
+if PATH="$scratch/no-python" /bin/sh "$repo/install.sh" --no-setup --home "$scratch/no-python-home" > /dev/null 2>&1; then
+    echo 'missing Python was accepted' >&2; exit 1
+fi
+[ ! -e "$scratch/no-python-home" ]
+printf '%s\n' 'Installer tests passed (portable/native downloads, Python requirement, checksums, no-clobber, quoted PATH, piped setup and plain/color output).'
