@@ -1,0 +1,117 @@
+name: Build draft release
+
+# Deliberate dispatch only; pushing a tag does not publish or spend build minutes.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vX.Y.Z tag on main to build into a draft release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      TARGET: ${{ matrix.target }}
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and source
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          manifest = Path('Cargo.toml').read_text()
+          version = re.search(r'^version\s*=\s*"([^"]+)"', manifest, re.M).group(1)
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag and Cargo version differ'
+          PY
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy --target "$TARGET"
+      - name: Check and build
+        shell: bash
+        run: |
+          cargo +1.96.0 fmt --all -- --check
+          cargo +1.96.0 clippy --locked --all-targets --target "$TARGET" -- -D warnings
+          cargo +1.96.0 test --locked --target "$TARGET"
+          sh tests/install.sh
+          python3 tests/gen_shlex_vectors.py > "$RUNNER_TEMP/shlex_vectors.json"
+          cmp tests/shlex_vectors.json "$RUNNER_TEMP/shlex_vectors.json"
+          cargo +1.96.0 build --release --locked --target "$TARGET"
+          "target/$TARGET/release/godmode" --version
+          python3 tests/pty_smoke.py "target/$TARGET/release/godmode"
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p package dist
+          cp "target/$TARGET/release/godmode" LICENSE README.md install.sh package/
+          cp -R docs package/docs
+          tar -czf "dist/godmode-$RELEASE_TAG-$TARGET.tar.gz" -C package godmode LICENSE README.md install.sh docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godmode-${{ matrix.target }}
+          path: dist/*.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
+  draft:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: godmode-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums and draft release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          sha256sum ./*.tar.gz | sed 's#  ./#  #' > SHA256SUMS
+          # Refuse to rewrite an existing release or replace its artifacts.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; inspect it before retrying.' >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" ./*.tar.gz SHA256SUMS \
+            --verify-tag --draft --title "Godmode $RELEASE_TAG" --generate-notes

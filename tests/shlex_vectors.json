@@ -1,0 +1,587 @@
+[
+ {
+  "raw": "",
+  "tokens": []
+ },
+ {
+  "raw": "   ",
+  "tokens": []
+ },
+ {
+  "raw": "abc",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "  abc  ",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "a b",
+  "tokens": [
+   "a",
+   "b"
+  ]
+ },
+ {
+  "raw": "a\tb",
+  "tokens": [
+   "a",
+   "b"
+  ]
+ },
+ {
+  "raw": "'a b'",
+  "tokens": [
+   "a b"
+  ]
+ },
+ {
+  "raw": "\"a b\"",
+  "tokens": [
+   "a b"
+  ]
+ },
+ {
+  "raw": "'it'\"'\"'s'",
+  "tokens": [
+   "it's"
+  ]
+ },
+ {
+  "raw": "'it'\\''s'",
+  "tokens": [
+   "it's"
+  ]
+ },
+ {
+  "raw": "a'b",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "a\"b",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "'unterminated",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "\"unterminated",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "a\\ b",
+  "tokens": [
+   "a b"
+  ]
+ },
+ {
+  "raw": "a\\b",
+  "tokens": [
+   "ab"
+  ]
+ },
+ {
+  "raw": "\\'",
+  "tokens": [
+   "'"
+  ]
+ },
+ {
+  "raw": "'a\\b'",
+  "tokens": [
+   "a\\b"
+  ]
+ },
+ {
+  "raw": "\"a\\b\"",
+  "tokens": [
+   "a\\b"
+  ]
+ },
+ {
+  "raw": "\"a\\\"b\"",
+  "tokens": [
+   "a\"b"
+  ]
+ },
+ {
+  "raw": "\"a\\$b\"",
+  "tokens": [
+   "a\\$b"
+  ]
+ },
+ {
+  "raw": "\"a\\\\b\"",
+  "tokens": [
+   "a\\b"
+  ]
+ },
+ {
+  "raw": "'a\\'",
+  "tokens": [
+   "a\\"
+  ]
+ },
+ {
+  "raw": "abc # comment",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "abc#notcomment",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "#whole",
+  "tokens": []
+ },
+ {
+  "raw": " # whole",
+  "tokens": []
+ },
+ {
+  "raw": "'#quoted'",
+  "tokens": [
+   "#quoted"
+  ]
+ },
+ {
+  "raw": "\"#quoted\"",
+  "tokens": [
+   "#quoted"
+  ]
+ },
+ {
+  "raw": "a 'b c' d",
+  "tokens": [
+   "a",
+   "b c",
+   "d"
+  ]
+ },
+ {
+  "raw": "sk_test_123",
+  "tokens": [
+   "sk_test_123"
+  ]
+ },
+ {
+  "raw": "github_pat_ABC_def",
+  "tokens": [
+   "github_pat_ABC_def"
+  ]
+ },
+ {
+  "raw": "ghp_x",
+  "tokens": [
+   "ghp_x"
+  ]
+ },
+ {
+  "raw": "name@example.com",
+  "tokens": [
+   "name@example.com"
+  ]
+ },
+ {
+  "raw": "/path/with spaces/x",
+  "tokens": [
+   "/path/with",
+   "spaces/x"
+  ]
+ },
+ {
+  "raw": "{\"type\":\"service_account\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n\"}",
+  "tokens": [
+   "{type:service_account,private_key:-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n}"
+  ]
+ },
+ {
+  "raw": "'{\"type\":\"service_account\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n\"}'",
+  "tokens": [
+   "{\"type\":\"service_account\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n\"}"
+  ]
+ },
+ {
+  "raw": "\"{\\\"type\\\":\\\"service_account\\\"}\"",
+  "tokens": [
+   "{\"type\":\"service_account\"}"
+  ]
+ },
+ {
+  "raw": "a=b",
+  "tokens": [
+   "a=b"
+  ]
+ },
+ {
+  "raw": "a==b",
+  "tokens": [
+   "a==b"
+  ]
+ },
+ {
+  "raw": "=",
+  "tokens": [
+   "="
+  ]
+ },
+ {
+  "raw": "'='",
+  "tokens": [
+   "="
+  ]
+ },
+ {
+  "raw": "a;b",
+  "tokens": [
+   "a;b"
+  ]
+ },
+ {
+  "raw": "a|b",
+  "tokens": [
+   "a|b"
+  ]
+ },
+ {
+  "raw": "a&b",
+  "tokens": [
+   "a&b"
+  ]
+ },
+ {
+  "raw": "$HOME",
+  "tokens": [
+   "$HOME"
+  ]
+ },
+ {
+  "raw": "'$HOME'",
+  "tokens": [
+   "$HOME"
+  ]
+ },
+ {
+  "raw": "\"$HOME\"",
+  "tokens": [
+   "$HOME"
+  ]
+ },
+ {
+  "raw": "`cmd`",
+  "tokens": [
+   "`cmd`"
+  ]
+ },
+ {
+  "raw": "a*b",
+  "tokens": [
+   "a*b"
+  ]
+ },
+ {
+  "raw": "a?b",
+  "tokens": [
+   "a?b"
+  ]
+ },
+ {
+  "raw": "~user",
+  "tokens": [
+   "~user"
+  ]
+ },
+ {
+  "raw": "aéb",
+  "tokens": [
+   "aéb"
+  ]
+ },
+ {
+  "raw": "'é 中'",
+  "tokens": [
+   "é 中"
+  ]
+ },
+ {
+  "raw": "a\\\nb",
+  "tokens": [
+   "a\nb"
+  ]
+ },
+ {
+  "raw": "'a\nb'",
+  "tokens": [
+   "a\nb"
+  ]
+ },
+ {
+  "raw": "a\\\\",
+  "tokens": [
+   "a\\"
+  ]
+ },
+ {
+  "raw": "a\\",
+  "error": "No escaped character"
+ },
+ {
+  "raw": "''",
+  "tokens": [
+   ""
+  ]
+ },
+ {
+  "raw": "\"\"",
+  "tokens": [
+   ""
+  ]
+ },
+ {
+  "raw": "'' ''",
+  "tokens": [
+   "",
+   ""
+  ]
+ },
+ {
+  "raw": "a''b",
+  "tokens": [
+   "ab"
+  ]
+ },
+ {
+  "raw": "a\"\"b",
+  "tokens": [
+   "ab"
+  ]
+ },
+ {
+  "raw": "'a'b'c'",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "\"a\"b\"c\"",
+  "tokens": [
+   "abc"
+  ]
+ },
+ {
+  "raw": "x  #  y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "x\t#y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "'x' # y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "'x'# y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "'x'#y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "\"x\"#y",
+  "tokens": [
+   "x"
+  ]
+ },
+ {
+  "raw": "\\#x",
+  "tokens": [
+   "#x"
+  ]
+ },
+ {
+  "raw": "'a' 'b'",
+  "tokens": [
+   "a",
+   "b"
+  ]
+ },
+ {
+  "raw": "a 'b",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "a \"b",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "a\\'b",
+  "tokens": [
+   "a'b"
+  ]
+ },
+ {
+  "raw": "'a' b\\ c",
+  "tokens": [
+   "a",
+   "b c"
+  ]
+ },
+ {
+  "raw": "tab\there",
+  "tokens": [
+   "tab",
+   "here"
+  ]
+ },
+ {
+  "raw": "nl\nhere",
+  "tokens": [
+   "nl",
+   "here"
+  ]
+ },
+ {
+  "raw": "cr\rhere",
+  "tokens": [
+   "cr",
+   "here"
+  ]
+ },
+ {
+  "raw": "trail ",
+  "tokens": [
+   "trail"
+  ]
+ },
+ {
+  "raw": " lead",
+  "tokens": [
+   "lead"
+  ]
+ },
+ {
+  "raw": "u2028 x",
+  "tokens": [
+   "u2028 x"
+  ]
+ },
+ {
+  "raw": "zero\u0000byte",
+  "tokens": [
+   "zero\u0000byte"
+  ]
+ },
+ {
+  "raw": "quote'in'middle",
+  "tokens": [
+   "quoteinmiddle"
+  ]
+ },
+ {
+  "raw": "dq\"in\"middle",
+  "tokens": [
+   "dqinmiddle"
+  ]
+ },
+ {
+  "raw": "mixed 'sq' \"dq\" bare",
+  "tokens": [
+   "mixed",
+   "sq",
+   "dq",
+   "bare"
+  ]
+ },
+ {
+  "raw": "\\\\'",
+  "error": "No closing quotation"
+ },
+ {
+  "raw": "'\\\\'",
+  "tokens": [
+   "\\\\"
+  ]
+ },
+ {
+  "raw": "x\\#y",
+  "tokens": [
+   "x#y"
+  ]
+ },
+ {
+  "raw": "'x\\#y'",
+  "tokens": [
+   "x\\#y"
+  ]
+ },
+ {
+  "raw": "\"x\\#y\"",
+  "tokens": [
+   "x\\#y"
+  ]
+ },
+ {
+  "raw": "a#b c",
+  "tokens": [
+   "a"
+  ]
+ },
+ {
+  "raw": "a #b c",
+  "tokens": [
+   "a"
+  ]
+ },
+ {
+  "raw": "'a #b' c",
+  "tokens": [
+   "a #b",
+   "c"
+  ]
+ },
+ {
+  "raw": "ab\\ #c",
+  "tokens": [
+   "ab "
+  ]
+ },
+ {
+  "raw": "\\\"",
+  "tokens": [
+   "\""
+  ]
+ },
+ {
+  "raw": "'\\\"'",
+  "tokens": [
+   "\\\""
+  ]
+ },
+ {
+  "raw": "\"\\'\"",
+  "tokens": [
+   "\\'"
+  ]
+ }
+]

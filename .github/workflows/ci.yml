@@ -1,0 +1,47 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Private repositories must opt in after checking their included Actions budget.
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
+      - name: Formatting
+        run: cargo +1.96.0 fmt --all -- --check
+      - name: Lints
+        run: cargo +1.96.0 clippy --locked --all-targets -- -D warnings
+      - name: Tests
+        run: cargo +1.96.0 test --locked
+      - name: Python shlex compatibility fixtures
+        shell: bash
+        run: |
+          python3 tests/gen_shlex_vectors.py > "$RUNNER_TEMP/shlex_vectors.json"
+          cmp tests/shlex_vectors.json "$RUNNER_TEMP/shlex_vectors.json"
+      - name: Installer refusals and archive path
+        run: sh tests/install.sh
+      - name: Release build
+        run: cargo +1.96.0 build --release --locked
+      - name: Real terminal onboarding and secret masking
+        run: python3 tests/pty_smoke.py target/release/godmode
