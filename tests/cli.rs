@@ -346,3 +346,15 @@ fn picard_link_bypasses_credentials_and_registry_without_writes() {
     assert!(!f.env().exists());
     assert!(!f.state.exists());
 }
+
+#[test]
+fn picard_show_requires_terminal_before_network_or_storage() {
+    let f = Fixture::new();
+    fs::create_dir(&f.config).unwrap();
+    fs::write(f.config.join("providers.toml"), "broken registry").unwrap();
+    let out = f.run(&["picard", "show"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8(out.stderr).unwrap().contains("terminal"));
+    assert!(!f.env().exists());
+    assert!(!f.state.exists());
+}

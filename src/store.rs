@@ -14,15 +14,17 @@ use std::{
 };
 use zeroize::Zeroizing;
 
-pub const DISCLAIMER: &str = "READTHIS.NFO / BEFORE YOU HAND OVER THE KEYS
+pub const DISCLAIMER: &str = "Before you start
 
-YOU WILL FUCKING PWN YOURSELF if you hand an agent account-wide tokens and assume this screen will save you. Those keys can delete infrastructure, spend money, publish, send mail, and commit as you. That is the whole fucking point. Read the scopes. Know what you are handing over.
+Godmode keeps provider credentials in one .env.godmode file so your agents can use them. Depending on the permissions you give them, those agents can deploy code, delete infrastructure, send mail, publish things and spend money. If that is more access than you intended, change the permissions at the provider before saving the key here.
 
-One plaintext file. Mode 0600. Your user, unrestricted agents, and privileged processes can still read it. No sandbox. No spending limiter. No undo fairy. Use credentials you are entitled to use; revoke anything that leaks. A saved live key is not permission to charge people or publish as you.
+The file is plaintext, with mode 0600. Other ordinary users cannot read it, but programs running as you can, as can privileged processes. Godmode does not sandbox those programs or enforce a spending limit. Storing a live key does not authorize live charges or public actions; use only credentials you are entitled to use, and revoke any that leak.
 
-No telemetry. No automatic provider requests. Picard audio downloads from YTMND only when you press play; links open only when you ask. A command launched with `run` can use AND print its selected keys. Don't post your fucking .env.
+`run` passes the keys you select to a command. It does not filter that command's output, so a program that prints its environment can still disclose them. Keep the credential file out of Git, bug reports and terminal transcripts.
 
-Existing credentials and rules stay put. Accepting creates the credential file only if absent, plus a local receipt. Type GODMODE to accept, or Esc to bail.";
+The CLI sends no telemetry and does not check credentials with providers. Picard media is fetched from YTMND only when requested; browser links also open only on request.
+
+Existing credentials and operating rules are kept. Accepting creates the credential file if it is missing and records this acknowledgement locally. Type GODMODE to continue, or press Esc to leave.";
 
 struct WriteGuard {
     _config: File,

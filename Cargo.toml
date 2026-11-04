@@ -1,6 +1,6 @@
 [package]
 name = "godmode"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Onboard a machine into Godmode: one credential file, a disclaimer, and a terminal UI that never shows a secret."
@@ -24,6 +24,7 @@ zeroize = "1.9"
 libc = "0.2"
 sha2 = "0.10"
 signal-hook = "0.3"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 
 [dev-dependencies]
 tempfile = "3"

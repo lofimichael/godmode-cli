@@ -1,6 +1,6 @@
 # Storage and authority
 
-Read the fucking scopes. Godmode hands your agents the keys. Those keys can create and destroy infrastructure, spend money, publish, send mail and commit as you. You decide which capabilities to enable and authorize their use. Godmode is an onboarding tool, not a sandbox or a spending-control system.
+The credentials you store here may allow agents to create and delete infrastructure, spend money, publish, send mail and commit as you. Check those permissions at the provider. Godmode records the keys you choose; it does not sandbox the programs using them or enforce a spending limit.
 
 The credential inventory is plaintext. Mode 0600 prevents other ordinary users from reading the file; it does not prevent your own user, unrestricted agents, privileged processes, backups or a compromised machine from accessing it. Select appropriate provider scopes, protect the host and revoke exposed credentials at their source. Saving a live key is not authorization to spend money or publish.
 
@@ -11,7 +11,7 @@ The credential inventory is plaintext. Mode 0600 prevents other ordinary users f
 - Serializes cooperating writers and replaces the file atomically; temporary credential files are private.
 - Requires an acknowledgment before mutations. Acknowledgment is a local receipt, not an enforceable authorization boundary.
 - Prints names and local states. Masked input has no reveal control, and parsing errors suppress credential content.
-- Makes no provider API calls and sends no telemetry. Provider verification guidance is for a separate manual operation. Explicit Picard playback downloads a pinned audio file from YTMND; it never reads or sends credentials. Browser links open only on command.
+- Makes no provider API calls and sends no telemetry. Provider verification guidance is for a separate manual operation. Explicit Picard picture/audio requests download pinned media from YTMND; the standalone commands do not read credentials, and no credentials are sent. Browser links open only on command.
 
 Use `doctor` for offline file checks. Its success does not demonstrate that a provider accepts a token, that the token belongs to the intended account, or that a requested operation is authorized. Provider-specific prefix hints are not authentication. Wrong-environment prefixes declared in the catalog are refused; arbitrary providers can declare their own metadata.
 
@@ -35,6 +35,6 @@ For a suspected credential leak, revoke or rotate the affected key with its prov
 
 MIT license warranty and liability terms are in [LICENSE](../LICENSE).
 
-## Picard audio
+## Picard media
 
-Picard mode is optional. It fetches only the pinned YTMND recording after an explicit play command and caches it under the CLI state directory. No audio is bundled in the executable or release archive. The local player is an owned child process; stopping it does not search for or kill arbitrary audio processes. Playback ends when its foreground controller or provider board exits. External `picard stop` uses a private local control socket, not a remembered process ID. See [PICARD.md](PICARD.md) for the source and current playback requirements.
+Picard mode is optional. It downloads the pinned source image or recording only when that item is requested and caches it under the CLI state directory. Neither source asset is bundled in the executable or release archive. The image is decoded with size limits and rendered as terminal cells; it does not run page scripts or emit downloaded terminal control sequences. The local player is an owned child process; stopping it does not search for or kill arbitrary audio processes. Playback ends when its foreground controller or provider board exits. External `picard stop` uses a private local control socket, not a remembered process ID. See [PICARD.md](PICARD.md) for the source and current playback requirements.

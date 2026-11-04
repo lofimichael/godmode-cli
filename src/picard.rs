@@ -333,7 +333,7 @@ pub fn open_source() -> Result<(), String> {
     Ok(())
 }
 
-fn media_dir(state: &Path) -> Result<PathBuf, String> {
+pub(crate) fn media_dir(state: &Path) -> Result<PathBuf, String> {
     if state.components().any(|c| c == Component::ParentDir) {
         return Err("Use a state directory without parent traversal".into());
     }
@@ -347,7 +347,7 @@ fn media_dir(state: &Path) -> Result<PathBuf, String> {
     Ok(absolute.join("picard"))
 }
 
-fn private_directory(path: &Path) -> Result<(), String> {
+pub(crate) fn private_directory(path: &Path) -> Result<(), String> {
     let facts =
         crate::envfile::inspect(path, None).map_err(|_| "Cannot inspect Picard state directory")?;
     if facts.symlink_component.is_some() {
@@ -559,7 +559,7 @@ fn download_bytes(
     }
 }
 
-fn executable(name: &str) -> Option<PathBuf> {
+pub(crate) fn executable(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|path| {
         std::env::split_paths(&path)
             .filter(|dir| dir.is_absolute())
@@ -610,7 +610,7 @@ fn find_backend() -> Result<Backend, String> {
     Err("No audio player found. macOS uses afplay; Linux needs paplay, aplay, ffplay, or mpv. Use picard link instead.".into())
 }
 
-fn clean_command(program: &Path, desktop: bool) -> Command {
+pub(crate) fn clean_command(program: &Path, desktop: bool) -> Command {
     let mut command = Command::new(program);
     command.env_clear();
     for key in [

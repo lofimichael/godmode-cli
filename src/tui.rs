@@ -227,6 +227,9 @@ struct Ui {
     notice: String,
     help: bool,
     picard_active: bool,
+    visual: Option<crate::picard_visual::Visual>,
+    show_visual: bool,
+    visual_tiled: bool,
     started: Instant,
 }
 impl Ui {
@@ -247,6 +250,9 @@ impl Ui {
             notice: String::new(),
             help: false,
             picard_active: false,
+            visual: None,
+            show_visual: false,
+            visual_tiled: false,
             started: Instant::now(),
         }
     }
@@ -279,7 +285,10 @@ fn loading_action(event: Event) -> LoadingAction {
                 || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
             {
                 LoadingAction::Exit
-            } else if matches!(key.code, KeyCode::Char('p') | KeyCode::Esc) {
+            } else if matches!(
+                key.code,
+                KeyCode::Char('p') | KeyCode::Char('i') | KeyCode::Esc
+            ) {
                 LoadingAction::Cancel
             } else {
                 LoadingAction::Continue
@@ -291,6 +300,212 @@ fn loading_action(event: Event) -> LoadingAction {
             LoadingAction::Cancel
         }
         _ => LoadingAction::Continue,
+    }
+}
+
+// Downloads run synchronously, but poll terminal input before each short wait.
+// Keeping exit separate from cancellation prevents q from merely closing a load notice.
+fn load_with_input<T>(
+    operation: impl FnOnce(&mut dyn FnMut() -> bool) -> Result<T, String>,
+) -> (Result<T, String>, bool) {
+    let mut exit = false;
+    let mut input_failed = false;
+    let result = operation(&mut || loop {
+        match event::poll(Duration::ZERO) {
+            Ok(false) => return false,
+            Ok(true) => match event::read() {
+                Ok(event) => match loading_action(event) {
+                    LoadingAction::Continue => {}
+                    LoadingAction::Cancel => return true,
+                    LoadingAction::Exit => {
+                        exit = true;
+                        return true;
+                    }
+                },
+                Err(_) => {
+                    input_failed = true;
+                    return true;
+                }
+            },
+            Err(_) => {
+                input_failed = true;
+                return true;
+            }
+        }
+    });
+    if input_failed {
+        (Err("Could not read terminal input.".into()), false)
+    } else {
+        (result, exit)
+    }
+}
+
+fn poll_audio(player: &mut Option<crate::picard::Player>, error: &mut Option<String>) {
+    if let Some(active) = player {
+        match active.tick() {
+            Ok(true) => {}
+            Ok(false) => *player = None,
+            Err(message) => {
+                *error = Some(message);
+                *player = None;
+            }
+        }
+    }
+}
+
+fn draw_picard(
+    frame: &mut Frame,
+    visual: Option<&crate::picard_visual::Visual>,
+    notice: &str,
+    playing: bool,
+    board: bool,
+    tiled: bool,
+    theme: Theme,
+) {
+    let area = frame.area();
+    frame.render_widget(Block::default().style(theme.base()), area);
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(2),
+        Constraint::Length(1),
+    ])
+    .split(area);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "picard.ytmnd.com   audio: {}",
+            if playing { "playing" } else { "stopped" }
+        ))
+        .style(Style::default().fg(theme.dim)),
+        rows[0],
+    );
+    if let Some(image) = visual {
+        image.render(frame, rows[1], theme.mono, tiled);
+    }
+    frame.render_widget(
+        Paragraph::new(notice)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().fg(theme.amber)),
+        rows[2],
+    );
+    let controls = if board {
+        "i/Esc back   t tile/fit   p audio   v source   q quit"
+    } else {
+        "t tile/fit   p audio   v source   q/Esc quit"
+    };
+    frame.render_widget(
+        Paragraph::new(controls).style(Style::default().fg(theme.dim)),
+        rows[3],
+    );
+}
+
+/// Standalone media view: does not initialize or load a credential store.
+pub fn show_picard(state_dir: &std::path::Path) -> Result<(), String> {
+    let theme = Theme::new();
+    let (mut terminal, _guard) = start_terminal()?;
+    terminal
+        .draw(|frame| {
+            draw_picard(
+                frame,
+                None,
+                "Loading Picard image; Esc cancels, q/Ctrl-C quits.",
+                false,
+                false,
+                false,
+                theme,
+            )
+        })
+        .map_err(|_| "Could not draw the terminal.")?;
+    let (loaded, exit) =
+        load_with_input(|cancel| crate::picard_visual::Visual::load_cancellable(state_dir, cancel));
+    if exit {
+        return Ok(());
+    }
+    let visual = loaded?;
+    let mut player = None;
+    let mut notice = String::new();
+    let mut tiled = false;
+    loop {
+        let mut audio_error = None;
+        poll_audio(&mut player, &mut audio_error);
+        if let Some(error) = audio_error {
+            notice = error;
+        }
+        terminal
+            .draw(|frame| {
+                draw_picard(
+                    frame,
+                    Some(&visual),
+                    &notice,
+                    player.is_some(),
+                    false,
+                    tiled,
+                    theme,
+                )
+            })
+            .map_err(|_| "Could not draw the terminal.")?;
+        if !event::poll(Duration::from_millis(100)).map_err(|_| "Could not read terminal input.")? {
+            continue;
+        }
+        match event::read().map_err(|_| "Could not read terminal input.")? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
+                    || (key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                {
+                    return Ok(());
+                }
+                match key.code {
+                    KeyCode::Char('t') => tiled = !tiled,
+                    KeyCode::Char('p') => {
+                        if let Some(mut active) = player.take() {
+                            notice = match active.stop() {
+                                Ok(()) => "Picard stopped.".into(),
+                                Err(error) => error,
+                            };
+                        } else {
+                            terminal
+                                .draw(|frame| {
+                                    draw_picard(
+                                        frame,
+                                        Some(&visual),
+                                        "Loading Picard audio; p/Esc cancels, q/Ctrl-C quits.",
+                                        false,
+                                        false,
+                                        tiled,
+                                        theme,
+                                    )
+                                })
+                                .map_err(|_| "Could not draw the terminal.")?;
+                            let (started, exit) = load_with_input(|cancel| {
+                                crate::picard::Player::start_cancellable(state_dir, cancel)
+                            });
+                            if exit {
+                                return Ok(());
+                            }
+                            match started {
+                                Ok(active) => {
+                                    player = Some(active);
+                                    notice.clear();
+                                }
+                                Err(error) => notice = error,
+                            }
+                        }
+                    }
+                    KeyCode::Char('v') => {
+                        notice = match crate::picard::open_source() {
+                            Ok(()) => "Opened picard.ytmnd.com in your browser.".into(),
+                            Err(error) => error,
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Event::Paste(value) => {
+                let _discarded = Zeroizing::new(value);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -355,10 +570,7 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 match store.set(&k.name, &input.value, registry) {
                                     Ok(()) => {
                                         ui.editing = None;
-                                        ui.notice = format!(
-                                            "{} saved. chmod 600. Do not fucking leak it.",
-                                            k.name
-                                        );
+                                        ui.notice = format!("{} saved.", k.name);
                                         ui.refresh(store, registry);
                                     }
                                     Err(e) => ui.notice = e,
@@ -381,7 +593,7 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 ui.accepted = true;
                                 ui.ack.clear();
                                 ui.notice =
-                                    "Read the notes. Pick a provider. Enter adds the key.".into();
+                                    "Choose a provider and press Enter to add a key.".into();
                                 ui.refresh(store, registry);
                             }
                             Err(e) => ui.notice = e,
@@ -409,6 +621,22 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                         _ => {}
                     }
                     continue;
+                }
+                if ui.show_visual {
+                    match key.code {
+                        KeyCode::Char('i') | KeyCode::Esc => {
+                            ui.show_visual = false;
+                            ui.notice.clear();
+                            continue;
+                        }
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('t') => {
+                            ui.visual_tiled = !ui.visual_tiled;
+                            continue;
+                        }
+                        KeyCode::Char('p') | KeyCode::Char('v') => {}
+                        _ => continue,
+                    }
                 }
                 let count = registry.provider.len();
                 match key.code {
@@ -450,7 +678,7 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                     KeyCode::Char('p') => {
                         if let Some(mut player) = picard.take() {
                             ui.notice = match player.stop() {
-                                Ok(()) => "Picard stopped. Back to business.".into(),
+                                Ok(()) => "Picard stopped.".into(),
                                 Err(error) => error,
                             };
                         } else {
@@ -460,42 +688,12 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                     draw(frame, store, registry, &mut ui, theme, no_motion)
                                 })
                                 .map_err(|_| "Could not draw the terminal.")?;
-                            let mut exit_after_cancel = false;
-                            let mut input_failed = false;
-                            let started =
-                                crate::picard::Player::start_cancellable(&store.state_dir, || {
-                                    // Drain ready events before allowing the download or audio to continue.
-                                    loop {
-                                        match event::poll(Duration::ZERO) {
-                                            Ok(false) => return false,
-                                            Ok(true) => match event::read() {
-                                                Ok(event) => match loading_action(event) {
-                                                    LoadingAction::Continue => {}
-                                                    LoadingAction::Cancel => return true,
-                                                    LoadingAction::Exit => {
-                                                        exit_after_cancel = true;
-                                                        return true;
-                                                    }
-                                                },
-                                                Err(_) => {
-                                                    input_failed = true;
-                                                    return true;
-                                                }
-                                            },
-                                            Err(_) => {
-                                                input_failed = true;
-                                                return true;
-                                            }
-                                        }
-                                    }
-                                });
+                            let (started, exit_after_cancel) = load_with_input(|cancel| {
+                                crate::picard::Player::start_cancellable(&store.state_dir, cancel)
+                            });
                             if exit_after_cancel {
                                 drop(started);
                                 return Ok(());
-                            }
-                            if input_failed {
-                                drop(started);
-                                return Err("Could not read terminal input.".into());
                             }
                             match started {
                                 Ok(player) => {
@@ -506,6 +704,40 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 Err(error) => ui.notice = error,
                             }
                         }
+                    }
+                    KeyCode::Char('i') => {
+                        if ui.visual.is_none() {
+                            ui.notice = "Loading Picard image; i/Esc cancel, q/Ctrl-C quit.".into();
+                            terminal
+                                .draw(|frame| {
+                                    draw(frame, store, registry, &mut ui, theme, no_motion)
+                                })
+                                .map_err(|_| "Could not draw the terminal.")?;
+                            let mut audio_error = None;
+                            let (loaded, exit) = load_with_input(|cancel| {
+                                crate::picard_visual::Visual::load_cancellable(
+                                    &store.state_dir,
+                                    || {
+                                        poll_audio(&mut picard, &mut audio_error);
+                                        cancel()
+                                    },
+                                )
+                            });
+                            if exit {
+                                return Ok(());
+                            }
+                            match loaded {
+                                Ok(visual) => {
+                                    ui.visual = Some(visual);
+                                    ui.notice.clear();
+                                }
+                                Err(error) => ui.notice = error,
+                            }
+                            if let Some(error) = audio_error {
+                                ui.notice = error;
+                            }
+                        }
+                        ui.show_visual = ui.visual.is_some();
                     }
                     KeyCode::Char('v') => {
                         ui.notice = match crate::picard::open_source() {
@@ -585,6 +817,20 @@ fn draw(
 ) {
     let area = frame.area();
     frame.render_widget(Block::default().style(theme.base()), area);
+    if ui.show_visual
+        && let Some(visual) = &ui.visual
+    {
+        draw_picard(
+            frame,
+            Some(visual),
+            &ui.notice,
+            ui.picard_active,
+            true,
+            ui.visual_tiled,
+            theme,
+        );
+        return;
+    }
     if area.width < 48 || area.height < 16 {
         frame.render_widget(Paragraph::new("GODMODE\n\nResize to at least 48 × 16.\nCtrl-C exits without saving input.\n\nPlain commands: godmode --help").style(theme.base()).wrap(Wrap {trim: false}), area);
         return;
@@ -638,11 +884,11 @@ fn draw(
     } else if !ui.accepted {
         "GODMODE + Enter accept   PgUp/PgDn read   Esc leave"
     } else if area.width >= 100 {
-        "j/k provider  Tab key  Enter edit  PgDn read  o console  p audio  v source  ? help  q quit"
+        "j/k provider  Tab key  Enter edit  PgDn read  i picture  p audio  v source  ? help  q quit"
     } else if area.width >= 72 {
-        "j/k provider Tab key Enter edit PgDn read p audio v source ? help q quit"
+        "j/k provider Tab key Enter edit i picture p audio v source ? help q quit"
     } else {
-        "j/k Tab Enter PgDn | p audio v source ? help q quit"
+        "j/k Tab Enter PgDn | i picture p audio v source ? help q quit"
     };
     frame.render_widget(
         Paragraph::new(controls).style(Style::default().fg(theme.dim)),
@@ -665,7 +911,7 @@ const MASTHEAD: [&str; 6] = [
     r" | |  __| | | | | | | |\/| | | | | | | |  _|  ",
     r" | | |_ | |_| | |_| | |  | | |_| | |_| | |___ ",
     r"  \_____|\___/|____/|_|  |_|\___/|____/|_____|",
-    r"       [ godmode.nfo / hand your agents the keys ]",
+    r"",
 ];
 
 fn draw_banner(frame: &mut Frame, area: Rect, theme: Theme, elapsed: Duration, no_motion: bool) {
@@ -678,23 +924,19 @@ fn draw_banner(frame: &mut Frame, area: Rect, theme: Theme, elapsed: Duration, n
         if area.width >= 84 {
             frame.render_widget(
                 Paragraph::new(vec![
-                    Line::from("YOU WILL FUCKING").style(Style::default().fg(theme.amber).bold()),
-                    Line::from("PWN YOURSELF.").style(Style::default().fg(theme.amber).bold()),
+                    Line::from(format!("godmode {}", env!("CARGO_PKG_VERSION"))),
                     Line::default(),
-                    Line::from("LOBOTOMIZED AGENTS").style(Style::default().fg(theme.text)),
-                    Line::from("HELP NOBODY.").style(Style::default().fg(theme.text)),
-                ]),
+                    Line::from("provider credentials"),
+                    Line::from("and setup notes"),
+                ])
+                .style(Style::default().fg(theme.dim)),
                 Rect::new(area.x + 55, area.y + 1, area.width - 55, 5),
             );
         }
     } else {
         frame.render_widget(
-            Paragraph::new(vec![
-                Line::from("GODMODE // hand your agents the keys")
-                    .style(Style::default().fg(theme.text).bold()),
-                Line::from("YOU WILL FUCKING PWN YOURSELF. READ THE NFO.")
-                    .style(Style::default().fg(theme.amber).bold()),
-            ]),
+            Paragraph::new(format!("godmode {}", env!("CARGO_PKG_VERSION")))
+                .style(Style::default().fg(theme.text).bold()),
             area,
         );
     }
@@ -799,7 +1041,7 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     let mut list_state = ListState::default().with_selected(Some(ui.selected));
     frame.render_stateful_widget(
         List::new(items)
-            .block(theme.block("PROVIDERS.NFO", true))
+            .block(theme.block("PROVIDERS", true))
             .highlight_style(
                 Style::default()
                     .fg(theme.text)
@@ -870,14 +1112,14 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     if let Some(key) = p.key.get(ui.selected_key) {
         lines.extend([
             Line::default(),
-            Line::from("[ INSTALL NOTES ]").style(Style::default().fg(theme.accent).bold()),
+            Line::from("[ SETUP ]").style(Style::default().fg(theme.accent).bold()),
         ]);
         for (i, step) in key.steps.iter().enumerate() {
             lines.push(Line::from(format!("{}. {step}", i + 1)));
         }
         lines.extend([
             Line::default(),
-            Line::from("[ WHAT THIS UNLOCKS ]").style(Style::default().fg(theme.accent).bold()),
+            Line::from("[ USAGE ]").style(Style::default().fg(theme.accent).bold()),
             Line::from(key.usage.clone()),
             Line::default(),
             Line::from("[ SCOPE ]").style(Style::default().fg(theme.accent).bold()),
@@ -948,10 +1190,10 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
     } else if !key.prefixes.is_empty() && !key.prefixes.iter().any(|p| input.value.starts_with(p)) {
         "Prefix differs from the guide. Check the key type before saving.".into()
     } else {
-        "Captured. Keep this shit out of screenshots and Git.".into()
+        "Press Enter to save, or Esc to discard this input.".into()
     };
     let text = vec![
-        Line::from("Local plaintext. Mode 0600. Your machine, your problem.")
+        Line::from("Stored as plaintext, mode 0600. Programs running as you can read it.")
             .style(Style::default().fg(theme.dim)),
         Line::default(),
         Line::from(format!("> {}", input.mask(mask_width))).style(Style::default().fg(theme.amber)),
@@ -974,9 +1216,9 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
     }
 }
 fn draw_help(frame: &mut Frame, theme: Theme) {
-    let area = popup(frame.area(), 74, 21);
+    let area = popup(frame.area(), 80, 23);
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k, Up/Down   Choose a provider\nTab, Left/Right Choose one of its keys\nEnter          Add or replace selected key\nPgUp/PgDn      Read the provider notes\nHome           Top of notes\no / d          Provider console / documentation\np              Picard loop: play / stop (downloads on first play)\nv              Open the original YTMND source\nr              Reload local key status\nq, Esc, Ctrl-C Leave; stop playback\n\nKey entry: type or paste, Backspace, Ctrl-U clear,\nEnter save, Esc cancel. No reveal switch.\n\nStored != verified. Read the fucking scope.\nAny key closes this file.").wrap(Wrap{trim:false}).block(theme.block("KEYS.TXT",true)),area);
+    frame.render_widget(Paragraph::new("j/k, Up/Down   Choose a provider\nTab, Left/Right Choose one of its keys\nEnter          Add or replace selected key\nPgUp/PgDn      Read the provider notes\nHome           Top of notes\no / d          Provider console / documentation\ni              Show the Picard image (downloads on first view)\np              Picard loop: play / stop (downloads on first play)\nv              Open the original YTMND source\nr              Reload local key status\nq, Esc, Ctrl-C Leave; stop playback\n\nKey entry: type or paste, Backspace, Ctrl-U clear,\nEnter save, Esc cancel. No reveal switch.\n\nKey status is local; provider access has not been checked.\nPress any key to return.").wrap(Wrap{trim:false}).block(theme.block("KEYS",true)),area);
 }
 
 /// Read a secret from an actual raw-mode TTY, including large bracketed pastes.
@@ -1186,7 +1428,7 @@ mod tests {
                 assert!(text.contains("v source"));
                 assert!(text.contains("PICARD .. OFF"));
                 if width == 80 {
-                    assert!(text.contains("GODMODE //"));
+                    assert!(text.contains("godmode "));
                 }
             }
             let mut input = SecretInput::new();
@@ -1219,7 +1461,7 @@ mod tests {
         let mut ui = Ui::new(true, &registry);
         ui.states[0][0] = KeyState::Set;
         ui.states[1][0] = KeyState::Set;
-        ui.notice = "Read the notes. Pick a provider. Enter adds the key. No bullshit.".into();
+        ui.notice = "Choose a provider and press Enter to add a key.".into();
         let theme = Theme {
             bg: Color::Rgb(10, 10, 9),
             panel: Color::Rgb(10, 10, 9),
@@ -1242,11 +1484,25 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         let stem = path.file_stem().unwrap().to_string_lossy();
         let extension = |kind: &str| path.with_file_name(format!("{stem}-{kind}.svg"));
-        for (kind, output) in [
+        let mut previews = vec![
             ("board", path.clone()),
             ("disclaimer", extension("disclaimer")),
             ("masked", extension("masked")),
-        ] {
+        ];
+        if let Some(state) = std::env::var_os("GODMODE_RENDER_PICARD_STATE") {
+            ui.visual = Some(
+                crate::picard_visual::Visual::load_cancellable(
+                    &std::path::PathBuf::from(state),
+                    || false,
+                )
+                .expect("explicit Picard preview needs its verified cache"),
+            );
+            previews.push(("picard", extension("picard")));
+            previews.push(("picard-tiled", extension("picard-tiled")));
+        }
+        for (kind, output) in previews {
+            ui.show_visual = kind.starts_with("picard");
+            ui.visual_tiled = kind == "picard-tiled";
             ui.accepted = kind != "disclaimer";
             ui.editing = if kind == "masked" {
                 let mut input = SecretInput::new();
@@ -1257,6 +1513,9 @@ mod tests {
             } else {
                 None
             };
+            if ui.show_visual {
+                ui.notice.clear();
+            }
             terminal
                 .draw(|frame| draw(frame, &store, &registry, &mut ui, theme, true))
                 .unwrap();

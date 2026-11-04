@@ -1,21 +1,14 @@
-# GODMODE
+# Godmode
 
-```text
-[ GODMODE / RELEASE NOTES ]
-ONE FILE. REAL KEYS. READ THE FUCKING SCOPES.
-```
+Godmode keeps provider credentials in one `.env.godmode` file and supplies the setup notes for obtaining them. Pick a provider in the terminal interface, read its instructions, and paste the key. Agents can then reuse the file instead of asking you to configure the same account again for each project.
 
-**Give your agents the keys. Try not to fucking pwn yourself.**
+The agents already know how to read an environment file, so there didn't seem much point in giving them another service to talk to. You can add an unfamiliar provider with `godmode set NAME_OF_KEY`; a TOML entry is only needed if you want its instructions in the interface. If you already have a working file, keep it. Editing it by hand works too.
 
-Godmode puts reusable provider credentials in one `.env.godmode` and gives you a terminal full of actual setup instructions. Pick a provider, read what its token can do, paste it into a masked field, get on with it. Got some obscure provider? Use its literal key names or add a TOML entry. No key-factory bullshit.
-
-One Rust binary. No Homebrew dance. No account with us. No telemetry. Your keys stay on your machine until you hand them to a command. That command can spend, delete, publish, or print them according to its access. This is a power tool, not an undo button.
-
-The interface borrows the structure of 2000s scene NFOs: original ASCII lettering, compact release fields, install notes, and a blunt `READTHIS.NFO`. Its voice is an intentional blend of NFO/readme culture, gamer slang, and YTMND-era web humor. [The historical research](docs/CULTURE.md) separates the evidence from the nostalgia. We aren't claiming that all Usenet sounded like this, or pretending to be a warez group.
+The program is a single Rust executable. It needs no package manager, service or account of its own, and sends no telemetry. Credentials stay local unless you pass them to another program; what that program can do depends on the permissions attached to those credentials. See [the storage notes](docs/SECURITY.md) before adding them.
 
 ![Godmode provider board, rendered from the actual UI with synthetic credentials](docs/images/provider-board.png)
 
-The warning is blunt; the file operations remain precise. [Read the NFO](READTHIS.NFO).
+The interface uses a small ASCII masthead and text panels. [READTHIS.NFO](READTHIS.NFO) contains the release notes. The [language and culture study](docs/CULTURE.md) documents the period sources, including the Usenet post preserved on Ratpoison's inspiration page, and the choices made here.
 
 ## Try it without touching an existing Godmode setup
 
@@ -49,7 +42,7 @@ For a downloaded release archive and its `SHA256SUMS`:
 
 ```sh
 sh install.sh \
-  --archive ./godmode-v0.2.0-aarch64-apple-darwin.tar.gz \
+  --archive ./godmode-v0.3.0-aarch64-apple-darwin.tar.gz \
   --checksum ./SHA256SUMS
 ```
 
@@ -81,13 +74,16 @@ godmode run --with GH_TOKEN -- gh api user --jq .login
 ```sh
 godmode picard link    # print https://picard.ytmnd.com/
 godmode picard open    # open the original site
+godmode picard show    # show its original image in the terminal
 godmode picard play    # loop the original YTMND audio; stays in the foreground
 godmode picard stop    # stop it from another terminal
 ```
 
-On the provider board, `p` toggles playback and `v` opens the original site. Quitting the board stops its player. There is no autoplay. When using a custom `--state-dir`, give `stop` the same directory.
+On the provider board, `i` opens the picture, `p` toggles audio and `v` opens the original site. In the picture view, `t` switches between a fitted portrait and tiling; `i` or Esc returns to the board. `picard show` opens the picture directly without loading credentials. Its `p` key starts audio only if requested. Quitting stops any player owned by that session. When using a custom `--state-dir`, give `stop` the same directory.
 
-The recording is the approximately eight-second excerpt used by the original Picard YTMND, repeated until stopped, **not the full DarkMateria track**. First playback downloads that exact audio from YTMND into a private local cache and checks its pinned SHA-256. The recording is not bundled in the source or release archive. YTMND receives the download request; no credential file is read or sent for Picard mode. Attribution and implementation details are in [PICARD.md](docs/PICARD.md).
+The picture is the original YTMND JPEG rendered as terminal cells, with colour half-blocks or monochrome ASCII when `NO_COLOR` is set. It is a terminal adaptation of the source image, not a replica of the web page.
+
+The recording is the approximately eight-second excerpt used by the original Picard YTMND, repeated until stopped, **not the full DarkMateria track**. The first request for a picture or audio downloads that asset from YTMND into a private local cache and checks its pinned SHA-256. Neither source asset is bundled in the code or release archive. YTMND receives the download request; no credential file is read or sent by the standalone Picard commands. Attribution and implementation details are in [PICARD.md](docs/PICARD.md).
 
 ## Commands
 
@@ -104,7 +100,7 @@ The recording is the approximately eight-second excerpt used by the original Pic
 | `providers [--json]` | List the merged provider catalog |
 | `providers-template` | Print a credential-free TOML overlay template |
 | `run --with KEY[=ALIAS] -- CMD...` | Give selected credentials to a child process |
-| `picard [link \| open \| play \| stop]` | Optional original YTMND audio and source link |
+| `picard [link \| open \| show \| play \| stop]` | Original YTMND picture, audio and source link |
 
 Repeat `--with` to pass multiple credentials. In `SOURCE_KEY=CHILD_NAME`, the left side names the stored key and the right side names the child's environment variable. `run` clears the inherited environment, preserves basic process context such as PATH, HOME, locale and terminal settings, and adds only the selected credentials. Its stdout/stderr are the child's own output and are **not redacted**.
 

@@ -134,7 +134,7 @@ def main():
             first.seen('READTHIS.NFO')
             assert not env_file.exists(), 'onboarding wrote before acknowledgement'
             first.send(b'GODMODE\r')
-            first.seen('PROVIDERS.NFO')
+            first.seen('PROVIDERS')
             first.send(b'\r')
             first.seen('ADD / REPLACE')
             first.paste(token)
@@ -157,7 +157,7 @@ def main():
             before = env_file.read_bytes()
             third = Terminal(command + ['onboard'], env)
             sessions.append(third)
-            third.seen('PROVIDERS.NFO')
+            third.seen('PROVIDERS')
             assert b'READTHIS.NFO' not in third.capture, 'acknowledgement did not persist'
             third.send(b'\r')
             third.seen('ADD / REPLACE')

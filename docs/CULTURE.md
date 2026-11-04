@@ -1,135 +1,139 @@
-# GODMODE: period references and voice
+# Godmode: language, sources and terminal presentation
 
-Design reference for Godmode **0.2.0**, researched on **2026-11-04**. This records the cultural evidence, implemented presentation boundaries and original alternative copy. Alternatives are labeled below; they are not a transcript of every deployed string.
+Research reference for **Godmode 0.3.0**, revised on **2026-11-04**. This is the reference for the CLI's prose and presentation, including its help, diagnostics, onboarding, provider instructions, installer and documentation. It supersedes the previous direction built around repeated warnings and slogans.
 
-The useful target is a **2000–2005 release NFO crossed with a foul-mouthed, technically competent gamer**, with an optional YTMND detour. It is a deliberate combination of neighboring cultures, not a reconstruction of one universal “old Internet.” The punchline is that giving a program real authority can let you pwn yourself. The program should know exactly what it does, and say so.
+The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html) that Michael supplied. Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
 
-The 0.2.0 interface uses an original ASCII `GODMODE` wordmark, amber and off-white text, `READTHIS.NFO`, `PROVIDERS.NFO` and `[ INSTALL NOTES ]`. Its shared warning begins `YOU WILL FUCKING PWN YOURSELF` and rejects the idea of an undo fairy. On the provider board, `p` starts or stops Picard audio; `v` opens its source. These are intentional modern adaptations, not a replica of any group's artwork.
+## What the supplied reference actually is
 
-## The cultures are related, but different
+The preserved headers identify Craig Brozefsky, the subject *Re: SCWM, Pot and the GPL...*, the date **1999-06-27**, and the groups `comp.os.linux.advocacy` and `gnu.misc.discuss`. It therefore belongs to the late-1990s background of the requested period. Calling it a 2004 post would be wrong. Ratpoison's project page explicitly links it as the inspiration for the name; that establishes the connection to the software, without dating every paragraph of today's project page. [Preserved post](https://www.nongnu.org/ratpoison/inspiration.html), [ratpoison project page](https://www.nongnu.org/ratpoison/).
 
-**BBS distribution and ANSI art supply the older material vocabulary.** Short archive descriptions, fixed-width text, handle/group credits and text-mode graphics predate the requested decade. Richard Holler's 1994 FILE_ID.DIZ guidance was written for shareware distribution and asks for a small plain-text description, not a giant art piece. ACiD's SAUCE specification records a separate tradition of artwork metadata and explicitly distinguishes character formats. Neither BBS activity nor ASCII art is inherently warez. [FILE_ID.DIZ FAQ](https://www.roysac.com/file_iddesc.html), [SAUCE specification](https://www.acid.org/info/sauce/sauce.htm).
+The reply follows an incongruously technical answer through window management and programming-language preferences, then identifies the preceding argument as a troll. Its detailed reasons make the escalation work. Claims about drugs and productivity belong to that performance. They are not practical advice, and adopting the manner does not require adopting its politics or pretending that Godmode has the author's biography.
 
-**The NFO is an artifact, not a protocol or one visual style.** Razor 1911's 2002 demo NFO wraps practical metadata in elaborate lettering and borders. Farbrausch's 2000 demo NFO is much plainer: requirements, credits, dry humor and distribution terms. These are demoscene releases, not evidence that all warez groups spoke identically. A real warez-scene rules document, the 2005 XviD standard, combines ornate text framing with strict technical requirements and required release information. The common useful quality is authored identity around accurate operational detail. [Razor demo NFO](https://www.pouet.net/prod_nfo.php?which=8183), [Farbrausch NFO](https://www.pouet.net/prod_nfo.php?which=1221), [2005 XviD rules](https://scenerules.org/html/2005_XViD.html).
+**The design inference:** write connected explanations about this program's actual choices. Let a digression arise from a real inconvenience. Keep room for irreverence, but give it an object. An unnecessary configuration service, an unreadable permission model, or a program claiming that file permissions solve every security problem supplies more material than telling the reader that the program is dangerous again.
 
-**Usenet is not a synonym for indiscriminate abuse.** RFC 1855, from October 1995, promotes concise contextual replies, community-specific norms and restraint. Brad Templeton's Emily Postnews mocks repetitive signatures, needless replies and self-important flame wars by pretending to recommend them. This gives Godmode a useful tradition of biting self-awareness, not historical permission to make every error message sneer at its user. The RFC is a prescriptive document, and the satire shows behaviors worth mocking; neither measures what every group actually did. [RFC 1855](https://www.rfc-editor.org/rfc/rfc1855.html), [Emily Postnews](https://www.templetons.com/brad/emily.html).
+## Research method and limits
 
-**BitTorrent supplies sharing vocabulary, not an NFO font.** Bram Cohen's May 2003 paper describes peers sharing pieces and the courtesy of leaving a completed download uploading. His later protocol specification describes software behavior, not one community's graphic design. Trackers, release groups and individual downloaders are different actors; a release may circulate through several systems. Godmode does not transfer files between peers, so seeding, ratios, swarms and leeching should not label its actual credential operations. [Cohen's 2003 paper](https://web.stanford.edu/class/cs244/papers/BitTorrent.pdf), [BEP 3](https://www.bittorrent.org/beps/bep_0003.html).
+This is a qualitative comparison of **25 source entries**, not a frequency study of everything written online. The core samples are English-language technical and hobbyist material from 2000–2005. Earlier artifacts identify inherited conventions; later documentation is labeled as retrospective or maintained. The sample cannot represent every country, language, age group, IRC channel, newsgroup or forum. A joke that worked in one community was not necessarily welcome next door.
 
-**Profanity and pwnage have specific evidence, with limits.** A 2004 Chaos Computer Club magazine reproduces The Pirate Bay's aggressively profane reply to DreamWorks. That is evidence of one site's public performance, not a trustworthy legal argument or a universal tracker norm. Urban Dictionary displays `pwn` contributions dated May and September 2003, while the makers of Pure Pwnage date their gamer comedy to 2004. Those establish a suitable early-2000s language neighborhood. Merriam-Webster records its first known use in **1999**, explaining the spelling as probably a typing error for `own`; that qualified account does not prove the Warcraft origin story. [CCC issue 84](https://ds.ccc.de/pdfs/ds084.pdf), [dated user definitions](https://www.urbandictionary.com/define.php?term=Pwn), [Pure Pwnage creator material](https://www.purepwnage.com/industry/details/about.php), [Merriam-Webster](https://www.merriam-webster.com/dictionary/pwn).
+The research compares ordinary maintenance notes, FAQs, release information and conversations with the memorable provocations. Famous insults survive and get relinked; selecting only those would predetermine the result. Sources are read for sentence structure, technical specificity, audience assumptions, typography and the placement of jokes. A source's existence supports a claim about that source. It does not establish a universal community norm.
 
-**Picard belongs to the 2004 web-loop branch.** YTMND's community record dates the Picard site to April 25, 2004 and distinguishes its creator from DarkMateria, the song's creator. It describes a tiled image, large text and a looping excerpt. That is a separate web-meme reference, not a BBS or Usenet feature. Inspection of the surviving WAV on the research date measured **7.976 seconds**: the familiar loop is an excerpt, not the full song. Godmode plays that excerpt only on request. [Original site](https://picard.ytmnd.com/), [YTMND's historical record](https://wiki.ytmnd.com/Picard_Song), [original WAV](https://users.content.ytmnd.com/d/0/3/d0330b0d03957ad58853427a6513e793.wav). Playback, attribution and cache behavior are documented in [Picard mode](PICARD.md).
+Archive pages also need care. Current navigation, reaction controls, fonts and forum software are not evidence of the original presentation. AnandTech's preserved 2004 posts now render through modern forum software, including modern emoticon display. Ratpoison's current homepage contains later news. The Phrack archive header and the text inside one issue disagree by a day. Those distinctions are recorded rather than smoothed away.
+
+## What the period material changes
+
+### People explained their tools in ordinary sentences
+
+Irssi's March 2001 maintenance note explains that its author expanded the HOWTO, that part of it currently applies only to CVS, and that a bugfix release is planned. It is brief, personal and specific about the mismatch a reader might encounter. WeeChat's 2003–2004 announcements likewise describe actual commands, incomplete documentation, scripting requirements and corrected behavior. Neither needs a dramatic persona to sound like software from its time. [Irssi note](https://irssi.org/2001/03/04/startup-howto-updated/), [WeeChat news archive](https://weechat.org/news/?page=17&pagesize=10).
+
+There was also enthusiasm. mIRC's September 2000 news uses emoticons, playful descriptions of bugs, invitations to explore, and numerous concrete changes. Its June 2001 release mail gives upgrade instructions and directs readers to the help file. This matters because restraint should not turn into corporate impersonality. These authors sound interested in what they made. The useful part is the relation between that interest and the details, rather than copying their exuberance into every button. [mIRC older news](https://www.mirc.com/newsold.html), [mIRC 5.91 release mail](https://www.mail-archive.com/announce@mirc.com/msg00003.html).
+
+Godmode can explain why it keeps a flat file, why keys retain their provider names, or what a child process receives. A paragraph has room for the reasoning and an aside. A repeated success message generally has room for the result. Different surfaces deserve different amounts of personality.
+
+### Usenet and IRC had arguments, help, and obligations to the reader
+
+An October 2001 Usenet index describes periodically posted introductions, FAQs, tutorials, archive pointers and other useful material. In a September 2001 R-help message, a programmer passes along a reference, apologizes for cross-posting, and includes a discussion asking for runnable examples. These are actual period artifacts of people sharing information and arguing about how to make discussion useful. They are a better guide to a provider instruction screen than a compilation of flame-war quotations. [Usenet periodic-postings index](https://groups.google.com/g/news.lists.misc/c/hmp61FwVYT4), [R-help discussion](https://stat.ethz.ch/pipermail/r-help/2001-September/015494.html).
+
+The May 2002 EFNet FAQ is more brusque. It combines specific IRC commands, distinctions between kinds of authority, admissions of what an operator cannot do, and occasional profanity. Its bluntness has a subject: the network's actual operating rules. Godmode has similarly useful distinctions to explain: a key being present, a key working, and a key authorizing a particular action are different facts. [EFNet FAQ](https://www.irchelp.org/ircd/efnetfaq.html).
+
+Earlier etiquette material already objected to wasting readers' attention. RFC 1855 describes contextual replies and different community norms. Brad Templeton's Emily Postnews satire exaggerates long signatures, decorative slogans and repeated messages precisely because they are tiresome. These are prescriptive and satirical sources, respectively, not proof that people always behaved well. They do establish that dislike of repetitive ornament is part of the historical record too. [RFC 1855](https://www.rfc-editor.org/rfc/rfc1855.html), [Emily Postnews](https://www.templetons.com/brad/emily.html).
+
+### An NFO carried information as well as identity
+
+Farbrausch's 2000 *fr-08* NFO provides requirements, individual credits, contact information, a qualification about testing, and understated mock-corporate humor. Razor 1911 Demo Division's November 2002 NFO uses far more elaborate lettering and dotted fields. Both are demoscene artifacts. They show variation within a neighboring culture; they should not be presented as a statistical sample of warez releases. [Farbrausch NFO](https://www.pouet.net/prod_nfo.php?which=1221), [Razor demo NFO](https://www.pouet.net/prod_nfo.php?which=8183).
+
+The 2005 XviD releasing standard supplies a separate scene-authored example. Its framing surrounds technical requirements, exceptions, metadata and group attribution. Phrack 58 combines ASCII art and a film reference with mundane distribution instructions and mail-format requirements. Its humor and hostility coexist with lengthy useful prose. The appropriate borrowing is a readable information hierarchy and an identifiable authorial manner. A fake group credit, fabricated system status, or mandatory insult would add little. [XviD rules](https://scenerules.org/html/2005_XViD.html), [Phrack 58 introduction](https://phrack.org/issues/58/introduction).
+
+BBS distribution conventions are older. The 1994 FILE_ID.DIZ FAQ concerns short shareware archive descriptions. SAUCE records an art metadata tradition dating to 1994, while the maintained specification explains character formats and assumptions inherited from DOS. ASCII characters, code-page graphics, ANSI control sequences and a modern terminal rendering of a photograph are different things. Godmode can use fixed-width alignment and original text decoration without claiming to emulate every historical format. [FILE_ID.DIZ FAQ](https://www.roysac.com/file_iddesc.html), [SAUCE specification](https://www.acid.org/info/sauce/sauce.htm).
+
+### Profanity and slang need context
+
+The Pirate Bay's reply reproduced in a 2004 CCC magazine is certainly profane. It is also a deliberately provocative response in a specific dispute. Treating it as the normal voice of every tracker, let alone every technical utility, mistakes a performance for a default register. Its legal assertions are not established by its publication. [Die Datenschleuder 84, printed page 7](https://ds.ccc.de/pdfs/ds084.pdf).
+
+Likewise, a word can belong to the period and still be wrong for a particular sentence. Merriam-Webster records `pwn` with first known use in 1999 and a probable typing-error origin. That supports its historical availability; it does not make a repeated warning built around it sound natural. The familiar Warcraft origin story remains unproved by that evidence. [Merriam-Webster](https://www.merriam-webster.com/dictionary/pwn).
+
+There is no profanity quota and no requirement to remove profanity altogether. The test is whether the sentence says something the author needed to say. A specific exasperated observation can belong in a README. An adjective inserted into every successful save quickly becomes another interface element the reader has to ignore. Deliberate misspellings and random leetspeak are subject to the same test. Exact commands, paths and key names always retain their real spelling.
+
+### People were already tired of repeated Internet jokes
+
+A February 2001 MetaFilter discussion about *All Your Base* contains enthusiasm, questions about origins, recursive jokes about press coverage, and impatience at having the same discussion again. The participants' origin accounts are claims in a conversation, not conclusive historical attribution. Their reactions are still useful primary evidence: novelty and fatigue existed together at the time. A modern application repeating a famous line on every screen does not recover the experience of encountering it once. [MetaFilter discussion](https://www.metafilter.com/6013/All-Your-Base).
+
+BitTorrent does not supply an exception. Bram Cohen's May 2003 paper describes an intentionally simple interface, file pieces, uploading and the courtesy of continuing to upload after a download. That explains distribution behavior. It does not prescribe the prose or appearance of everything circulated through it. Godmode is not a peer-to-peer client, so ratios, swarms, seeds and fake download activity do not belong in its credential status. [Cohen's paper](https://www.bittorrent.org/bittorrentecon.pdf).
+
+### Picard works as the actual reference
+
+A preserved AnandTech post dated December 8, 2004 simply links to `picard.ytmnd.com` in a thread requesting absurd clips with music. Another discussion dated November 21, 2005 includes confusion, dislike of background sound, and a recommendation to try Picard. These independently establish period circulation and varied reception. They do not independently establish the page's exact creation date. [December 2004 thread](https://forums.anandtech.com/threads/if-you-have-anything-so-stupid-with-a-funny-background-music-has-to-go-with-the-clip-please-post-here.1469810/), [November 2005 thread](https://forums.anandtech.com/threads/ytmnd-whining-away-message-girl.1747162/).
+
+YTMND's current metadata for site 508 reports creation on April 25, 2004 and identifies ShittyMcShit as the page creator. Its community history credits the music to DarkMateria. A **January 21, 2005 archived page** independently preserves the composition: a tiled JPEG, JavaScript-generated layers of large text, and a hidden looping WAV object. The picture is a still image, not an animated GIF; the layering script writes the text rather than supplying a timed animation. The current metadata is a present record of the creation date, not an independently recovered 2004 creation log. [Site metadata](https://picard.ytmnd.com/info/508/json), [community history](https://wiki.ytmnd.com/Picard_Song), [archived HTML](https://web.archive.org/web/20050121191446id_/http://picard.ytmnd.com/).
+
+Showing the source image and playing the source excerpt makes the reference available without making ordinary credential operations impersonate a meme. The browser composition also explains why an invented ASCII face, a modern reaction GIF, and the original Picard image are not interchangeable.
+
+The implementation should identify any terminal adaptation honestly. A color-cell rendering of the original image preserves its subject and composition at reduced resolution; it is not a recovered period ASCII portrait. A terminal image protocol may preserve more pixels but depends on the terminal. The original page remains the reference for its complete composition. Image and audio can be requested independently, stop controls stay apparent, and neither starts merely because someone is entering a key. Source assets, measured properties, rendering choices and attribution belong in [PICARD.md](PICARD.md).
+
+## Writing rules for this CLI
+
+These are design decisions drawn from the comparisons above, not historical laws.
+
+1. **Explain the program's actual choices.** The flat file, selective child environment, local checks and provider instructions provide enough substance. A claim about power does not substitute for an explanation of what happens.
+2. **Use sentences when there is a sentence's worth to say.** Avoid chains of tiny fragments arranged to look quotable. Paragraphs can carry a qualification or a dry aside without becoming an advertising pitch.
+3. **Keep routine output routine.** A save reports the key name and result. Cancellation describes what was preserved. Errors identify the failed operation and an available next step. Repeated output should not require laughing at the same joke again.
+4. **Let the author's opinion attach to a concrete choice.** There is room to dislike redundant configuration layers. There is no need to invent an enemy, an imaginary hacker crew, or a personal history for the program.
+5. **Keep technical claims exact even when the surrounding prose is loose.** Local presence is not authentication. Mode 0600 is not encryption. Giving a command a restricted environment is not confining its filesystem access. A downloaded recording is a network operation.
+6. **Do not mechanically imitate typos, dialect or emoticons.** Period samples differ, and misspelling on purpose is an especially weak substitute for an interesting thought. Use contractions and familiar language naturally.
+7. **Give optional material somewhere to live.** The README can explain the design; the NFO can carry release and installation notes; Picard mode can display Picard. None of those needs to interrupt every successful operation.
+8. **Preserve readability and truthful identity.** Original ASCII decoration is fine. Real version numbers and file paths are useful. Borrowed group logos, invented affiliations, fake network activity and nostalgic terminal limitations are not required.
+
+A suitable original explanatory paragraph might read:
+
+> godmode puts the keys in one file. The agents already know how to read a file; there did not seem to be much point in giving them another account to log into. Provider instructions live alongside the key names, so adding a provider does not require inventing a new kind of key.
+
+This illustrates the sentence structure and reasoning, not a mandatory slogan or a historical quotation. Copy should be adjusted to the code it describes.
+
+## Full-surface review
+
+An audit must include more than the banner. These surfaces require the same editorial pass, while keeping machine-readable contracts intact.
+
+| Surface | What to examine | What must remain useful |
+| --- | --- | --- |
+| Command description and `--help` | Taglines, hype in subcommand descriptions, redundant warnings | Names, options, defaults, examples and scope |
+| Acknowledgment and storage disclosure | Repeated threats, stacked fragments, theatrical danger | Plaintext storage, permissions, authority, child output, downloads and consent |
+| Board, footer and input dialog | Decorative slogans, fake filenames, excessive reminders | Selection, controls, paths, masks, scrolling and cancellation |
+| Save, unset, status and doctor | Celebrations or jokes attached to routine results | Key names, accurate local state and unchanged JSON/exit codes |
+| Provider catalog and custom-provider instructions | Sales language or unsupported capability claims | Setup steps, scope, test/live distinctions and source links |
+| Audio and image commands | Announcer voice or compulsory meme commentary | What is fetched, displayed, played, cached and stopped |
+| Installer and removal instructions | Marketing around installation or vague reassurance | Exact destination, overwrite refusal, checksums and preserved configuration |
+| README, NFO and security documentation | Repeated one-liners, inconsistent claims, old screenshots | A usable explanation of the actual program and its limitations |
 
 ## Evidence ledger
 
-“Period artifact” means a dated text or work preserved from the period. It does not mean the archive was fetched in that year. A first-party retrospective and a community chronology are weaker evidence for precise origins than an artifact's own dated contents. Current retrieval dates are not publication dates.
+Accessed **2026-11-04**. Dates below describe the artifact or stated revision, not the day this research retrieved it. “Preserved” means the source is currently readable through its host or archive; it does not assert independent authentication of every original timestamp. Each entry supports the limited observation stated here.
 
-| ID | Source and date | Provenance and directly observed evidence | Limit and useful implication |
-| --- | --- | --- | --- |
-| C01 | [Richard Holler, FILE_ID.DIZ FAQ v1.9](https://www.roysac.com/file_iddesc.html), revision **1994-05-17** | Period technical text preserved on SAC artist Roy's site. Identifies shareware/BBS archive descriptions; specifies up to ten lines and 45 characters per line. | The page includes later editorial additions, including commentary about warez art. Do not attribute those additions to Holler. Useful for compact, factual descriptions, not a universal NFO layout rule. |
-| C02 | [Olivier Reubens / ACiD, SAUCE](https://www.acid.org/info/sauce/sauce.htm), current document revision **2013-11-12**, history starts **1994-03-01** | Creator-maintained technical specification and retrospective. Records original artpack release; documents title, author, group, character formats and legacy fonts/code pages. | The whole page is not a 1994 artifact. Useful for distinguishing ANSI rendering, ASCII text and legacy character graphics. |
-| C03 | [Sally Hambridge, RFC 1855](https://www.rfc-editor.org/rfc/rfc1855.html), **October 1995** | Official period informational RFC. Discusses NetNews, meaningful subjects, restraint, short signatures, quoting and different group norms. | Not an Internet-wide law or an ethnographic survey. Useful for concise instructions, clear context and keeping decoration out of repeat output. |
-| C04 | [Brad Templeton, Emily Postnews](https://www.templetons.com/brad/emily.html), **in circulation by 1995** | Author-hosted satire, explicitly listed in RFC 1855's bibliography. Current text exaggerates noisy signatures, mass replies and argumentative vanity. | The current page is undated and can include revisions; the RFC proves the work existed by 1995, not that every current paragraph did. Useful for dry mockery of grandiosity. |
-| C05 | [Farbrausch, fr-08 NFO](https://www.pouet.net/prod_nfo.php?which=1221), **2000** | Preserved original demo information text identifies its year. Plain lowercase opening, requirements, individual credits, mock corporate language and a blunt warranty close. | Demoscene, not a warez-release sample. Shows that period flavor can be spare and readable. Do not copy its legal language or imply affiliation. |
-| C06 | [Razor 1911 Demo Division, We Were! NFO](https://www.pouet.net/prod_nfo.php?which=8183), embedded date **2002-11-28** | Preserved demo text with elaborate logo/border, dotted metadata and separate notes, requirements and contact sections. | Archive release metadata can use a different month. Legacy bytes appear garbled in some HTML/text extraction. Inspect the intended DOS/font view before claiming exact glyph shapes. |
-| C07 | [The XviD Releasing Standards 2005](https://scenerules.org/html/2005_XViD.html), footer **2005-09-25** | Preserved scene-authored rules. Boxed sections, emphatic requirements and an NFO metadata checklist; named group signatories appear at the end. | A particular film-release ruleset, not every scene or tracker. Retrieved through the archive index's text link; direct TLS fetching was unreliable. Useful for assertive precision and release-sheet hierarchy. |
-| C08 | [Bram Cohen, Incentives Build Robustness in BitTorrent](https://web.stanford.edu/class/cs244/papers/BitTorrent.pdf), **2003-05-22** | Original author paper preserved by Stanford. Describes file-piece sharing, seeds, upload behavior and a minimal download interface. | A protocol designer's account, not a tracker etiquette survey. Useful for understanding the actual vocabulary; does not justify fake seeding or peer status in this CLI. |
-| C09 | [Bram Cohen, BEP 3](https://www.bittorrent.org/beps/bep_0003.html), created **2008-01-10**, displayed revision **2017-02-04** | Official maintained specification distinguishes metainfo, tracker and peer behavior. | Its creation date is the document's date, not BitTorrent's invention. Reinforces that a protocol has no mandatory visual persona. |
-| C10 | [Die Datenschleuder #84](https://ds.ccc.de/pdfs/ds084.pdf), **2004**, printed page **7** / PDF page **9** | Period CCC publication reproduces a TPB email reply and cites its original URL. It mixes formal correspondence structure with a profane sign-off. | Reply header says August 21 while quoted letter says August 23; preserve that discrepancy instead of asserting an exact response date. This proves period publication of the rhetoric, not the correctness of its legal claims. |
-| C11 | [Urban Dictionary, pwn](https://www.urbandictionary.com/define.php?term=Pwn), displayed entries **2003-05-04** and **2003-09-01** | User-authored linguistic artifacts link the term to domination and gaming; their origin explanations disagree in detail. | Community definitions, not authoritative etymology. Evidence for period usage only. Do not repeat the Warcraft story as established history. |
-| C12 | [Pure Pwnage official industry page](https://www.purepwnage.com/industry/details/about.php), **circa 2010**, describes **2004** debut | First-party publicity for the television adaptation identifies the earlier gamer-comedy web series and its mock pro-gamer character. | Retrospective promotional source; audience claims are unnecessary here. Useful corroboration for pwnage as gamer comedy and self-parody, not literal computer security. |
-| C13 | [Picard YTMND](https://picard.ytmnd.com/), [community entry](https://wiki.ytmnd.com/Picard_Song) and [source WAV](https://users.content.ytmnd.com/d/0/3/d0330b0d03957ad58853427a6513e793.wav); site dated **2004-04-25** by wiki revision **2012-04-19** | Original hosted work plus community chronology crediting DarkMateria. WAV fetched **2026-11-04**: 351,860 bytes, mono PCM16 at 22,050 Hz, **7.976 seconds**; hash and playback details in [PICARD.md](PICARD.md). | Treat the site date as community-recorded and audio properties as a current measurement. The excerpt is not the full song; availability is not a redistribution license. No lyrics are reproduced here. |
-| C14 | [Merriam-Webster, pwn](https://www.merriam-webster.com/dictionary/pwn), current editorial entry accessed **2026-11-04** | Records first known use in **1999** and a probable typing-error respelling of `own`. | Primary evidence of the dictionary's editorial finding, not a reproduced 1999 chat log or proof of a particular inventor. Retain its uncertainty; do not promote the Warcraft anecdote to fact. |
-
-## Voice rules derived from the evidence
-
-These are design judgments, not historical facts.
-
-1. **Talk like the operator who has already seen this fail at 3 a.m.** Direct, funny, technically exact. Swear when it makes the consequence land. The app is a capable accomplice, not a recruiter for an imaginary hacking crew.
-2. **Use the founder's pwn-yourself warning as the center of gravity.** The danger is real authority in the hands of fallible software. Do not imply that installing Godmode grants root, disables model safeguards or defeats provider permissions.
-3. **Give the flourish an NFO shape.** One memorable wordmark, bracketed section labels, aligned dotted metadata, concise notes and actual credits. An enormous logo should not bury the action or reappear after every shell command.
-4. **Separate ornament from identifiers.** `nfo`, `greetz`, `1337` and a selective `iNFO` can appear in presentation. Keep flags, paths, environment-variable names, error codes and provider names exact. Do not translate operational instructions into dense leetspeak.
-5. **Use profanity as emphasis, not a random text generator.** A strong disclaimer and occasional short aside feel authored. Repeated insults after ordinary typing mistakes feel like a malfunctioning forum bot. Aim the joke at overconfidence and the situation, not the user's identity or ability.
-6. **Make the useful sentence survive if the joke is removed.** An error still names the failed operation, preserves the state truth and gives the next step. `lol nope` is not an error message. Neither is an unexplained `RTFM`; provide the specific guide command if using that shorthand.
-7. **No counterfeit operational theater.** No fake connection traces, fabricated peers, fictional access levels, “root acquired,” “firewall breached,” pirate release claims or fake scanner results. A stored key is stored; it is not verified. Offline checks are offline checks.
-8. **Keep the body readable.** Compact mixed-case prose, one short all-caps heading, and restrained emphasis. A monospace interface is not automatically a green CRT. A modern gradient may be a deliberate accent; it is not evidence of historical accuracy.
-9. **Be technically honest about the art.** Seven-bit ASCII, IBM code-page block characters and ANSI escape sequences are different things. A UTF-8 Ratatui interpretation can evoke the old artifacts without claiming byte-for-byte emulation. Preserve monochrome, narrow-terminal and no-motion behavior.
-10. **Place the web-meme joke in its own corner.** Picard is an optional 2004 YTMND homage. Identify the source, play only on request and make stopping obvious. Music must not interfere with typing, cancellation or a secret-bearing error. No song lyrics in routine prompts.
-
-## Original copy candidates
-
-Everything in this section is newly written for Godmode. These are **alternative examples, not the deployed 0.2.0 strings**, and are not quoted from historical sources, a release group or a song. Any adoption must use the application's real configured path, version and behavior.
-
-### Opening sheet
-
-```text
-+--[ GODMODE / RELEASE iNFO ]----------------------------------+
-| TYPE .... local credential bootstrapper                      |
-| STORE ... one .env.godmode                                   |
-| PROBES .. none                                               |
-| OWNER ... you                                               |
-+-------------------------------------------------------------+
-
-give your agents the keys. keep your fucking eyes open.
-```
-
-The metadata values describe the credential portion of the tool. If an optional media feature makes a network request, its own status must say so; do not upgrade `PROBES .. none` into a false global “no network” claim.
-
-### Disclaimer: high heat, exact consequences
-
-```text
-[ READ THIS SHIT ]
-
-You are giving software the keys to your accounts.
-Depending on their scope, those keys can deploy, delete, publish,
-send mail and spend your money. That is the fucking point.
-
-But keys are not judgment. Feed an unchecked agent broad access
-and this is how you fucking pwn yourself. Scope is not decoration.
-Read it. Know which account pays. Revoke anything that leaks.
-
-The credential file is plaintext, mode 0600. Your user and an
-unrestricted agent can read it. This is not a vault, a sandbox,
-or a spending limit. A live key is not permission to charge money.
-
-Saving a key checks local storage, not provider access. Commands
-launched with `run` can disclose the keys you give them; their
-output is not filtered. Existing keys and rules stay in place.
-
-Type GODMODE to acknowledge this and create the local file and
-receipt if needed. Esc leaves without doing that.
-```
-
-This is deliberately more profane than the historical technical standards. That intensity comes from the founder's requested voice, not a false claim that every old document sounded this way. Keep any additional network/audio disclosure accurate to the implemented feature.
-
-### Operational copy
-
-| State | Proposed text | Required behavior |
+| ID | Source and date | What was inspected; limits |
 | --- | --- | --- |
-| Provider board title | `[ PROVIDERS / YOUR KEYS ]` | Provider names and selection remain readable. |
-| Unconfigured provider | `No key yet. Read the scope, then paste the thing.` | Do not imply signup or account discovery occurred. |
-| Secret entry | `Paste the key. It stays masked. Enter saves; Esc bails.` | Both controls must match the actual input state. |
-| Stored key | `Saved GH_TOKEN. Local file only; provider access unchecked.` | Show only the name, never value or prefix. |
-| Cancel | `Bailed. Nothing saved.` | Only use when the attempted edit did not commit. |
-| Wrong environment | `Wrong fucking environment. This name is for test keys. Nothing saved.` | Use only when the key's declared prefix rules established that mismatch. |
-| Invalid JSON | `That is not a JSON object. Paste the raw JSON or use --from-file. Nothing saved.` | No parser excerpt or secret-bearing error detail. |
-| Offline doctor passes | `LOCAL CHECKS PASS. No provider requests were made.` | Do not shorten this to “all systems owned” or “fully operational.” |
-| Unsafe permissions | `File permissions are too open. Expected 0600. Fix them locally, then retry.` | Explain the actual failing check; no performative insult needed. |
-| Successful exit | `Your keys. Your calls. Don't pwn yourself.` | No suggestion of a background operator or monitoring service. |
-| Help | `[ RTFM / KEYS ]` followed by actual controls | The joke sits above the manual; it never replaces it. |
+| R01 | [Brozefsky post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html), **1999-06-27** in headers | Full preserved Usenet reply, including quoted context, technical digressions and troll postscript. Central founder-supplied reference; predates the target decade. Retrieved with curl after browser-fetch timeout. |
+| R02 | [Ratpoison project page](https://www.nongnu.org/ratpoison/), **maintained page; includes news through 2021** | Explicitly links R01 as name inspiration; explains keyboard use and screenshots with dry humor. Current body cannot all be dated to 2000 from the copyright line. |
+| R03 | [Irssi, startup HOWTO updated](https://irssi.org/2001/03/04/startup-howto-updated/), **2001-03-04** | Creator-posted maintenance note by cras; conversational prose and a specific CVS/documentation caveat. Modern surrounding navigation is irrelevant to its original appearance. |
+| R04 | [mIRC older news](https://www.mirc.com/newsold.html), particularly **2000-09-05 and 2000-11-09** entries | Project's preserved announcements combine enthusiasm, emoticons, self-correction and concrete bug descriptions. A release announcement has a different purpose from an error message. |
+| R05 | [mIRC 5.91 release mail](https://www.mail-archive.com/announce@mirc.com/msg00003.html), **2001-06-15** | Period project announcement preserved by Mail Archive; upgrade instructions and references to help/changelog. Reassurances in this historical mail are not adopted as present guarantees. |
+| R06 | [WeeChat news archive](https://weechat.org/news/?page=17&pagesize=10), **2003-10 to 2004-08** entries | First-party documentation, scripting and release notes identify concrete features and unfinished work. The archive's page number may move as new posts are added. |
+| R07 | [EFNet FAQ by Disciple](https://www.irchelp.org/ircd/efnetfaq.html), stated update **2002-05-30** | Practical Q&A, command syntax, authority limits and occasional bluntness. Evidence of this network's stated practices, not all IRC communities. |
+| R08 | [R-help / S-news cross-post](https://stat.ethz.ch/pipermail/r-help/2001-September/015494.html), **2001-09-28**, quoting September 27 messages | Actual mailing-list exchange about useful questions and runnable examples; preserves replies and qualifications. It links an early smart-questions essay without dating today's version of that essay. |
+| R09 | [Usenet periodic-postings list, part 1](https://groups.google.com/g/news.lists.misc/c/hmp61FwVYT4), displayed **2001-10-13** | Archived `news.lists.misc` post explains recurring FAQs, tutorials, indexes and retrieval routes. An informational index, not a survey of conversational behavior. |
+| R10 | [Phrack 58 introduction](https://phrack.org/issues/58/introduction), embedded **2001-12-27**; archive header **2001-12-28** | ASCII framing, film quotation, editorial asides, distribution and email instructions. Date discrepancy retained; no technical exploit content or borrowed art is incorporated into Godmode. |
+| R11 | [MetaFilter, All Your Base](https://www.metafilter.com/6013/All-Your-Base), **2001-02-24–25** | Dated participant comments show interest, self-reference and repetition fatigue. Users' origin accounts are not independently established history. |
+| R12 | [Farbrausch fr-08 NFO](https://www.pouet.net/prod_nfo.php?which=1221), embedded **2000** | Requirements, credits, testing caveat and dry corporate parody. Preserved demoscene text, not a warez release or universal NFO template. |
+| R13 | [Razor 1911 Demo Division NFO](https://www.pouet.net/prod_nfo.php?which=8183), embedded **2002-11-28** | Elaborate art, dotted fields, credits and notes. Demo-division artifact; extracted legacy characters can be garbled. |
+| R14 | [XviD Releasing Standards 2005](https://scenerules.org/html/2005_XViD.html), footer **2005-09-25** | Scene-authored requirements, exceptions, NFO metadata and signatories. Read through the archive index's text link after direct TLS failure; applies to this ruleset. |
+| R15 | [Cohen, Incentives Build Robustness in BitTorrent](https://www.bittorrent.org/bittorrentecon.pdf), **2003-05-22** | Author's technical paper describes the interface and sharing behavior. Does not prescribe a tracker aesthetic or prove downstream communities' norms. |
+| R16 | [RFC 1855](https://www.rfc-editor.org/rfc/rfc1855.html), **1995-10** | Official informational guidance on mail, NetNews, context and etiquette. Earlier prescriptive influence, not measured compliance. |
+| R17 | [Templeton, Emily Postnews](https://www.templetons.com/brad/emily.html), **work cited in RFC 1855 by 1995** | Author-hosted satire explicitly mocks excessive signatures and slogans. Today's undated text may contain later revisions. |
+| R18 | [Holler, FILE_ID.DIZ FAQ v1.9](https://www.roysac.com/file_iddesc.html), **1994-05-17** | Preserved shareware/BBS distribution guidance and short description format. Later site annotations must not be attributed to Holler. |
+| R19 | [Reubens / ACiD, SAUCE revision 5](https://www.acid.org/info/sauce/sauce.htm), **2013-11-12**, history beginning **1994-03-01** | Creator-maintained specification explains art metadata, code pages and aspect ratios. A later technical account of an older format. |
+| R20 | [Merriam-Webster, pwn](https://www.merriam-webster.com/dictionary/pwn), **current editorial entry** | Reports first known use in 1999 and probable typo origin. Not a reproduced 1999 message, and not proof of a specific inventor. |
+| R21 | [Die Datenschleuder 84](https://ds.ccc.de/pdfs/ds084.pdf), **2004**, printed p.7 / PDF p.9 | Period reproduction of TPB's DreamWorks reply; profanity in an adversarial performance. Reply header and quoted letter disagree on chronology; legal assertions not endorsed. PDF read directly after web-fetch timeout. |
+| R22 | [AnandTech clip-sharing thread](https://forums.anandtech.com/threads/if-you-have-anything-so-stupid-with-a-funny-background-music-has-to-go-with-the-clip-please-post-here.1469810/), **2004-12-08** | Preserved participant links directly to Picard; neighboring reply links the YTMND pattern. Modern forum rendering is not a 2004 screenshot. |
+| R23 | [AnandTech YTMND discussion](https://forums.anandtech.com/threads/ytmnd-whining-away-message-girl.1747162/), **2005-11-21** | Mixed reactions, dislike of background audio, and a recommendation for Picard. Evidence of these remarks, not population sentiment. |
+| R24 | [Picard site 508 metadata](https://picard.ytmnd.com/info/508/json) and [community history](https://wiki.ytmnd.com/Picard_Song), **current metadata; wiki revision 2012-04-19** | Metadata reports creation **2004-04-25 18:59:01**, creator and tiled JPEG/WAV assets; wiki credits DarkMateria. Metadata read through [Jina's text proxy](https://r.jina.ai/https://picard.ytmnd.com/info/508/json) after direct access failed. A present record of creation, not an independently recovered creation log. |
+| R25 | [Archived Picard HTML](https://web.archive.org/web/20050121191446id_/http://picard.ytmnd.com/), capture URL dated **2005-01-21 19:14:46** | Retrieved with curl; HTML identifies site 508, tiled `image.jpg`, generated static text layers and looping `sound.wav`. Confirms the page's construction by this capture; old asset paths alone do not prove byte identity with today's files. |
 
-`NFO`, `GREETZ`, `1337`, `pwn` and `RTFM` are accents. Avoid stacking them all in one sentence. Do not call a deletion `NUKE` unless the ordinary word “remove” and its exact target are also visible; scene-specific jargon should not obscure an irreversible action.
-
-## Implemented design boundaries
-
-The 0.2.0 implementation applies the chosen visual and verbal direction at these surfaces. The alternative copy above illustrates the voice without redefining the command contract.
-
-| Surface | Implemented direction | Required invariant |
-| --- | --- | --- |
-| `src/store.rs` / `DISCLAIMER` | Shared original `READTHIS.NFO` warning, pwn-yourself headline and blunt consequences. | Plaintext disclosure, authority limits, child-output limits and acknowledgment semantics. |
-| `src/tui.rs` / `draw_banner` | Original ASCII wordmark, amber/off-white release-sheet presentation and restrained motion. | Actual version, small-terminal fallback, reduced motion and monochrome support. |
-| `draw_ack`, `draw_board`, `draw_input`, `draw_help` | NFO section titles and concise operator instructions. | Exact key names, provider guidance, masked secrets, scrolling and controls. |
-| `src/main.rs` / human-readable output | Direct command feedback with the shared warning at acknowledgment. | JSON schemas, exit codes, command names and state facts. |
-| `src/picard.rs` and provider-board `p` / `v` | Separate source-attributed audio loop, source link and play/stop status. | Explicit opt-in, cancellation, honest network disclosure and no lyric reproduction. |
-
-The design succeeds when its roughness is recognizable while the destination, consequence and next action remain clear. Secret-leak, cancellation, JSON, terminal-restoration and file-preservation checks remain mandatory. Historical references do not imply affiliation or grant rights to another group's art, branding or music.
+No group affiliation, media ownership or historical authorship is implied by these references. Godmode's prose and decoration are original. Its historical influences should be recognizable from how the information is written and organized, even when the reader has never seen the sources.

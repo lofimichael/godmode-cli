@@ -1,5 +1,6 @@
 mod envfile;
 mod picard;
+mod picard_visual;
 mod registry;
 mod store;
 mod tui;
@@ -19,14 +20,14 @@ use zeroize::Zeroizing;
 #[command(
     name = "godmode",
     version,
-    about = "Hand your agents the keys. Try not to fucking pwn yourself.",
+    about = "Set up provider credentials for local agents.",
     disable_help_subcommand = true
 )]
 struct Cli {
     /// Credential directory (default: ~/.config/godmode). Does not install or replace rules.
     #[arg(long, global = true)]
     config_dir: Option<PathBuf>,
-    /// Local acknowledgement and writer-lock directory
+    /// Local acknowledgements, writer locks and optional Picard cache
     #[arg(long, global = true)]
     state_dir: Option<PathBuf>,
     /// Disable terminal animation
@@ -98,6 +99,8 @@ enum PicardCommand {
     Link,
     /// Open the original Picard YTMND in your browser
     Open,
+    /// Show the original Picard image in the terminal; audio starts only with p
+    Show,
     /// Play the original ~8-second YTMND loop until stopped (foreground)
     Play,
     /// Stop Godmode's active player for this state directory
@@ -141,7 +144,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
                 println!("{}", picard::SOURCE_URL);
                 if action.is_none() {
                     println!(
-                        "Picard mode: `godmode picard play` / `godmode picard stop`. No autoplay. You're welcome."
+                        "Use `godmode picard show` for the picture, `play` for audio, or `stop` to stop audio."
                     );
                 }
                 return Ok(0);
@@ -168,19 +171,15 @@ fn execute(cli: Cli) -> Result<i32, String> {
     let store = Store::new(config, state)?;
     if let Some(Commands::Picard { action }) = &cli.command {
         match action {
-            Some(PicardCommand::Play) => {
-                println!(
-                    "PICARD MODE / original YTMND loop. Ctrl-C or `godmode picard stop` to stop."
-                );
-                picard::play_foreground(&store.state_dir)?;
-            }
+            Some(PicardCommand::Show) => tui::show_picard(&store.state_dir)?,
+            Some(PicardCommand::Play) => picard::play_foreground(&store.state_dir)?,
             Some(PicardCommand::Stop) => {
                 println!(
                     "{}",
                     if picard::stop(&store.state_dir)? {
-                        "Picard stopped. Back to your regularly scheduled shit."
+                        "Picard stopped."
                     } else {
-                        "Picard is already quiet."
+                        "No Picard player is running."
                     }
                 );
             }

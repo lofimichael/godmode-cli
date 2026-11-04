@@ -1,54 +1,59 @@
-+--[ GODMODE / RELEASE iNFO ]---------------------------------------------+
-| VERSION .. 0.2.0                                                       |
-| TYPE ..... local agent credential bootstrapper                         |
-| STORE .... one .env.godmode                                            |
-| SOURCE ... https://github.com/lofimichael/godmode-cli                    |
++--[ godmode ]-----------------------------------------------------------+
+| version .. 0.3.0                                                      |
+| source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
-                 READ THE FUCKING SCOPES.
+  Godmode keeps the provider keys in .env.godmode and includes some notes
+  on getting them. The file can be shared by your local agents. You don't
+  have to run this program every time an agent needs a key.
 
-  Hand your agents the keys. Try not to fucking pwn yourself.
+[ installation ]
 
-[ INSTALL NOTES ]
+  Run the binary directly, or check its SHA-256 and use install.sh. The
+  installer refuses to replace an existing binary unless you pass --force.
+  It leaves credentials, operating rules and shell profiles alone.
 
-  One binary. Run it directly, or verify its SHA-256 and use install.sh.
-  The installer refuses an existing binary unless you explicitly force it.
-  It does not replace your credential file, rules, or shell profile.
+  To try it alongside an existing setup, give --config-dir and --state-dir
+  separate temporary paths. There is an example in README.md.
 
-  Testing next to an existing setup? Use BOTH --config-dir and --state-dir
-  with separate paths. README.md has a copy-ready isolated demo command.
+[ before adding keys ]
 
-[ READ THIS BEFORE YOU PWN YOURSELF ]
+  A provider will accept whatever operations the key permits. It won't
+  distinguish between a useful deployment and an agent misunderstanding
+  which project you meant. Check the account and permissions before adding
+  the key. You don't need to fill in every provider in the list.
 
-  Broad keys can delete infrastructure, spend money, publish, send mail,
-  and commit as you. That's the point. Scope is not fucking decoration.
+  The file is plaintext, mode 0600. That keeps other ordinary users out;
+  programs running as you can still read it. Godmode does not sandbox
+  those programs or impose a spending limit. Saving a live key does not
+  authorize charges or public actions.
 
-  The file is plaintext, mode 0600. Your user and unrestricted agents can
-  read it. No sandbox. No spending limiter. No undo fairy. A saved live
-  key does not authorize live charges. Don't post your fucking .env.
+  The run command passes only the keys you select, plus basic process
+  context. Its output is not filtered. A child that prints its environment
+  can therefore print those keys. Keep the file out of Git and bug reports.
+  Revoke exposed keys at the provider; deleting the file won't revoke them.
 
-  Commands launched with `run` get only the selected keys plus basic
-  process context. Their output is NOT filtered. Know what you're running.
+[ picard ]
 
-[ PICARD MODE ]
+  godmode picard link     print the original YTMND URL
+  godmode picard open     open it in a browser
+  godmode picard show     show its image in the terminal
+  godmode picard play     loop the original audio excerpt
+  godmode picard stop     stop this state directory's player
 
-  godmode picard link     original YTMND URL
-  godmode picard open     open the original in your browser
-  godmode picard play     play the original excerpt on repeat
-  godmode picard stop     stop Godmode's player
+  The board has i for the picture, p for audio and v for the original site.
+  Picture and audio are separate requests. Nothing plays on startup.
+  The first request downloads the relevant asset from YTMND into a local
+  cache. Neither asset is included in this archive. Use the same --state-dir
+  when stopping a player that was started with an override.
 
-  In the board: p = play/stop, v = original source. Nothing autoplays.
-  First play fetches the approximately eight-second YTMND loop. It does
-  not read your credentials. The recording is not included in this release.
-  Use the same --state-dir when stopping a player started with an override.
+[ notes ]
 
-[ CREDITS / SOURCES ]
+  The lettering is original. The language and presentation sources are
+  discussed in docs/CULTURE.md, including the Usenet post preserved at
+  https://www.nongnu.org/ratpoison/inspiration.html .
 
-  Original lettering and prose. No borrowed scene logos or fake affiliation.
-  NFO layout, Usenet etiquette/satire, gamer slang, and 2004 YTMND are related
-  references, not one mythical culture. docs/CULTURE.md has the receipts.
+  Picard: https://picard.ytmnd.com/ ; music by DarkMateria.
+  This project's MIT license does not cover the source image or recording.
 
-  Picard music: DarkMateria. Original page: https://picard.ytmnd.com/
-  The MIT license covers this project's code, not the source recording.
-
-+-------------------[ YOUR KEYS. YOUR CALLS. ]---------------------------+
++-----------------------------------------------------------------------+
