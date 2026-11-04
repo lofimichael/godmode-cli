@@ -14,7 +14,7 @@ pub enum Tone {
     Accent,
 }
 
-fn permitted() -> bool {
+pub(crate) fn permitted() -> bool {
     std::env::var_os("NO_COLOR").is_none()
         && std::env::var("CLICOLOR").as_deref() != Ok("0")
         && std::env::var("TERM").as_deref() != Ok("dumb")
@@ -28,16 +28,16 @@ fn render(text: &str, tone: Tone, color: bool) -> String {
     if !color {
         return text.to_owned();
     }
+    // Let the terminal choose readable body colors for its light or dark theme.
+    // Only interactive accents and actual status need a color of their own.
     let code = match tone {
-        Tone::Title => "1;96",
-        Tone::Section => "1;95",
-        Tone::Key => "1;93",
-        Tone::Link => "4;96",
-        Tone::Success => "1;92",
-        Tone::Warning => "1;93",
-        Tone::Error => "1;91",
-        Tone::Muted => "90",
-        Tone::Accent => "1;94",
+        Tone::Title | Tone::Section => "1",
+        Tone::Key | Tone::Muted => return text.to_owned(),
+        Tone::Link => "4;36",
+        Tone::Success => "32",
+        Tone::Warning => "33",
+        Tone::Error => "1;31",
+        Tone::Accent => "36",
     };
     format!("\x1b[{code}m{text}\x1b[0m")
 }
@@ -51,16 +51,16 @@ pub fn paint_stderr(text: &str, tone: Tone) -> String {
 }
 
 pub fn clap_styles() -> clap::builder::Styles {
-    use clap::builder::styling::{AnsiColor, Styles};
+    use clap::builder::styling::{AnsiColor, Style, Styles};
     if !permitted() {
         return Styles::plain();
     }
     Styles::styled()
-        .header(AnsiColor::BrightMagenta.on_default().bold())
-        .usage(AnsiColor::BrightCyan.on_default().bold())
-        .literal(AnsiColor::BrightCyan.on_default().bold())
-        .placeholder(AnsiColor::BrightYellow.on_default())
-        .error(AnsiColor::BrightRed.on_default().bold())
-        .valid(AnsiColor::BrightGreen.on_default())
-        .invalid(AnsiColor::BrightRed.on_default())
+        .header(Style::new().bold())
+        .usage(Style::new().bold())
+        .literal(AnsiColor::Cyan.on_default())
+        .placeholder(Style::new())
+        .error(AnsiColor::Red.on_default().bold())
+        .valid(AnsiColor::Green.on_default())
+        .invalid(AnsiColor::Red.on_default())
 }

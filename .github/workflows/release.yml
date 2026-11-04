@@ -68,6 +68,7 @@ jobs:
           cargo +1.96.0 clippy --locked --all-targets --target "$TARGET" -- -D warnings
           cargo +1.96.0 test --locked --target "$TARGET"
           sh tests/install.sh
+          sh tests/install-update.sh
           python3 tests/gen_shlex_vectors.py > "$RUNNER_TEMP/shlex_vectors.json"
           cmp tests/shlex_vectors.json "$RUNNER_TEMP/shlex_vectors.json"
           cargo +1.96.0 build --release --locked --target "$TARGET"

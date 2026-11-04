@@ -11,6 +11,7 @@ cargo test --locked
 python3 tests/gen_shlex_vectors.py > target/shlex_vectors.json
 cmp tests/shlex_vectors.json target/shlex_vectors.json
 sh tests/install.sh
+sh tests/install-update.sh
 cargo build --release --locked
 python3 tests/pty_smoke.py target/release/godmode
 python3 tests/pty_setup.py target/release/godmode
@@ -42,7 +43,9 @@ The workflow refuses a tag that differs from the package version or does not poi
 | `x86_64-unknown-linux-musl` | `ubuntu-24.04` with `musl-tools` |
 | `aarch64-unknown-linux-musl` | `ubuntu-24.04-arm` with `musl-tools` |
 
-Each archive contains `godmode`, `install.sh`, `LICENSE`, `README.md`, `READTHIS.NFO` and `docs/`. A separate `SHA256SUMS` covers the archives. The final job uses only the repository-scoped workflow token to create a **draft** GitHub release; it refuses to replace an existing release. Release publication is a separate maintainer action. There is no crates.io publish, automatic version bump, Apple signing or notarization step.
+Each archive contains `godmode`, `install.sh`, `LICENSE`, `README.md`, `READTHIS.NFO` and `docs/`. Keep `install.sh` in the checksum-covered archive: it becomes the installed `godmodeup` command and updates alongside the executable. A separate `SHA256SUMS` covers the archives. The final job uses only the repository-scoped workflow token to create a **draft** GitHub release; it refuses to replace an existing release. Release publication is a separate maintainer action. There is no crates.io publish, automatic version bump, Apple signing or notarization step.
+
+Before handing off a release, run its bootstrap in a temporary home, then run the installed `godmodeup` twice. Verify the installed bytes, previous-binary backup, shell PATH integration, and unchanged credentials. Check the CLI in light and dark terminal themes.
 
 The workflow is a packaging implementation, not evidence that any release or target has been tested remotely. Record the actual build results when a release is run. Source and checksums should be distributed through the intended repository; hashes alone do not authenticate a compromised publisher.
 

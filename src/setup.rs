@@ -299,9 +299,9 @@ fn run_with(
     ])?;
     console.spans(&[
         ("Paste keys at the masked prompts. ", None),
-        ("Enter saves", Some(Tone::Success)),
+        ("Enter saves", Some(Tone::Accent)),
         ("; an empty entry skips. ", None),
-        ("Esc or Ctrl-C", Some(Tone::Warning)),
+        ("Esc or Ctrl-C", Some(Tone::Accent)),
         (" leaves setup.", None),
     ])?;
     let fresh = store.needs_setup()?;
@@ -357,13 +357,13 @@ fn run_with(
                     .count();
                 console.spans(&[
                     (&format!("  {}. ", index + 1), Some(Tone::Accent)),
-                    (&provider.name, Some(Tone::Section)),
+                    (&provider.name, None),
                     (
                         &format!(" ({present}/{} keys saved)", provider.key.len()),
                         Some(if present == provider.key.len() {
                             Tone::Success
                         } else {
-                            Tone::Warning
+                            Tone::Muted
                         }),
                     ),
                 ])?;
@@ -525,10 +525,7 @@ fn enter_key(
         ])?;
     }
     if !key.format.is_empty() {
-        console.spans(&[
-            ("Format: ", Some(Tone::Key)),
-            (&key.format, Some(Tone::Warning)),
-        ])?;
+        console.spans(&[("Format: ", Some(Tone::Key)), (&key.format, None)])?;
     }
     loop {
         let value = console.prompt(

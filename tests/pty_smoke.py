@@ -60,7 +60,12 @@ class Terminal:
                 raise RuntimeError('PTY child exited before expected state; capture suppressed')
 
     def seen(self, text):
-        self.wait(lambda: text.encode() in self.capture)
+        # Ratatui may advance the cursor over blank cells instead of emitting
+        # literal spaces, especially with a terminal-default background. Match
+        # the words across that positioning/style output as well as raw text.
+        separator = rb'(?:\s|\x1b\[[0-?]*[ -/]*[@-~])+'
+        pattern = re.compile(separator.join(re.escape(word.encode()) for word in text.split()))
+        self.wait(lambda: bool(pattern.search(self.capture)))
 
     def send(self, data):
         view = memoryview(data)

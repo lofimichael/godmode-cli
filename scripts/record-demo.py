@@ -25,24 +25,40 @@ sys.path.insert(0, str(REPO / "tests"))
 from pty_setup import Terminal  # noqa: E402
 
 SYNTHETIC = "github_pat_DEMO_ONLY_NOT_A_REAL_CREDENTIAL_6d8f"
-BG = "#0a0a09"
-FG = "#e0dcd1"
-PALETTE = {
-    "black": "#000000", "red": "#cd0000", "green": "#00cd00",
-    "brown": "#cdcd00", "blue": "#0000ee", "magenta": "#cd00cd",
-    "cyan": "#00cdcd", "white": "#e5e5e5", "brightblack": "#7f7f7f",
-    "brightred": "#ff0000", "brightgreen": "#00ff00", "brightbrown": "#ffff00",
-    "brightblue": "#5c5cff", "brightmagenta": "#ff00ff", "brightcyan": "#00ffff",
-    "brightwhite": "#ffffff",
+THEMES = {
+    # ANSI colors belong to the terminal. These two representative themes let
+    # reviewers inspect the same actual output on both light and dark surfaces.
+    "dark": {
+        "bg": "#161b22", "fg": "#d8dee9", "caption": "#a7afba", "border": "#58616c",
+        "palette": {
+            "black": "#161b22", "red": "#e78b83", "green": "#91c49b",
+            "brown": "#d7ba7d", "blue": "#8cb4e8", "magenta": "#bd9dd5",
+            "cyan": "#82c3cb", "white": "#d8dee9", "brightblack": "#a7afba",
+            "brightred": "#f2a29b", "brightgreen": "#aad7b2", "brightbrown": "#e7cd9c",
+            "brightblue": "#accbf3", "brightmagenta": "#d2b8e4", "brightcyan": "#a0d5dc",
+            "brightwhite": "#ffffff",
+        },
+    },
+    "light": {
+        "bg": "#ffffff", "fg": "#24292f", "caption": "#57606a", "border": "#8c959f",
+        "palette": {
+            "black": "#24292f", "red": "#b42318", "green": "#1a7f37",
+            "brown": "#806000", "blue": "#0550ae", "magenta": "#8250df",
+            "cyan": "#006b75", "white": "#6e7781", "brightblack": "#57606a",
+            "brightred": "#a40e26", "brightgreen": "#116329", "brightbrown": "#633c01",
+            "brightblue": "#0969da", "brightmagenta": "#6639ba", "brightcyan": "#075b63",
+            "brightwhite": "#24292f",
+        },
+    },
 }
 
 
-def color(value: str, default: str) -> str:
+def color(value: str, default: str, palette: dict[str, str]) -> str:
     if value == "default":
         return default
     if re.fullmatch(r"[0-9a-fA-F]{6}", value):
         return "#" + value
-    return PALETTE.get(value, default)
+    return palette.get(value, default)
 
 
 def font_path(explicit: Path | None) -> Path:
@@ -62,7 +78,7 @@ def font_path(explicit: Path | None) -> Path:
 
 
 class Recorder:
-    def __init__(self, terminal: Terminal, cols: int, rows: int, font: Path):
+    def __init__(self, terminal: Terminal, cols: int, rows: int, font: Path, theme: str = "dark"):
         self.terminal = terminal
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.Stream(self.screen)
@@ -76,6 +92,7 @@ class Recorder:
         self.frames: list[Image.Image] = []
         self.durations: list[int] = []
         self.text_colors: set[str] = set()
+        self.theme = THEMES[theme]
 
     def sync(self) -> None:
         chunk = self.terminal.capture[self.read_at:]
@@ -114,14 +131,15 @@ class Recorder:
         if SYNTHETIC in text or "DEMO_ONLY_NOT_A_REAL" in text:
             raise RuntimeError("Credential input unexpectedly appeared in a frame")
         image = Image.new("RGB", (self.cols * self.cell_width,
-                                   self.rows * self.cell_height + self.caption_height), BG)
+                                   self.rows * self.cell_height + self.caption_height), self.theme["bg"])
         draw = ImageDraw.Draw(image)
-        draw.text((9, 5), "Interactive setup · synthetic credentials", font=self.font, fill="#8b887c")
-        draw.line((0, self.caption_height - 2, image.width, self.caption_height - 2), fill="#48463e")
+        draw.text((9, 5), "Interactive setup · synthetic credentials", font=self.font, fill=self.theme["caption"])
+        draw.line((0, self.caption_height - 2, image.width, self.caption_height - 2), fill=self.theme["border"])
         for y in range(self.rows):
             for x in range(self.cols):
                 char = self.screen.buffer[y][x]
-                foreground, background = color(char.fg, FG), color(char.bg, BG)
+                foreground = color(char.fg, self.theme["fg"], self.theme["palette"])
+                background = color(char.bg, self.theme["bg"], self.theme["palette"])
                 if char.reverse:
                     foreground, background = background, foreground
                 px, py = x * self.cell_width, y * self.cell_height + self.caption_height
@@ -136,7 +154,7 @@ class Recorder:
             x, y = self.screen.cursor.x, self.screen.cursor.y
             if x < self.cols and y < self.rows:
                 px, py = x * self.cell_width, y * self.cell_height + self.caption_height
-                draw.line((px, py + 16, px + self.cell_width - 1, py + 16), fill=FG, width=2)
+                draw.line((px, py + 16, px + self.cell_width - 1, py + 16), fill=self.theme["fg"], width=2)
         self.frames.append(image)
         self.durations.append(duration)
 
@@ -147,9 +165,9 @@ class Recorder:
             raise RuntimeError("The setup recording did not retain its terminal text colors")
         # Derive the GIF palette from full-resolution cells. Downsampling thin
         # colored glyphs first averages them into the background and dims the
-        # bright ANSI palette even though the actual CLI output is vivid.
+        # ANSI colors even though the actual terminal output retains them.
         width, height = self.frames[0].size
-        sample = Image.new("RGB", (width, height * len(self.frames)), BG)
+        sample = Image.new("RGB", (width, height * len(self.frames)), self.theme["bg"])
         for i, frame in enumerate(self.frames):
             sample.paste(frame, (0, i * height))
         palette = sample.quantize(colors=256, dither=Image.Dither.NONE)
@@ -173,6 +191,8 @@ def main() -> None:
     parser.add_argument("--binary", type=Path, default=REPO / "target/release/godmode")
     parser.add_argument("--output", type=Path, default=REPO / "docs/images/setup.gif")
     parser.add_argument("--font", type=Path)
+    parser.add_argument("--theme", choices=THEMES, default="dark", help="terminal palette for the recording")
+    parser.add_argument("--frames-dir", type=Path, help="also save readable PNGs of the recorded states")
     args = parser.parse_args()
     binary = args.binary.resolve()
     if not binary.is_file():
@@ -190,7 +210,7 @@ def main() -> None:
                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
         command = [str(binary), "--home", str(config), "setup"]
         terminal = Terminal(command, env, cols=120, rows=40)
-        recorder = Recorder(terminal, 120, 40, font)
+        recorder = Recorder(terminal, 120, 40, font, args.theme)
         try:
             recorder.wait_for("Provider number or name")
             recorder.capture(1600)
@@ -221,6 +241,11 @@ def main() -> None:
             # Prove this was an actual save in a temporary store, not an animated mockup.
             assert SYNTHETIC in (config / ".env.godmode").read_text()
             recorder.write(args.output.resolve())
+            if args.frames_dir:
+                args.frames_dir.mkdir(parents=True, exist_ok=True)
+                names = ["providers", "selected", "links", "prompt", "masked", "saved", "finished"]
+                for name, frame in zip(names, recorder.frames, strict=True):
+                    frame.save(args.frames_dir / f"{name}.png")
         finally:
             terminal.close()
 

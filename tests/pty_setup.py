@@ -13,6 +13,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tarfile
 import tempfile
 import termios
 import time
@@ -199,7 +200,7 @@ def main():
                 cancel.paste(cancelled)
                 cancel.quiet()
                 rendered = cancel.capture[mark:]
-                assert has_style(rendered), 'normal terminal masked input has no styling'
+                assert has_style(cancel.capture), 'normal terminal setup has no styling'
                 assert b'****' in plain_text(rendered), 'styled input was not masked'
                 cancel.send(cancel_key)
                 cancel.done(expected=2)
@@ -246,10 +247,17 @@ def main():
             # that alias; this must use the real event reader and controlling PTY.
             digest = hashlib.sha256(binary.read_bytes()).hexdigest()
             preserved = env_file.read_bytes()
+            archive = root / 'godmode-setup-fixture.tar.gz'
+            with tarfile.open(archive, 'w:gz') as package:
+                package.add(binary, arcname='godmode')
+                package.add(installer, arcname='install.sh')
+            checksum = root / 'SHA256SUMS'
+            checksum.write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + '  ' + archive.name + '\n')
             for action in ['save', 'cancel']:
                 installed_home = root / ('installed-' + action)
-                install_args = ['sh', '-s', '--', '--binary', str(binary), '--sha256', digest,
-                                '--home', str(installed_home), '--setup']
+                artifact_args = (['--archive', str(archive), '--checksum', str(checksum)] if action == 'save'
+                                 else ['--binary', str(binary), '--sha256', digest])
+                install_args = ['sh', '-s', '--', *artifact_args, '--home', str(installed_home), '--setup']
                 pipeline = 'cat ' + shlex.quote(str(installer)) + ' | ' + shlex.join(install_args)
                 launched = Terminal(['sh', '-c', pipeline], env)
                 sessions.append(launched)
@@ -280,6 +288,28 @@ def main():
                     assert installed_env.read_bytes() == before, 'installer-launched cancellation changed credentials'
                 assert (installed_home / 'bin/godmode').read_bytes() == binary.read_bytes(), 'installer changed binary bytes'
                 assert env_file.read_bytes() == preserved, 'installer setup changed the other configuration'
+
+                if action == 'save':
+                    # Updating the installed executable is separate from setup:
+                    # reruns must not reopen prompts or touch stored credentials.
+                    updater = installed_home / 'bin/godmodeup'
+                    assert updater.is_file(), 'installer did not install the updater'
+                    saved_credentials = installed_env.read_bytes()
+                    update_args = [str(updater), '--binary', str(binary), '--sha256', digest, '--no-setup']
+                    for _ in range(2):
+                        updated = subprocess.run(update_args, env=env, capture_output=True, timeout=20)
+                        assert updated.returncode == 0, 'installed updater could not repeat a verified installation'
+                        assert b'Starting interactive setup...' not in updated.stdout, 'updating unexpectedly started setup'
+                        assert installed_env.read_bytes() == saved_credentials, 'updater changed saved credentials'
+                        assert (installed_home / 'bin/godmode').read_bytes() == binary.read_bytes(), 'updater changed binary bytes'
+                        assert not (root / '.profile').exists() and not (root / '.zshrc').exists(), 'update changed a shell profile'
+                    installed_binary = installed_home / 'bin/godmode'
+                    changed_binary = b'manually changed executable fixture\n'
+                    installed_binary.write_bytes(changed_binary)
+                    refused = subprocess.run(update_args, env=env, capture_output=True, timeout=20)
+                    assert refused.returncode != 0, 'updater replaced a binary that no longer matched its receipt'
+                    assert installed_binary.read_bytes() == changed_binary, 'refused update changed the executable'
+                    assert installed_env.read_bytes() == saved_credentials, 'refused update changed credentials'
 
             # Finite commands use the same terminal-aware palette; JSON remains machine-readable.
             def finite(args, no_color=False):
@@ -316,8 +346,9 @@ def main():
                     assert sentinel.encode() not in plain_text(session.capture), 'setup exposed synthetic credential input'
             print('Setup PTY passed: default/init routing, first-run cancel/ack, exact requested links, '
                   'masked paste, Enter-only save, clipboard CRLF, keep/skip/replace, invalid retry, '
-                  'Ctrl-U/Backspace, Esc/Ctrl-C, 14 KB JSON, styled input/commands, plain JSON/redirection, '
-                  'NO_COLOR, TERM=dumb, actual piped-installer save/cancel and terminal restoration.')
+                  'Ctrl-U/Backspace, Esc/Ctrl-C, 14 KB JSON, styled setup/commands, plain JSON/redirection, '
+                  'NO_COLOR, TERM=dumb, actual piped-installer save/cancel, repeated managed updates, '
+                  'modified-binary refusal and terminal restoration.')
         finally:
             for session in sessions:
                 session.close()

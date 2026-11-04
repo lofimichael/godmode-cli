@@ -30,7 +30,8 @@ if sh "$repo/install.sh" --binary "$scratch/artifact/godmode" --sha256 "$digest"
 fi
 [ -L "$scratch/link-bin/godmode" ]
 [ ! -e "$scratch/nonexistent" ]
-tar -czf "$scratch/godmode-test.tar.gz" -C "$scratch/artifact" godmode
+cp "$repo/install.sh" "$scratch/artifact/install.sh"
+tar -czf "$scratch/godmode-test.tar.gz" -C "$scratch/artifact" godmode install.sh
 archive_digest=$(shasum -a 256 < "$scratch/godmode-test.tar.gz" | awk '{print $1}')
 printf '%s  %s\n' "$archive_digest" 'godmode-test.tar.gz' > "$scratch/SHA256SUMS"
 sh "$repo/install.sh" --archive "$scratch/godmode-test.tar.gz" --checksum "$scratch/SHA256SUMS" --bin-dir "$scratch/archive-bin" >/dev/null
@@ -55,7 +56,9 @@ cmp "$scratch/old-before" "$scratch/old-bin/godmode"
 [ ! -e "$scratch/home/.profile" ]
 grep -q 'Another godmode command was already available:' "$scratch/default-output"
 grep -q 'Start interactive setup:' "$scratch/default-output"
-grep -q 'export PATH=' "$scratch/default-output"
+grep -q '/env' "$scratch/default-output"
+[ -f "$scratch/home/.godmode/env" ]
+[ -x "$scratch/home/.godmode/bin/godmodeup" ]
 
 # A custom home is self-contained; configuration stays absent until init.
 sh "$repo/install.sh" --binary "$scratch/artifact/godmode" --sha256 "$digest" \
@@ -186,6 +189,14 @@ fi
 grep -q -- ' init$' "$scratch/repeat-output"
 cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
 
+# The installed updater downloads the same release without --force or setup.
+PATH="$mock_path" "$scratch/automatic-home/.godmode/bin/godmodeup" > "$scratch/update-output"
+cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
+if grep -q 'Starting interactive setup' "$scratch/update-output"; then
+    echo 'updater started setup without request' >&2; exit 1
+fi
+[ -z "$(ls -A "$scratch/downloads")" ]
+
 # Private API failure falls back to a public HTTPS release; pinning is optional.
 GODMODE_TEST_GH_MODE=fail PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/public-home" > "$scratch/public-output"
 cmp "$scratch/artifact/godmode" "$scratch/public-home/bin/godmode"
@@ -241,6 +252,7 @@ digest = hashlib.sha256(program.read_bytes()).hexdigest()
 archive = scratch/'fixtures/godmode-v7.6.5-aarch64-apple-darwin.tar.gz'
 with tarfile.open(archive, 'w:gz') as tar:
     tar.add(program, arcname='godmode')
+    tar.add(repo/'install.sh', arcname='install.sh')
 (scratch/'fixtures/SHA256SUMS').write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n')
 # Only the wrapper owns stdin from the PTY. Installer stdin is a separate pipe.
 wrapper = '''import subprocess,sys
@@ -287,10 +299,10 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb']:
         if mode in ['no-color', 'dumb']:
             assert b'\x1b[' not in output, 'color opt-out was ignored'
         else:
-            for color in [b'\x1b[1;32m', b'\x1b[1;33m', b'\x1b[1;35m']:
+            for color in [b'\x1b[32m', b'\x1b[36m']:
                 assert color in output, 'interactive installer styling missing'
             if mode == 'automatic':
-                assert b'\x1b[1;36mDownloading' in output
+                assert b'\x1b[36mDownloading' in output
         commands = [line for line in output.splitlines() if line.startswith(b"  '") and line.endswith(b' init')]
         assert len(commands) == 1 and b'\x1b' not in commands[0], 'copyable setup command was styled'
     finally:
@@ -314,7 +326,7 @@ try:
     if select.select([master], [], [], .05)[0]:
         error.extend(os.read(master, 65536))
     assert process.returncode != 0
-    assert b'\x1b[1;31m' in error and b'nothing replaced' in error
+    assert b'\x1b[31m' in error and b'nothing replaced' in error
 finally:
     if process.poll() is None:
         os.killpg(process.pid, signal.SIGKILL)

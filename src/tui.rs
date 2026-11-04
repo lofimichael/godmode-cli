@@ -42,45 +42,21 @@ struct Theme {
 }
 impl Theme {
     fn new() -> Self {
-        let mono = std::env::var_os("NO_COLOR").is_some();
-        if mono {
-            return Self {
-                bg: Color::Reset,
-                panel: Color::Reset,
-                text: Color::Reset,
-                dim: Color::Reset,
-                accent: Color::Reset,
-                amber: Color::Reset,
-                green: Color::Reset,
-                red: Color::Reset,
-                mono,
-            };
-        }
-        let rgb = std::env::var("COLORTERM").is_ok_and(|v| v == "truecolor" || v == "24bit");
-        if rgb {
-            Self {
-                bg: Color::Rgb(10, 10, 9),
-                panel: Color::Rgb(10, 10, 9),
-                text: Color::Rgb(224, 220, 209),
-                dim: Color::Rgb(139, 136, 124),
-                accent: Color::Rgb(214, 172, 95),
-                amber: Color::Rgb(241, 205, 142),
-                green: Color::Rgb(118, 218, 181),
-                red: Color::Rgb(255, 120, 135),
-                mono,
-            }
-        } else {
-            Self {
-                bg: Color::Indexed(232),
-                panel: Color::Indexed(232),
-                text: Color::Indexed(255),
-                dim: Color::Indexed(245),
-                accent: Color::Indexed(179),
-                amber: Color::Indexed(222),
-                green: Color::Indexed(115),
-                red: Color::Indexed(210),
-                mono,
-            }
+        Self::from_mono(!crate::output::permitted())
+    }
+    fn from_mono(mono: bool) -> Self {
+        // Native terminal colors keep light and dark themes readable. Do not
+        // paint a fixed background or dim instructions that the user must read.
+        Self {
+            bg: Color::Reset,
+            panel: Color::Reset,
+            text: Color::Reset,
+            dim: Color::Reset,
+            accent: if mono { Color::Reset } else { Color::Cyan },
+            amber: if mono { Color::Reset } else { Color::Yellow },
+            green: if mono { Color::Reset } else { Color::Green },
+            red: if mono { Color::Reset } else { Color::Red },
+            mono,
         }
     }
     fn base(self) -> Style {
@@ -999,7 +975,7 @@ fn draw_ack(frame: &mut Frame, area: Rect, ui: &mut Ui, theme: Theme) {
     frame.render_widget(paragraph.scroll((ui.ack_scroll, 0)).block(block), rows[0]);
     frame.render_widget(
         Paragraph::new(format!("> {}", ui.ack))
-            .style(Style::default().fg(theme.amber))
+            .style(Style::default().fg(theme.text))
             .block(theme.block("TYPE GODMODE", true)),
         rows[1],
     );
@@ -1082,8 +1058,7 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
             .block(theme.block("PROVIDERS", true))
             .highlight_style(
                 Style::default()
-                    .fg(theme.text)
-                    .bg(if theme.mono { Color::Reset } else { theme.bg })
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> "),
@@ -1121,13 +1096,13 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
         lines.push(Line::from(vec![
             Span::styled(
                 if i == ui.selected_key { "> " } else { "  " },
-                Style::default().fg(theme.amber),
+                Style::default().fg(theme.accent),
             ),
             Span::styled(
                 key.name.as_str(),
                 Style::default()
                     .fg(if i == ui.selected_key {
-                        theme.amber
+                        theme.accent
                     } else {
                         theme.text
                     })
@@ -1150,37 +1125,37 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     if let Some(key) = p.key.get(ui.selected_key) {
         lines.extend([
             Line::default(),
-            Line::from("[ SETUP ]").style(Style::default().fg(theme.accent).bold()),
+            Line::from("[ SETUP ]").style(Style::default().fg(theme.text).bold()),
         ]);
         for (i, step) in key.steps.iter().enumerate() {
             lines.push(Line::from(format!("{}. {step}", i + 1)));
         }
         lines.extend([
             Line::default(),
-            Line::from("[ USAGE ]").style(Style::default().fg(theme.accent).bold()),
+            Line::from("[ USAGE ]").style(Style::default().fg(theme.text).bold()),
             Line::from(key.usage.clone()),
             Line::default(),
-            Line::from("[ SCOPE ]").style(Style::default().fg(theme.accent).bold()),
+            Line::from("[ SCOPE ]").style(Style::default().fg(theme.text).bold()),
             Line::from(key.scope.clone()),
         ]);
         if !key.format.is_empty() {
             lines.extend([
                 Line::default(),
-                Line::from("[ EXPECTED FORMAT ]").style(Style::default().fg(theme.accent).bold()),
+                Line::from("[ EXPECTED FORMAT ]").style(Style::default().fg(theme.text).bold()),
                 Line::from(key.format.clone()),
             ]);
         }
     }
     lines.extend([
         Line::default(),
-        Line::from("SIGN IN  [l]").style(Style::default().fg(theme.accent).bold()),
-        Line::from(p.login_url().to_owned()).style(Style::default().fg(theme.dim)),
+        Line::from("SIGN IN  [l]").style(Style::default().fg(theme.text).bold()),
+        Line::from(p.login_url().to_owned()).style(Style::default().fg(theme.accent).underlined()),
         Line::default(),
-        Line::from("API KEYS  [o]").style(Style::default().fg(theme.accent).bold()),
-        Line::from(p.console.clone()).style(Style::default().fg(theme.dim)),
+        Line::from("API KEYS  [o]").style(Style::default().fg(theme.text).bold()),
+        Line::from(p.console.clone()).style(Style::default().fg(theme.accent).underlined()),
         Line::default(),
-        Line::from("DOCUMENTATION  [d]").style(Style::default().fg(theme.accent).bold()),
-        Line::from(p.docs.clone()).style(Style::default().fg(theme.dim)),
+        Line::from("DOCUMENTATION  [d]").style(Style::default().fg(theme.text).bold()),
+        Line::from(p.docs.clone()).style(Style::default().fg(theme.accent).underlined()),
     ]);
     for note in &p.notes {
         lines.extend([
@@ -1206,13 +1181,13 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
             .next()
             .unwrap_or(url);
         Line::from(vec![
-            Span::styled(label.clone(), Style::default().fg(theme.accent).bold()),
+            Span::styled(label.clone(), Style::default().fg(theme.text)),
             Span::styled(
                 fit_name(
                     display,
                     (areas[0].width as usize).saturating_sub(label.len()),
                 ),
-                Style::default().fg(theme.text),
+                Style::default().fg(theme.accent).underlined(),
             ),
         ])
     };
@@ -1266,7 +1241,7 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
         Line::from("Stored as plaintext, mode 0600. Programs running as you can read it.")
             .style(Style::default().fg(theme.dim)),
         Line::default(),
-        Line::from(format!("> {}", input.mask(mask_width))).style(Style::default().fg(theme.amber)),
+        Line::from(format!("> {}", input.mask(mask_width))).style(Style::default().fg(theme.text)),
         Line::from(format!("{} bytes entered", input.value.len()))
             .style(Style::default().fg(theme.dim)),
         Line::default(),
@@ -1305,7 +1280,7 @@ pub fn prompt_secret(label: &str) -> Result<Zeroizing<String>, String> {
                 let popup = popup(area, 80, 9);
                 frame.render_widget(
                     Paragraph::new(vec![
-                        Line::from(label).style(Style::default().fg(theme.amber).bold()),
+                        Line::from(label).style(Style::default().fg(theme.text).bold()),
                         Line::default(),
                         Line::from(format!(
                             "> {}",
@@ -1529,17 +1504,7 @@ mod tests {
         ui.states[0][0] = KeyState::Set;
         ui.states[1][0] = KeyState::Set;
         ui.notice = "Choose a provider and press Enter to add a key.".into();
-        let theme = Theme {
-            bg: Color::Rgb(10, 10, 9),
-            panel: Color::Rgb(10, 10, 9),
-            text: Color::Rgb(224, 220, 209),
-            dim: Color::Rgb(139, 136, 124),
-            accent: Color::Rgb(214, 172, 95),
-            amber: Color::Rgb(241, 205, 142),
-            green: Color::Rgb(118, 218, 181),
-            red: Color::Rgb(255, 120, 135),
-            mono: false,
-        };
+        let theme = Theme::from_mono(false);
         let width = std::env::var("GODMODE_RENDER_WIDTH")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -1588,7 +1553,7 @@ mod tests {
                 .draw(|frame| draw(frame, &store, &registry, &mut ui, theme, true))
                 .unwrap();
             let mut svg = format!(
-                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><title>Godmode {} — rendered terminal UI preview with synthetic state</title><rect width="100%" height="100%" fill="#0c0c14"/><g font-family="Menlo,DejaVu Sans Mono,monospace" font-size="14">"##,
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><title>Godmode {} — rendered terminal UI preview with synthetic state</title><rect width="100%" height="100%" fill="#1e1e1e"/><g font-family="Menlo,DejaVu Sans Mono,monospace" font-size="14">"##,
                 width * 9,
                 height * 18,
                 width * 9,
@@ -1601,11 +1566,15 @@ mod tests {
                     let rgb = |color: Color, fallback: &str| -> String {
                         match color {
                             Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                            Color::Cyan => "#56b6c2".into(),
+                            Color::Green => "#8bbf76".into(),
+                            Color::Yellow => "#c8ac67".into(),
+                            Color::Red => "#d47777".into(),
                             _ => fallback.to_string(),
                         }
                     };
-                    let mut fg = rgb(cell.fg, "#e7e6f3");
-                    let mut bg = rgb(cell.bg, "#0c0c14");
+                    let mut fg = rgb(cell.fg, "#d4d4d4");
+                    let mut bg = rgb(cell.bg, "#1e1e1e");
                     if cell.modifier.contains(Modifier::REVERSED) {
                         std::mem::swap(&mut fg, &mut bg);
                     }

@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.5.1                                                      |
+| version .. 0.6.0                                                      |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -12,11 +12,13 @@
   Run install.sh without arguments. It selects a release for this machine,
   checks the download and starts setup. Private releases use your existing
   GitHub CLI login; see the one-command installation in README.md.
-  An existing executable is preserved unless you explicitly pass --force.
+  Run godmodeup to fetch updates. It replaces only a managed executable;
+  an unrelated or modified binary needs an explicit --force.
 
   New installs use ~/.godmode/bin/godmode, with keys and state under the
   same ~/.godmode home. Existing ~/.config/godmode setups are detected and
-  left in place. No keys or rules are moved; no shell profile is edited.
+  left in place. No keys or rules are moved. The README install uses --path
+  to add one shell entry; omit it to manage PATH yourself.
 
 [ interactive setup ]
 
@@ -24,7 +26,7 @@
   and paste the credential when prompted. It is masked. Enter saves it;
   an empty prompt skips it. Existing values are kept unless you choose to
   replace them. Esc or Ctrl-C cancels the current input. No editor opens.
-  Headings, links, status and input are colored; NO_COLOR opts out.
+  Colors follow your terminal, with restrained accents; NO_COLOR opts out.
 
   godmode setup github goes straight to GitHub. The full-screen board is
   still available through godmode onboard, including its Picard controls.

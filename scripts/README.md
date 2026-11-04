@@ -17,6 +17,9 @@ target/demo-venv/bin/python scripts/record-demo.py
 The default output is `docs/images/setup.gif`. `--binary`, `--output` and `--font`
 can override the inputs/destination. On macOS the script uses the installed Menlo
 font; on Linux it tries DejaVu Sans Mono or Liberation Mono. Fonts are not bundled.
+Use `--theme light` to inspect the same ANSI output on a light terminal palette;
+`--frames-dir PATH` also saves the recorded states as PNGs. These are representative
+terminal themes; Godmode uses the user's terminal colors and default background.
 
 The recording uses a temporary HOME, config and state directory and a deliberately
 synthetic GitHub token. The temporary home is acknowledged before recording so

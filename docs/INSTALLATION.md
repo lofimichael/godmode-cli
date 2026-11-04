@@ -5,23 +5,25 @@ New installations use one home directory, `~/.godmode`. The executable lives in 
 ```text
 ~/.godmode/
   bin/godmode          executable
+  bin/godmodeup        installer and updater
+  env                 shell PATH setup
   .env.godmode         credentials
   providers.toml       optional provider instructions
   AGENTS.md            existing operating rules, if supplied separately
   state/               acknowledgements, locks and requested Picard media
 ```
 
-The install step creates only the executable's directory and file. The interactive setup that follows creates the credential file and state after acknowledgement; neither installation nor setup writes operating rules. Existing rules remain in place.
+Installation writes the executables, `bin/.godmode-install-receipt` and a shell PATH file. Interactive setup creates the credential file and state after acknowledgement; neither installation nor setup writes operating rules. Existing rules remain in place.
 
 The [XDG specification](https://specifications.freedesktop.org/basedir/latest/) describes `~/.local/bin` as a shared user executable directory. Godmode deliberately uses its own `~/.godmode/bin` to keep the requested installation together. It does not claim that `~/.godmode` is an XDG directory or create a second executable in the shared bin.
 
 ## Download and start setup
 
-With a source checkout, run `sh install.sh`. For the private repository, an already authenticated GitHub CLI can fetch and run the installer directly:
+With a source checkout, run `sh install.sh --path`. For this private repository, an authenticated GitHub CLI can fetch and run the installer directly:
 
 ```sh
 gh api -H 'Accept: application/vnd.github.raw+json' \
-  repos/lofimichael/godmode-cli/contents/install.sh | sh
+  repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
 ```
 
 The installer detects macOS/Linux and the native architecture, selects a compatible release artifact, downloads its archive and SHA-256 checksum, verifies it, and installs the binary. Authenticated GitHub CLI access supports private draft releases. Without that access, the HTTPS download path requires a publicly accessible published release. No token is requested or read from Godmode's credential file. A compatible prebuilt artifact must exist; the installer does not build from source or substitute another architecture.
@@ -30,24 +32,30 @@ Download installs start interactive `godmode init` using the controlling termina
 
 Only Apple Silicon macOS artifacts have been built and verified for the current private draft. The four-target workflow is available for later releases; its presence is not proof that the other artifacts exist.
 
-## Existing executables and upgrades
+## Update and run
 
-An existing executable is refused by default, before downloading. The installer shows its path and a compatible `init` command for starting it. To replace that executable intentionally, run `sh install.sh --force`; this changes the binary only, leaving credentials and rules in place. A symlink destination is always refused, including with `--force`. Keep a copy of the prior binary if you want to retain it.
-
-No PATH or shell-profile changes happen automatically. You can always run:
+Open a new terminal, or load the PATH file in the current one:
 
 ```sh
+. "$HOME/.godmode/env"
+godmodeup
+godmode
+```
+
+`godmodeup` downloads and verifies the newest compatible release, updates the managed executable and updater, and leaves credentials alone. It does not restart setup on every update. `godmodeup --setup` opens setup afterwards; `godmodeup --version v0.6.0` selects a specific release. Repeating an update is safe.
+
+The installer records managed-file hashes in `bin/.godmode-install-receipt`. An unknown or changed executable is refused instead of being overwritten. To adopt an older installation intentionally, use `sh install.sh --force`; it changes the executable, leaving credentials and rules in place. Symlink destinations are refused. The previous executable is retained as `godmode.previous` when an update replaces it.
+
+## Shell integration
+
+`--path` adds one source line to the startup file for your shell and backs up an existing profile first; repeating it does not add duplicate lines. It uses `.zshrc` (respecting `ZDOTDIR`) for zsh, `.bashrc` and the selected login profile for bash, and `.profile` for POSIX shells. Without `--path`, the installer leaves shell profiles alone. The generated `~/.godmode/env` adds the bin directory to PATH only once. You can always use the full paths:
+
+```sh
+~/.godmode/bin/godmodeup
 ~/.godmode/bin/godmode setup
 ```
 
-For the current shell, a shorter command is available after:
-
-```sh
-export PATH="$HOME/.godmode/bin:$PATH"
-godmode setup
-```
-
-If another `godmode` is on PATH, the installer reports it and leaves it intact. Use the absolute path to choose this installation. To retain a PATH change, add it to the startup file your shell actually reads.
+If another `godmode` is on PATH, its file remains intact. The shell integration places this installation first; omit `--path` and use full paths if you want to keep the previous command as the default.
 
 ## Cargo and offline installation
 
@@ -86,8 +94,8 @@ sh install.sh --binary target/release/godmode \
 
 The installer's `--bin-dir DIR` is still available for selecting only an executable directory. It cannot be combined with installer `--home`. Selecting a binary directory alone does not isolate the CLI's configuration; use an explicit CLI `--home` when that is intended.
 
-The installer does not start a service, install hooks or change shell profiles. Download installs hand off to attended setup; writes still require the CLI acknowledgement and explicit key entry.
+The installer does not start a service or install agent hooks. Shell-profile changes require `--path`. Initial download installs hand off to attended setup; credential writes still require the CLI acknowledgement and explicit key entry.
 
 ## Remove an installation
 
-Confirm which executable you installed and remove that file. Keys and operating rules remain useful independently. After all CLI sessions are closed, its state can be removed separately. Only remove the entire Godmode home if you also intend to remove its credentials and rules. Deleting a local key does not revoke it at its provider.
+Remove the managed `godmode` and `godmodeup` executables, `bin/.godmode-install-receipt` and the optional `godmode.previous` backup. If you enabled `--path`, remove the Godmode source line from your shell startup file and the generated `env` file. Keys and operating rules remain useful independently. After all CLI sessions are closed, its state can be removed separately. Only remove the entire Godmode home if you also intend to remove its credentials and rules. Deleting a local key does not revoke it at its provider.
