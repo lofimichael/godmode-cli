@@ -383,3 +383,24 @@ fn new_setup_warning_precedes_init_and_is_not_repeated_for_existing_setup() {
     assert!(out.status.success());
     assert!(!String::from_utf8_lossy(&out.stderr).contains("No existing Godmode setup found"));
 }
+
+#[test]
+fn setup_refuses_redirected_input_without_creating_files() {
+    let f = Fixture::new();
+    let out = f.run(&["setup"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Setup needs a terminal"));
+    assert!(!f.config.exists());
+    assert!(!f.state.exists());
+}
+
+#[test]
+fn setup_unknown_provider_does_not_echo_input_or_create_files() {
+    let f = Fixture::new();
+    let value = "SYNTHETIC_MISPLACED_SECRET_5823";
+    let out = f.run(&["setup", value]);
+    assert_eq!(out.status.code(), Some(2));
+    no_leak(&out, value);
+    assert!(!f.config.exists());
+    assert!(!f.state.exists());
+}

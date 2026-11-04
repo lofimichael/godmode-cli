@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.4.0                                                      |
+| version .. 0.5.0                                                      |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -9,23 +9,27 @@
 
 [ installation ]
 
-  Run the binary directly, or check its SHA-256 and use install.sh. The
-  installer refuses to replace an existing binary unless you pass --force.
-  It leaves credentials, operating rules and shell profiles alone.
+  Run install.sh without arguments. It selects a release for this machine,
+  checks the download and starts setup. Private releases use your existing
+  GitHub CLI login; see the one-command installation in README.md.
+  An existing executable is preserved unless you explicitly pass --force.
 
   New installs use ~/.godmode/bin/godmode, with keys and state under the
   same ~/.godmode home. Existing ~/.config/godmode setups are detected and
-  left in place. Installation alone does not start setup or migrate keys.
-  To try it separately, pass --home with a temporary path; see README.md.
+  left in place. No keys or rules are moved; no shell profile is edited.
 
 [ interactive setup ]
 
-  Run godmode init. A new setup gets the first-run warning before anything
-  is created. Type GODMODE to continue, then choose a provider.
+  Run godmode setup. Pick a provider by number or name, follow its links,
+  and paste the credential when prompted. It is masked. Enter saves it;
+  an empty prompt skips it. Existing values are kept unless you choose to
+  replace them. Esc or Ctrl-C cancels the current input. No editor opens.
+  Headings, links, status and input are colored; NO_COLOR opts out.
 
-  l opens sign-in, o opens API keys, d opens documentation. Return here
-  to paste the key; Enter saves, n continues, s skips this provider.
-  q leaves; saved keys are already on disk. No browser opens automatically.
+  godmode setup github goes straight to GitHub. The full-screen board is
+  still available through godmode onboard, including its Picard controls.
+  A fresh setup shows the warning before creating files; type GODMODE to
+  acknowledge it. Browser links open only when you ask.
 
 [ before adding keys ]
 

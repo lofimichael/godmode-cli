@@ -1,8 +1,10 @@
 # Setup recording
 
 The README animation is made from a scripted session of the actual release binary
-in a pseudo-terminal. `pyte` interprets its ANSI output; Pillow draws the resulting
-terminal cells. The frame holds are chosen for readability and total at most ten
+in a pseudo-terminal. It shows the inline setup wizard: choosing a provider,
+reading its links, pasting a masked key and saving it. `pyte` interprets the ANSI
+output, including its colors and emphasis; Pillow draws the resulting terminal
+cells. The frame holds are chosen for readability and total at most ten
 seconds. It is not a desktop recording or a mock interface.
 
 ```sh
@@ -17,8 +19,10 @@ can override the inputs/destination. On macOS the script uses the installed Menl
 font; on Linux it tries DejaVu Sans Mono or Liberation Mono. Fonts are not bundled.
 
 The recording uses a temporary HOME, config and state directory and a deliberately
-synthetic GitHub token. Input stays masked. It never loads the ordinary Godmode
-configuration, launches a browser, requests Picard media, authenticates with a
+synthetic GitHub token. The temporary home is acknowledged before recording so
+the short animation can focus on entering a key. First-run acknowledgement and
+cancellation are exercised separately by `tests/pty_setup.py`. Input stays masked.
+It never loads the ordinary Godmode configuration, launches a browser, requests Picard media, authenticates with a
 provider, or changes an installed executable. The raw terminal transcript remains
 in memory and is checked for accidental credential echo. The script verifies the
 synthetic save, clean terminal exit, GIF frame durations and looping before reporting

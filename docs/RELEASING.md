@@ -13,6 +13,7 @@ cmp tests/shlex_vectors.json target/shlex_vectors.json
 sh tests/install.sh
 cargo build --release --locked
 python3 tests/pty_smoke.py target/release/godmode
+python3 tests/pty_setup.py target/release/godmode
 ```
 
 Test the UI with synthetic values and explicit isolated `--config-dir` and `--state-dir` paths, including narrow terminal sizes, bracketed paste and cancellation. Do not use a real credential store for development. Running the build path is enough; installing over another `godmode` is unnecessary.
@@ -44,3 +45,11 @@ The workflow refuses a tag that differs from the package version or does not poi
 Each archive contains `godmode`, `install.sh`, `LICENSE`, `README.md`, `READTHIS.NFO` and `docs/`. A separate `SHA256SUMS` covers the archives. The final job uses only the repository-scoped workflow token to create a **draft** GitHub release; it refuses to replace an existing release. Release publication is a separate maintainer action. There is no crates.io publish, automatic version bump, Apple signing or notarization step.
 
 The workflow is a packaging implementation, not evidence that any release or target has been tested remotely. Record the actual build results when a release is run. Source and checksums should be distributed through the intended repository; hashes alone do not authenticate a compromised publisher.
+
+## Cargo distribution
+
+A crates.io package is a useful source-install option for people who already have Rust. This repository has not published one. Its package name is `godmode`, with a binary of the same name; `godmode-cli` on crates.io belongs to an unrelated project.
+
+Before any authorized publication, inspect `cargo package --list`, verify the archive contains no private files, and run `cargo package --locked` to build the packaged source. Test `cargo install --path . --locked --root /an/isolated/temporary/home` and run the resulting binary's setup. Publishing makes the packaged source public even if the GitHub repository stays private; it is a separate maintainer action. No publish command is run by the release workflow.
+
+The release installer provides the prebuilt path without a Rust toolchain. Keep both routes on the same interactive `setup` behavior.

@@ -44,4 +44,6 @@ jobs:
       - name: Release build
         run: cargo +1.96.0 build --release --locked
       - name: Real terminal onboarding and secret masking
-        run: python3 tests/pty_smoke.py target/release/godmode
+        run: |
+          python3 tests/pty_smoke.py target/release/godmode
+          python3 tests/pty_setup.py target/release/godmode

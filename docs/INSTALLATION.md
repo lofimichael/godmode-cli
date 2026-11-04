@@ -11,32 +11,64 @@ New installations use one home directory, `~/.godmode`. The executable lives in 
   state/               acknowledgements, locks and requested Picard media
 ```
 
-Installation creates only the executable's directory and file. Acknowledged setup creates the credential file and state; neither installation nor setup writes operating rules. Existing rules remain in place.
+The install step creates only the executable's directory and file. The interactive setup that follows creates the credential file and state after acknowledgement; neither installation nor setup writes operating rules. Existing rules remain in place.
 
 The [XDG specification](https://specifications.freedesktop.org/basedir/latest/) describes `~/.local/bin` as a shared user executable directory. Godmode deliberately uses its own `~/.godmode/bin` to keep the requested installation together. It does not claim that `~/.godmode` is an XDG directory or create a second executable in the shared bin.
 
-## Install a local build
+## Download and start setup
 
-From the repository:
+With a source checkout, run `sh install.sh`. For the private repository, an already authenticated GitHub CLI can fetch and run the installer directly:
 
 ```sh
-cargo build --release --locked
+gh api -H 'Accept: application/vnd.github.raw+json' \
+  repos/lofimichael/godmode-cli/contents/install.sh | sh
+```
+
+The installer detects macOS/Linux and the native architecture, selects a compatible release artifact, downloads its archive and SHA-256 checksum, verifies it, and installs the binary. Authenticated GitHub CLI access supports private draft releases. Without that access, the HTTPS download path requires a publicly accessible published release. No token is requested or read from Godmode's credential file. A compatible prebuilt artifact must exist; the installer does not build from source or substitute another architecture.
+
+Download installs start interactive `godmode init` using the controlling terminal, even when the script arrived through a pipe. `--no-setup` installs without prompts. Without a controlling terminal, installation prints the setup command for later. `--version vX.Y.Z` pins a release instead of selecting one automatically.
+
+Only Apple Silicon macOS artifacts have been built and verified for the current private draft. The four-target workflow is available for later releases; its presence is not proof that the other artifacts exist.
+
+## Existing executables and upgrades
+
+An existing executable is refused by default, before downloading. The installer shows its path and a compatible `init` command for starting it. To replace that executable intentionally, run `sh install.sh --force`; this changes the binary only, leaving credentials and rules in place. A symlink destination is always refused, including with `--force`. Keep a copy of the prior binary if you want to retain it.
+
+No PATH or shell-profile changes happen automatically. You can always run:
+
+```sh
+~/.godmode/bin/godmode setup
+```
+
+For the current shell, a shorter command is available after:
+
+```sh
+export PATH="$HOME/.godmode/bin:$PATH"
+godmode setup
+```
+
+If another `godmode` is on PATH, the installer reports it and leaves it intact. Use the absolute path to choose this installation. To retain a PATH change, add it to the startup file your shell actually reads.
+
+## Cargo and offline installation
+
+There is no published crates.io package yet. From a checkout with Rust installed:
+
+```sh
+cargo install --path . --locked --root "$HOME/.godmode"
+```
+
+Cargo manages its own binary and install metadata under that root; it does not initialize Godmode credentials. Run `~/.godmode/bin/godmode setup` afterwards. Cargo's default root, if omitted, is `~/.cargo`, which would place the executable outside the all-in-one Godmode home. [Cargo installation reference](https://doc.rust-lang.org/cargo/commands/cargo-install.html).
+
+To build without installing, run `cargo build --release --locked`, then `./target/release/godmode --home "$PWD/target/try-home" setup`. Use synthetic values for development.
+
+Explicit local artifacts retain the offline installer path:
+
+```sh
 GODMODE_BINARY_SHA=$(shasum -a 256 target/release/godmode | awk '{print $1}')
 sh install.sh --binary target/release/godmode --sha256 "$GODMODE_BINARY_SHA"
 ```
 
-For a release archive, pass `--archive PATH --checksum SHA256SUMS` instead. Obtain the archive and checksum from the intended release. The installer does not download anything; it verifies the supplied digest before creating the destination.
-
-It prints an absolute command for starting interactive setup. If its bin directory is missing from PATH, it also prints a correctly quoted command for adding it. For the default destination, the equivalent is:
-
-```sh
-export PATH="$HOME/.godmode/bin:$PATH"
-godmode init
-```
-
-That PATH change applies to the current shell. To retain it, put the command in the startup file your shell actually reads. The installer does not choose or modify that file. You can always invoke `~/.godmode/bin/godmode init` without changing PATH.
-
-If another `godmode` command was already on PATH, installation reports its location and leaves it intact. Use the printed absolute path to select this executable. Changing PATH order can change which executable a bare `godmode` command selects.
+For an existing release archive, use `--archive PATH --checksum SHA256SUMS`. These modes make no download requests and print the setup command; add `--setup` to start it immediately. Checksums detect damaged downloads but do not authenticate a compromised publisher. Obtain the archive and checksum from the intended release. macOS binaries are currently unsigned and not notarized.
 
 ## Existing configurations
 
@@ -54,7 +86,7 @@ sh install.sh --binary target/release/godmode \
 
 The installer's `--bin-dir DIR` is still available for selecting only an executable directory. It cannot be combined with installer `--home`. Selecting a binary directory alone does not isolate the CLI's configuration; use an explicit CLI `--home` when that is intended.
 
-An existing executable destination is refused unless `--force` is explicitly supplied. A symlink destination is always refused, including with `--force`. The installer never runs setup, starts a service, installs hooks or changes shell profiles.
+The installer does not start a service, install hooks or change shell profiles. Download installs hand off to attended setup; writes still require the CLI acknowledgement and explicit key entry.
 
 ## Remove an installation
 

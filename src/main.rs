@@ -1,13 +1,16 @@
 mod envfile;
+mod output;
 mod paths;
 mod picard;
 mod picard_visual;
 mod registry;
+mod setup;
 mod store;
 mod tui;
 
 use clap::{Parser, Subcommand};
 use envfile::Lookup;
+use output::{Tone, paint};
 use registry::Registry;
 use std::{
     collections::BTreeSet,
@@ -22,7 +25,8 @@ use zeroize::Zeroizing;
     name = "godmode",
     version,
     about = "Set up provider credentials for local agents.",
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    styles = output::clap_styles()
 )]
 struct Cli {
     /// Godmode home (default: ~/.godmode; existing ~/.config/godmode is detected)
@@ -44,9 +48,11 @@ enum Commands {
         #[command(subcommand)]
         action: Option<PicardCommand>,
     },
-    /// Open the interactive provider board
+    /// Choose a provider and paste credentials into masked prompts
+    Setup { provider: Option<String> },
+    /// Open the full-screen provider board
     Onboard,
-    /// Acknowledge the disclaimer; create the credential file only if absent
+    /// Start interactive setup; --accept-disclaimer initializes without prompts
     Init {
         #[arg(long)]
         accept_disclaimer: bool,
@@ -112,7 +118,13 @@ fn main() {
     // Panic payloads can contain values from third-party parsers; never display them.
     std::panic::set_hook(Box::new(|_| {
         ratatui::restore();
-        eprintln!("godmode: unexpected error; credential details suppressed");
+        eprintln!(
+            "{}",
+            output::paint_stderr(
+                "godmode: unexpected error; credential details suppressed",
+                Tone::Error
+            )
+        );
     }));
     let cli = match Cli::try_parse() {
         Ok(v) => v,
@@ -125,7 +137,11 @@ fn main() {
                 std::process::exit(0);
             }
             eprintln!(
-                "godmode: invalid arguments; use --help. Pass secrets through masked input, --stdin, or --from-file."
+                "{}",
+                output::paint_stderr(
+                    "godmode: invalid arguments; use --help. Pass secrets through masked input, --stdin, or --from-file.",
+                    Tone::Error
+                )
             );
             std::process::exit(2);
         }
@@ -133,7 +149,10 @@ fn main() {
     match execute(cli) {
         Ok(code) => std::process::exit(code),
         Err(message) => {
-            eprintln!("godmode: {message}");
+            eprintln!(
+                "{}",
+                output::paint_stderr(&format!("godmode: {message}"), Tone::Error)
+            );
             std::process::exit(2);
         }
     }
@@ -142,7 +161,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
     if let Some(Commands::Picard { action }) = &cli.command {
         match action {
             None | Some(PicardCommand::Link) => {
-                println!("{}", picard::SOURCE_URL);
+                println!("{}", paint(picard::SOURCE_URL, Tone::Link));
                 if action.is_none() {
                     println!(
                         "Use `godmode picard show` for the picture, `play` for audio, or `stop` to stop audio."
@@ -191,24 +210,31 @@ fn execute(cli: Cli) -> Result<i32, String> {
     let registry = Registry::load(&store.config_dir)?;
     match cli.command {
         Some(Commands::Picard { .. }) => unreachable!(),
-        None if !io::stdin().is_terminal()
-            || !io::stdout().is_terminal()
-            || std::env::var("TERM").as_deref() == Ok("dumb") =>
-        {
+        None if !io::stdin().is_terminal() || !io::stdout().is_terminal() => {
             if store.needs_setup()? {
                 eprintln!(
-                    "{}\n\nRun `godmode init` in a terminal to begin.\n",
-                    store::FIRST_RUN_NOTICE
+                    "{}\n\nRun `godmode setup` in a terminal to begin.\n",
+                    output::paint_stderr(store::FIRST_RUN_NOTICE, Tone::Warning)
                 );
             }
             status(&store, &registry, false)
         }
-        None | Some(Commands::Onboard) => {
+        None | Some(Commands::Setup { provider: None }) => {
+            setup::run(&store, &registry, None)?;
+            Ok(0)
+        }
+        Some(Commands::Setup {
+            provider: Some(provider),
+        }) => {
+            setup::run(&store, &registry, Some(&provider))?;
+            Ok(0)
+        }
+        Some(Commands::Onboard) => {
             if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
                 return Err("Onboarding needs a terminal; use init --accept-disclaimer and set --stdin for scripts".into());
             }
             if std::env::var("TERM").as_deref() == Ok("dumb") {
-                return Err("Use init, providers, guide and set in a plain terminal".into());
+                return Err("Use `godmode setup` for prompts in a plain terminal".into());
             }
             tui::run(
                 &store,
@@ -221,20 +247,26 @@ fn execute(cli: Cli) -> Result<i32, String> {
             if !accept_disclaimer {
                 if !io::stdin().is_terminal() {
                     if store.needs_setup()? {
-                        eprintln!("{}\n", store::FIRST_RUN_NOTICE);
+                        eprintln!(
+                            "{}\n",
+                            output::paint_stderr(store::FIRST_RUN_NOTICE, Tone::Warning)
+                        );
                     }
                     return Err("Read the disclaimer with interactive init, or explicitly pass --accept-disclaimer".into());
                 }
-                tui::run(&store, &registry, cli.no_motion)?;
+                setup::run(&store, &registry, None)?;
                 return Ok(if store.is_initialized() { 0 } else { 1 });
             }
             if store.needs_setup()? {
-                eprintln!("{}\n", store::FIRST_RUN_NOTICE);
+                eprintln!(
+                    "{}\n",
+                    output::paint_stderr(store::FIRST_RUN_NOTICE, Tone::Warning)
+                );
             }
             store.acknowledge()?;
             println!(
                 "Ready: {} (existing contents preserved)",
-                store.env_path.display()
+                paint(&store.env_path.display().to_string(), Tone::Success)
             );
             Ok(0)
         }
@@ -276,12 +308,23 @@ fn execute(cli: Cli) -> Result<i32, String> {
                 tui::prompt_secret(&key)?
             };
             store.set(&key, &value, &registry)?;
-            println!("Saved {key}; value hidden");
+            println!(
+                "{} {}; value hidden",
+                paint("Saved", Tone::Success),
+                paint(&key, Tone::Key)
+            );
             Ok(0)
         }
         Some(Commands::Unset { key }) => {
             let removed = store.unset(&key)?;
-            println!("{key}: {}", if removed { "removed" } else { "absent" });
+            println!(
+                "{}: {}",
+                paint(&key, Tone::Key),
+                paint(
+                    if removed { "removed" } else { "absent" },
+                    if removed { Tone::Success } else { Tone::Muted }
+                )
+            );
             Ok(0)
         }
         Some(Commands::Has { keys }) => {
@@ -290,7 +333,11 @@ fn execute(cli: Cli) -> Result<i32, String> {
             for key in keys {
                 store::valid_key(&key)?;
                 let state = label(file.get(&key));
-                println!("{key}: {state}");
+                println!(
+                    "{}: {}",
+                    paint(&key, Tone::Key),
+                    paint(state, status_tone(state))
+                );
                 ok &= state == "set";
             }
             Ok(if ok { 0 } else { 1 })
@@ -304,7 +351,12 @@ fn execute(cli: Cli) -> Result<i32, String> {
                 );
             } else {
                 for p in &registry.provider {
-                    println!("{:<14} {} — {}", p.id, p.name, p.purpose);
+                    println!(
+                        "{} {} — {}",
+                        paint(&format!("{:<14}", p.id), Tone::Key),
+                        paint(&p.name, Tone::Section),
+                        p.purpose
+                    );
                 }
             }
             Ok(0)
@@ -319,34 +371,40 @@ fn execute(cli: Cli) -> Result<i32, String> {
                 .iter()
                 .find(|p| p.id == provider)
                 .ok_or("Unknown provider; use providers to list IDs")?;
-            println!(
-                "{}\n{}\n\nSign in: {}\nAPI keys: {}\nDocs: {}",
-                p.name,
-                p.purpose,
-                p.login_url(),
-                p.console,
-                p.docs
-            );
+            println!("{}\n{}\n", paint(&p.name, Tone::Title), p.purpose);
+            for (label, url) in [
+                ("Sign in:", p.login_url()),
+                ("API keys:", p.console.as_str()),
+                ("Docs:", p.docs.as_str()),
+            ] {
+                println!("{} {}", paint(label, Tone::Section), paint(url, Tone::Link));
+            }
             for key in &p.key {
                 println!(
-                    "\n{}{}\nUsage: {}\nScope: {}",
-                    key.name,
-                    if key.required { "" } else { " (optional)" },
+                    "\n{}{}\n{} {}\n{} {}",
+                    paint(&key.name, Tone::Key),
+                    paint(if key.required { "" } else { " (optional)" }, Tone::Muted),
+                    paint("Usage:", Tone::Section),
                     key.usage,
+                    paint("Scope:", Tone::Section),
                     key.scope
                 );
                 for (i, step) in key.steps.iter().enumerate() {
-                    println!("  {}. {}", i + 1, step);
+                    println!("  {} {}", paint(&format!("{}.", i + 1), Tone::Accent), step);
                 }
                 if !key.format.is_empty() {
-                    println!("Format hint: {}", key.format);
+                    println!("{} {}", paint("Format hint:", Tone::Section), key.format);
                 }
                 if !key.verify.is_empty() {
-                    println!("Manual verification hint (not executed): {}", key.verify);
+                    println!(
+                        "{} {}",
+                        paint("Manual verification hint (not executed):", Tone::Section),
+                        key.verify
+                    );
                 }
             }
             for note in &p.notes {
-                println!("\n{note}");
+                println!("\n{} {note}", paint("Note:", Tone::Warning));
             }
             Ok(0)
         }
@@ -378,6 +436,13 @@ fn label(value: Lookup) -> &'static str {
         Lookup::Malformed(_) => "malformed",
     }
 }
+fn status_tone(state: &str) -> Tone {
+    match state {
+        "set" => Tone::Success,
+        "duplicate" | "malformed" => Tone::Error,
+        _ => Tone::Warning,
+    }
+}
 fn status(store: &Store, registry: &Registry, json: bool) -> Result<i32, String> {
     let file = store.load()?;
     let mut keys: BTreeSet<&str> = registry
@@ -397,14 +462,24 @@ fn status(store: &Store, registry: &Registry, json: bool) -> Result<i32, String>
         );
     } else {
         println!(
-            "{}\nLocal presence only — provider access not checked.",
-            store.env_path.display()
+            "{}\n{}",
+            paint(&store.env_path.display().to_string(), Tone::Title),
+            paint(
+                "Local presence only — provider access not checked.",
+                Tone::Muted
+            )
         );
         for e in entries {
             println!(
-                "{:<44} {}",
-                e["key"].as_str().unwrap_or_default(),
-                e["status"].as_str().unwrap_or_default()
+                "{} {}",
+                paint(
+                    &format!("{:<44}", e["key"].as_str().unwrap_or_default()),
+                    Tone::Key
+                ),
+                paint(
+                    e["status"].as_str().unwrap_or_default(),
+                    status_tone(e["status"].as_str().unwrap_or_default())
+                )
             );
         }
     }
@@ -456,10 +531,13 @@ fn doctor(store: &Store, json: bool) -> Result<i32, String> {
     } else {
         println!(
             "{} — offline file safety and syntax; no provider requests",
-            if ok { "PASS" } else { "NEEDS ATTENTION" }
+            paint(
+                if ok { "PASS" } else { "NEEDS ATTENTION" },
+                if ok { Tone::Success } else { Tone::Error }
+            )
         );
         for issue in issues {
-            println!("  {issue}");
+            println!("  {} {issue}", paint("!", Tone::Error));
         }
     }
     Ok(if ok { 0 } else { 1 })

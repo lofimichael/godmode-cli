@@ -73,6 +73,7 @@ jobs:
           cargo +1.96.0 build --release --locked --target "$TARGET"
           "target/$TARGET/release/godmode" --version
           python3 tests/pty_smoke.py "target/$TARGET/release/godmode"
+          python3 tests/pty_setup.py "target/$TARGET/release/godmode"
       - name: Package
         shell: bash
         run: |

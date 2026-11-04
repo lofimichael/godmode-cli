@@ -1,78 +1,58 @@
 # Godmode
 
-Godmode keeps provider credentials in one `.env.godmode` file and supplies the setup notes for obtaining them. Pick a provider in the terminal interface, read its instructions, and paste the key. Agents can then reuse the file instead of asking you to configure the same account again for each project.
+Godmode keeps provider credentials in one `.env.godmode` file. Choose a provider, follow its setup links, and paste the key into a masked prompt. Your local agents can reuse the file instead of asking you to configure the same account for every project.
 
-The agents already know how to read an environment file, so there didn't seem much point in giving them another service to talk to. You can add an unfamiliar provider with `godmode set NAME_OF_KEY`; a TOML entry is only needed if you want its instructions in the interface. If you already have a working file, keep it. Editing it by hand works too.
+## Install and set up
 
-The program is a single Rust executable. It needs no package manager, service or account of its own, and sends no telemetry. Credentials stay local unless you pass them to another program; what that program can do depends on the permissions attached to those credentials. See [the storage notes](docs/SECURITY.md) before adding them.
+While this repository is private, use a signed-in [GitHub CLI](https://cli.github.com/) account with access:
+
+```sh
+gh api -H 'Accept: application/vnd.github.raw+json' \
+  repos/lofimichael/godmode-cli/contents/install.sh | sh
+```
+
+The installer selects the build for your machine, downloads it with its checksum, verifies it, installs into `~/.godmode/bin`, and starts interactive setup. No Rust toolchain or manual archive selection is needed. The available prebuilt release currently supports **Apple Silicon macOS**; missing builds produce an error rather than installing the wrong binary.
+
+An existing executable is preserved. [Installation and upgrades](docs/INSTALLATION.md) explains explicit replacement, offline installs and alternate homes. Your existing `~/.config/godmode` is detected; credentials and rules stay where they are. Shell profiles are not changed.
+
+To run setup later:
+
+```sh
+~/.godmode/bin/godmode setup
+```
+
+Choose a provider by number or name. Open its login, key page or documentation when needed, then paste at the credential prompt and press Enter. Input is masked, including multiline JSON; pasting alone never saves. An empty answer skips a missing key, and an existing key is kept unless you choose to replace it. Esc or Ctrl-C cancels the current input. Keys already saved remain on disk.
 
 ![Interactive setup recorded from the real CLI using synthetic credentials](docs/images/setup.gif)
 
-The recording uses an isolated temporary home and a synthetic key. It demonstrates local setup, not provider authentication. [How the GIF is recorded](https://github.com/lofimichael/godmode-cli/blob/main/scripts/README.md).
+This is the actual CLI in a temporary home with a synthetic key. It demonstrates local entry and storage, not provider authentication. [Recording instructions](https://github.com/lofimichael/godmode-cli/blob/main/scripts/README.md).
 
-The interface uses a small ASCII masthead and text panels. [READTHIS.NFO](READTHIS.NFO) contains the release notes. The [language and culture study](docs/CULTURE.md) documents the period sources, including the Usenet post preserved on Ratpoison's inspiration page, and the choices made here.
+You can go straight to one provider with `godmode setup github`. Bare `godmode` and interactive `godmode init` also start these prompts. `godmode onboard` opens the full-screen provider board, with its original keyboard controls and optional Picard view.
 
-## Try it without touching an existing Godmode setup
+For unfamiliar providers, `godmode set NAME_OF_KEY` opens masked entry. A [TOML catalog entry](docs/PROVIDERS.md) is only needed if you want that provider's instructions in setup. No editor is involved. Headings, provider status, links and key prompts are colored; `NO_COLOR=1` requests plain text. The program is one Rust executable with no service, account of its own, telemetry or automatic updater. [READTHIS.NFO](READTHIS.NFO) and the [culture study](docs/CULTURE.md) describe its presentation.
 
-From this checkout, with Rust 1.96 installed:
+## Cargo and local builds
+
+There is no crates.io release yet. If you already have Rust and this source checkout, Cargo can install it directly:
 
 ```sh
-cargo build --release --locked
-GODMODE_DEMO_DIR=$(mktemp -d "$PWD/target/godmode-demo.XXXXXX")
-./target/release/godmode \
-  --home "$GODMODE_DEMO_DIR/.godmode" \
-  init
+cargo install --path . --locked --root "$HOME/.godmode"
+~/.godmode/bin/godmode setup
 ```
 
-This runs the build directly. It does not install over an existing `godmode` executable or read your normal credential directory. Use synthetic credentials for this demo. The interface asks you to type `GODMODE` before creating its local files. `--no-motion` disables animation; `NO_COLOR=1` disables color.
+Cargo compiles from source. The prebuilt installer above avoids that toolchain requirement. See [the installation guide](docs/INSTALLATION.md) for isolated trials and building without installation.
 
-The source and local build are the current installation path. The repository includes a manually dispatched workflow for four release targets; a workflow file alone does not mean release binaries have been published. Check [Releases](https://github.com/lofimichael/godmode-cli/releases) for available artifacts. Repository access may require sign-in while the project is private. No crates.io package is assumed.
-
-## Install a verified binary
-
-The installer operates on a file you have already obtained. It makes no network requests and never writes credentials, configuration or shell profiles.
-
-For a locally built binary:
+## Use a saved credential
 
 ```sh
-GODMODE_BINARY_SHA=$(shasum -a 256 target/release/godmode | awk '{print $1}')
-sh install.sh --binary target/release/godmode --sha256 "$GODMODE_BINARY_SHA"
-```
-
-For a downloaded release archive and its `SHA256SUMS`:
-
-```sh
-sh install.sh \
-  --archive ./godmode-v0.4.0-aarch64-apple-darwin.tar.gz \
-  --checksum ./SHA256SUMS
-```
-
-Choose the archive for your system: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-musl`, or `x86_64-unknown-linux-musl`. The installer verifies integrity against the supplied digest; obtain both the artifact and trusted checksum from the intended release. Archives are not currently Developer ID signed or notarized, and checksums are not a signature.
-
-The default destination is `~/.godmode/bin/godmode`. **An existing executable is refused by default.** Installer `--home DIR` keeps a separate installation under `DIR/bin`; `--bin-dir DIR` changes only the binary destination. The installer prints an absolute setup command and PATH instructions when needed. It never changes your shell profile. See [installation and existing-home detection](docs/INSTALLATION.md).
-
-## Onboard and use a credential
-
-Run `godmode init` or `godmode` in a terminal for interactive setup. A machine without existing Godmode configuration gets a blunt first-run explanation of account permissions and consequences before anything is created. Type `GODMODE` to acknowledge it, then choose only the providers you need.
-
-Each provider has visible actions for sign-in (`l`), API keys (`o`) and documentation (`d`). They open the exact provider links in your browser; return to the terminal to paste the key into masked input. Enter saves it, `n` moves to the next key/provider, and `s` skips the rest of a provider. Arrow keys and Tab still let you browse freely. Full URLs are also printed by `godmode guide PROVIDER`. Nothing opens a browser or checks provider access automatically.
-
-Saved progress comes from the credential file, so you can leave and resume. With redirected input/output, the default command prints local status; if setup is absent, it also prints the first-run notice to stderr. `init --accept-disclaimer` remains the explicit scripting path.
-
-The command-line path is equally usable:
-
-```sh
-godmode init --accept-disclaimer
-godmode guide github
-godmode set GH_TOKEN
 godmode status --json
 godmode doctor --json
 godmode run --with GH_TOKEN -- gh api user --jq .login
 ```
 
-`set` opens masked input. For automation, use `set KEY --stdin` with a pipe or redirected file, or `set KEY --from-file /private/path`. There is no positional secret argument. Never put an actual credential into a shell command, issue or agent transcript. Raw JSON for a declared JSON key is compacted before saving; do not wrap it in shell quotes before pasting.
+For automation, `init --accept-disclaimer` initializes without prompts; `set KEY --stdin` reads a pipe or redirected file, and `set KEY --from-file PATH` reads a private file. There is no positional secret argument. Never put a credential into a shell command, issue or agent transcript. Paste JSON directly, without shell quotes.
 
-`init --accept-disclaimer` is explicit noninteractive acknowledgment of the [storage and authority terms](docs/SECURITY.md). It preserves existing credentials and rules. In a Git checkout, `.env.godmode` must be ignored and untracked before Godmode writes it.
+Setup asks for acknowledgement before creating its files. It keeps existing credentials and operating rules. In a Git checkout, `.env.godmode` must be ignored and untracked before writes. Stored values are plaintext with mode 0600; programs running as your user can read them. Read [the storage and authority notes](docs/SECURITY.md).
 
 ## Picard mode
 
@@ -94,8 +74,9 @@ The recording is the approximately eight-second excerpt used by the original Pic
 
 | Command | Result |
 | --- | --- |
-| `godmode` / `onboard` | Interactive provider board and masked credential entry |
-| `init [--accept-disclaimer]` | Acknowledge the disclaimer and create an empty file only if absent |
+| `godmode` / `setup [PROVIDER]` | Interactive provider selection and masked credential prompts |
+| `onboard` | Full-screen provider board |
+| `init [--accept-disclaimer]` | Interactive setup; the flag initializes without prompts |
 | `status [--json]` | Key names and local presence; never stored values |
 | `doctor [--json]` | Offline file ownership, permissions, size, symlink and syntax checks |
 | `set KEY [--stdin \| --from-file PATH]` | Save or replace one key; no source flag opens masked entry |

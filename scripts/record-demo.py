@@ -22,7 +22,7 @@ import pyte
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tests"))
-from pty_smoke import Terminal  # noqa: E402
+from pty_setup import Terminal  # noqa: E402
 
 SYNTHETIC = "github_pat_DEMO_ONLY_NOT_A_REAL_CREDENTIAL_6d8f"
 BG = "#0a0a09"
@@ -75,6 +75,7 @@ class Recorder:
         self.caption_height = 28
         self.frames: list[Image.Image] = []
         self.durations: list[int] = []
+        self.text_colors: set[str] = set()
 
     def sync(self) -> None:
         chunk = self.terminal.capture[self.read_at:]
@@ -94,7 +95,7 @@ class Recorder:
                 raise RuntimeError(f"Timed out waiting for demo state: {text}")
 
     def settle(self) -> None:
-        # Finish an incremental Ratatui draw before taking a screen snapshot.
+        # Finish an incremental terminal write before taking a screen snapshot.
         quiet_since = time.monotonic()
         deadline = quiet_since + 3
         while time.monotonic() < deadline:
@@ -126,6 +127,7 @@ class Recorder:
                 px, py = x * self.cell_width, y * self.cell_height + self.caption_height
                 draw.rectangle((px, py, px + self.cell_width - 1, py + self.cell_height - 1), fill=background)
                 if char.data and char.data != " ":
+                    self.text_colors.add(foreground)
                     draw.text((px, py - 1), char.data, font=self.font, fill=foreground,
                               stroke_width=0.25 if char.bold else 0)
                 if char.underscore:
@@ -141,9 +143,15 @@ class Recorder:
     def write(self, destination: Path) -> None:
         if not self.frames or sum(self.durations) > 10_000:
             raise RuntimeError("The demo must contain frames and last at most ten seconds")
-        sample = Image.new("RGB", (256, 256 * len(self.frames)), BG)
+        if len(self.text_colors) < 3:
+            raise RuntimeError("The setup recording did not retain its terminal text colors")
+        # Derive the GIF palette from full-resolution cells. Downsampling thin
+        # colored glyphs first averages them into the background and dims the
+        # bright ANSI palette even though the actual CLI output is vivid.
+        width, height = self.frames[0].size
+        sample = Image.new("RGB", (width, height * len(self.frames)), BG)
         for i, frame in enumerate(self.frames):
-            sample.paste(frame.resize((256, 256)), (0, i * 256))
+            sample.paste(frame, (0, i * height))
         palette = sample.quantize(colors=256, dither=Image.Dither.NONE)
         frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in self.frames]
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -176,38 +184,39 @@ def main() -> None:
         config = root / ".godmode"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(root),
                "TERM": "xterm-256color", "COLORTERM": "truecolor"}
-        command = [str(binary), "--home", str(config), "--no-motion", "init"]
+        # Keep the short recording focused on the new key-entry workflow. This
+        # acknowledgement affects only the isolated synthetic home.
+        subprocess.run([str(binary), "--home", str(config), "init", "--accept-disclaimer"],
+                       env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
+        command = [str(binary), "--home", str(config), "setup"]
         terminal = Terminal(command, env, cols=120, rows=40)
         recorder = Recorder(terminal, 120, 40, font)
         try:
-            recorder.wait_for("No existing Godmode setup found")
-            assert not config.exists(), "first-run screen created configuration before acknowledgement"
-            recorder.capture(2500)
-            terminal.send(b"GODMODE")
-            recorder.wait_for("> GODMODE")
-            recorder.capture(500)
+            recorder.wait_for("Provider number or name")
+            recorder.capture(1600)
+            terminal.send(b"github")
+            recorder.capture(400)
             terminal.send(b"\r")
-            recorder.wait_for("PROVIDERS")
-            recorder.wait_for("GitHub")
-            recorder.wait_for("Sign in")
-            recorder.wait_for("API keys")
-            recorder.wait_for("Docs")
-            recorder.capture(1400)
+            recorder.wait_for("Enter to add keys;")
+            recorder.wait_for("Sign in:")
+            recorder.wait_for("API keys:")
+            recorder.wait_for("Docs:")
+            recorder.capture(1600)
             terminal.send(b"\r")
-            recorder.wait_for("ADD / REPLACE")
-            recorder.capture(500)
-            for chunk in [SYNTHETIC[:12], SYNTHETIC[12:24], SYNTHETIC[24:]]:
-                terminal.send(chunk.encode())
-                recorder.capture(300)
-            recorder.capture(500)
+            recorder.wait_for("Paste GH_TOKEN (masked;")
+            recorder.capture(1000)
+            before = (config / ".env.godmode").read_bytes()
+            terminal.paste(SYNTHETIC)
+            recorder.capture(1900)
+            assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
             terminal.send(b"\r")
-            recorder.wait_for("GH_TOKEN saved")
-            recorder.capture(1500)
-            terminal.send(b"n")
-            recorder.wait_for("dash.cloudflare.com")
-            recorder.capture(1200)
-            terminal.send(b"q")
+            recorder.wait_for("GH_TOKEN saved.")
+            recorder.wait_for("1. GitHub (1/1 keys saved)")
+            recorder.capture(1900)
+            terminal.send(b"\r")
+            recorder.wait_for("Setup finished. Saved 1 key this session.")
             terminal.done()
+            recorder.capture(800)
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"
             # Prove this was an actual save in a temporary store, not an animated mockup.
             assert SYNTHETIC in (config / ".env.godmode").read_text()
