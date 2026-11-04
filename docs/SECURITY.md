@@ -4,6 +4,12 @@ The credentials you store here may allow agents to create and delete infrastruct
 
 The credential inventory is plaintext. Mode 0600 prevents other ordinary users from reading the file; it does not prevent your own user, unrestricted agents, privileged processes, backups or a compromised machine from accessing it. Select appropriate provider scopes, protect the host and revoke exposed credentials at their source. Saving a live key is not authorization to spend money or publish.
 
+## One ordinary file
+
+`.env.godmode` is the source of truth. You can create or edit it in nano or another editor, and your agents can read it directly. Manual changes are read on the next command; there is no import, sync, credential database or required runtime. Uninstalling the CLI leaves the file usable. Provider guidance, the terminal board, Picard and the updater are optional conveniences.
+
+The first-use acknowledgement and writer locks govern edits made through the CLI; they are not required to read or use the file. Keep the file private (mode 0600).
+
 ## What the CLI does
 
 - Stores one flat `.env.godmode`, with shell-compatible quoting and no evaluation of shell expressions.
@@ -25,9 +31,9 @@ Do not run an untrusted command merely because its environment is restricted. Av
 
 ## Existing installations
 
-The installer refuses an existing executable unless replacement is explicitly requested with `--force`, and always refuses a symlink destination. It verifies a supplied SHA-256 digest before installation and makes no network requests. Checksums establish integrity relative to the supplied digest, not publisher identity.
+The installer downloads and checksum-verifies a native release; explicit local-artifact installation is offline. `godmodeup` updates only files matching its install receipt. Replacing an unknown or modified executable requires `--force`; symlink destinations are refused. Checksums establish integrity relative to the supplied digest, not publisher identity.
 
-The CLI does not install hooks, edit shell profiles, replace operating rules, synchronize credentials or enroll OAuth sessions. New installs keep the binary, credentials and state under `~/.godmode`. Existing `~/.config/godmode` is detected when the new home has no configuration markers; the binary alone is not such a marker. No existing setup is moved. Use `--home DIR` for an isolated setup, and `--state-dir DIR` if a separate state path is wanted.
+The CLI does not install hooks, replace operating rules, synchronize credentials or enroll OAuth sessions. The installer changes shell profiles only with `--path`. New installs keep the binary, credentials and state under `~/.godmode`. Existing `~/.config/godmode` is detected when the new home has no configuration markers; the binary alone is not such a marker. No existing setup is moved. Use `--home DIR` for an isolated setup, and `--state-dir DIR` if a separate state path is wanted.
 
 ## Reporting a problem
 

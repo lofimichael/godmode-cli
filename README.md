@@ -1,6 +1,6 @@
 # Godmode
 
-Set up provider access for your agents. Choose a provider, follow its links, and paste keys into masked prompts.
+An interactive editor for `.env.godmode`, with provider links and masked input. It is an ordinary text file: edit it in nano whenever you like. Your agents do not need this CLI.
 
 ![Interactive setup using a synthetic key](docs/images/setup.gif)
 

@@ -2,6 +2,8 @@
 
 Contributors need Rust 1.96, Python 3 for shlex compatibility fixtures, and a POSIX shell. End users of a prebuilt binary do not need those development tools.
 
+Keep the design centered on one editable `.env.godmode` file. New features must not make agents depend on this executable to read or use saved credentials, or require provider registration for arbitrary key names.
+
 ## Local checks
 
 ```sh

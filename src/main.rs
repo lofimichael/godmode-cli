@@ -207,7 +207,8 @@ fn execute(cli: Cli) -> Result<i32, String> {
         }
         return Ok(0);
     }
-    let registry = Registry::load(&store.config_dir)?;
+    // The provider catalog is optional guidance, not a dependency of file operations.
+    let load_registry = || Registry::load(&store.config_dir);
     match cli.command {
         Some(Commands::Picard { .. }) => unreachable!(),
         None if !io::stdin().is_terminal() || !io::stdout().is_terminal() => {
@@ -217,16 +218,16 @@ fn execute(cli: Cli) -> Result<i32, String> {
                     output::paint_stderr(store::FIRST_RUN_NOTICE, Tone::Warning)
                 );
             }
-            status(&store, &registry, false)
+            status(&store, &load_registry()?, false)
         }
         None | Some(Commands::Setup { provider: None }) => {
-            setup::run(&store, &registry, None)?;
+            setup::run(&store, &load_registry()?, None)?;
             Ok(0)
         }
         Some(Commands::Setup {
             provider: Some(provider),
         }) => {
-            setup::run(&store, &registry, Some(&provider))?;
+            setup::run(&store, &load_registry()?, Some(&provider))?;
             Ok(0)
         }
         Some(Commands::Onboard) => {
@@ -238,7 +239,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
             }
             tui::run(
                 &store,
-                &registry,
+                &load_registry()?,
                 cli.no_motion || std::env::var_os("GODMODE_NO_MOTION").is_some(),
             )?;
             Ok(0)
@@ -254,7 +255,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
                     }
                     return Err("Read the disclaimer with interactive init, or explicitly pass --accept-disclaimer".into());
                 }
-                setup::run(&store, &registry, None)?;
+                setup::run(&store, &load_registry()?, None)?;
                 return Ok(if store.is_initialized() { 0 } else { 1 });
             }
             if store.needs_setup()? {
@@ -270,13 +271,14 @@ fn execute(cli: Cli) -> Result<i32, String> {
             );
             Ok(0)
         }
-        Some(Commands::Status { json }) => status(&store, &registry, json),
+        Some(Commands::Status { json }) => status(&store, &load_registry()?, json),
         Some(Commands::Doctor { json }) => doctor(&store, json),
         Some(Commands::Set {
             key,
             stdin,
             from_file,
         }) => {
+            let registry = load_registry()?;
             store::valid_key(&key)?;
             if !store.is_initialized() {
                 return Err("Run init before entering a credential".into());
@@ -343,6 +345,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
             Ok(if ok { 0 } else { 1 })
         }
         Some(Commands::Providers { json }) => {
+            let registry = load_registry()?;
             if json {
                 println!(
                     "{}",
@@ -366,6 +369,7 @@ fn execute(cli: Cli) -> Result<i32, String> {
             Ok(0)
         }
         Some(Commands::Guide { provider }) => {
+            let registry = load_registry()?;
             let p = registry
                 .provider
                 .iter()

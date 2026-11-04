@@ -235,6 +235,103 @@ fn overlay_is_extensible_and_invalid_content_is_never_echoed() {
     no_leak(&out, "sentinelBadCatalog_998");
 }
 #[test]
+fn file_operations_do_not_depend_on_a_valid_provider_catalog() {
+    let f = Fixture::new();
+    fs::create_dir(&f.config).unwrap();
+    let original = "# manually maintained\nCUSTOM_TOKEN='synthetic manual value'\n";
+    fs::write(f.env(), original).unwrap();
+    fs::set_permissions(f.env(), fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(f.config.join("providers.toml"), "broken = [catalog").unwrap();
+
+    for args in [
+        vec!["doctor"],
+        vec!["has", "CUSTOM_TOKEN"],
+        vec!["providers-template"],
+        vec![
+            "run",
+            "--with",
+            "CUSTOM_TOKEN",
+            "--",
+            "/bin/sh",
+            "-c",
+            "test \"$CUSTOM_TOKEN\" = 'synthetic manual value'",
+        ],
+    ] {
+        let out = f.run(&args);
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        no_leak(&out, "synthetic manual value");
+    }
+    assert!(!f.state.exists());
+    assert_eq!(fs::read_to_string(f.env()).unwrap(), original);
+    assert!(!f.run(&["unset", "CUSTOM_TOKEN"]).status.success());
+    assert_eq!(fs::read_to_string(f.env()).unwrap(), original);
+
+    f.init();
+    assert_eq!(fs::read_to_string(f.env()).unwrap(), original);
+    assert!(f.run(&["unset", "CUSTOM_TOKEN"]).status.success());
+    assert_eq!(
+        fs::read_to_string(f.env()).unwrap(),
+        "# manually maintained\n"
+    );
+    for args in [
+        vec!["status"],
+        vec!["providers"],
+        vec!["guide", "example"],
+        vec!["setup"],
+        vec!["set", "CUSTOM_TOKEN", "--stdin"],
+    ] {
+        let out = f.run(&args);
+        assert_eq!(out.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("Invalid provider TOML"));
+    }
+}
+
+#[test]
+fn cli_and_manual_edits_share_an_ordinary_shell_readable_file() {
+    let f = Fixture::new();
+    f.init();
+    let value = "synthetic ' quoted $value # literal";
+    assert!(f.set("CUSTOM_TOKEN", value).status.success());
+    let out = Command::new("/bin/sh")
+        .args(["-c", ". \"$1\"; test \"$CUSTOM_TOKEN\" = \"$2\"", "sh"])
+        .arg(f.env())
+        .arg(value)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(out.stderr.is_empty());
+
+    fs::write(
+        f.env(),
+        "CUSTOM_TOKEN='manual replacement'\nMANUAL_ONLY=synthetic\n",
+    )
+    .unwrap();
+    assert!(
+        f.run(&["has", "CUSTOM_TOKEN", "MANUAL_ONLY"])
+            .status
+            .success()
+    );
+    let out = f.run(&[
+        "run",
+        "--with",
+        "CUSTOM_TOKEN",
+        "--with",
+        "MANUAL_ONLY",
+        "--",
+        "/bin/sh",
+        "-c",
+        "test \"$CUSTOM_TOKEN\" = 'manual replacement' && test \"$MANUAL_ONLY\" = synthetic",
+    ]);
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(out.stderr.is_empty());
+}
+#[test]
 fn same_configuration_lock_is_shared_across_state_overrides() {
     use std::os::fd::AsRawFd;
     let f = Fixture::new();
