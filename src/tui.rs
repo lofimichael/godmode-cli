@@ -24,7 +24,7 @@ use crate::{
     registry::{Key, Registry},
 };
 
-use crate::store::DISCLAIMER;
+use crate::store::{DISCLAIMER, FIRST_RUN_NOTICE};
 
 const MAX_INPUT: usize = crate::envfile::MAX_SIZE as usize;
 
@@ -217,6 +217,7 @@ fn start_terminal() -> Result<(ratatui::DefaultTerminal, TerminalGuard), String>
 
 struct Ui {
     accepted: bool,
+    first_run: bool,
     ack: String,
     selected: usize,
     selected_key: usize,
@@ -236,6 +237,7 @@ impl Ui {
     fn new(accepted: bool, registry: &Registry) -> Self {
         Self {
             accepted,
+            first_run: false,
             ack: String::new(),
             selected: 0,
             selected_key: 0,
@@ -262,6 +264,22 @@ impl Ui {
             .get(self.selected)?
             .key
             .get(self.selected_key)
+    }
+    fn next_setup(&mut self, registry: &Registry, skip_provider: bool) {
+        if let Some(provider) = registry.provider.get(self.selected) {
+            if !skip_provider && self.selected_key + 1 < provider.key.len() {
+                self.selected_key += 1;
+                self.notice = "Next key selected. Enter adds it; n skips it.".into();
+            } else if self.selected + 1 < registry.provider.len() {
+                self.selected += 1;
+                self.selected_key = 0;
+                self.notice = "Next provider selected. Set up only the accounts you need.".into();
+            } else {
+                self.notice =
+                    "End of the provider list. Saved keys are already on disk; q exits.".into();
+            }
+            self.scroll = 0;
+        }
     }
     fn refresh(&mut self, store: &Store, registry: &Registry) {
         match snapshot(store, registry) {
@@ -511,7 +529,9 @@ pub fn show_picard(state_dir: &std::path::Path) -> Result<(), String> {
 
 /// Open the provider board. Persistence is delegated to Store; UI never reads values for display.
 pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), String> {
-    let mut ui = Ui::new(store.is_initialized(), registry);
+    let first_run = store.needs_setup()?;
+    let mut ui = Ui::new(!first_run && store.is_initialized(), registry);
+    ui.first_run = first_run;
     if ui.accepted {
         ui.refresh(store, registry);
     }
@@ -570,7 +590,10 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 match store.set(&k.name, &input.value, registry) {
                                     Ok(()) => {
                                         ui.editing = None;
-                                        ui.notice = format!("{} saved.", k.name);
+                                        ui.notice = format!(
+                                            "{} saved. Press n to continue, or s to skip this provider.",
+                                            k.name
+                                        );
                                         ui.refresh(store, registry);
                                     }
                                     Err(e) => ui.notice = e,
@@ -593,7 +616,7 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 ui.accepted = true;
                                 ui.ack.clear();
                                 ui.notice =
-                                    "Choose a provider and press Enter to add a key.".into();
+                                    "Choose a provider; l signs in, o opens API keys, d opens documentation.".into();
                                 ui.refresh(store, registry);
                             }
                             Err(e) => ui.notice = e,
@@ -666,6 +689,16 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                         {
                             ui.selected_key = (ui.selected_key + p.key.len() - 1) % p.key.len();
                             ui.scroll = 0;
+                        }
+                    }
+                    KeyCode::Char('n') => ui.next_setup(registry, false),
+                    KeyCode::Char('s') => ui.next_setup(registry, true),
+                    KeyCode::Char('l') => {
+                        if let Some(p) = registry.provider.get(ui.selected) {
+                            ui.notice = match open_url(p.login_url()) {
+                                Ok(()) => "Opened sign-in in your browser. Return here after creating your key.".into(),
+                                Err(e) => e,
+                            };
                         }
                     }
                     KeyCode::PageDown => ui.scroll = ui.scroll.saturating_add(5),
@@ -884,11 +917,11 @@ fn draw(
     } else if !ui.accepted {
         "GODMODE + Enter accept   PgUp/PgDn read   Esc leave"
     } else if area.width >= 100 {
-        "j/k provider  Tab key  Enter edit  PgDn read  i picture  p audio  v source  ? help  q quit"
+        "j/k provider  Tab key  Enter add  n next  s skip provider  PgDn read  ? help  q quit"
     } else if area.width >= 72 {
-        "j/k provider Tab key Enter edit i picture p audio v source ? help q quit"
+        "j/k provider Tab key Enter add n next s skip PgDn read ? help q quit"
     } else {
-        "j/k Tab Enter PgDn | i picture p audio v source ? help q quit"
+        "j/k Tab Enter | l login o keys d docs | n next ? q"
     };
     frame.render_widget(
         Paragraph::new(controls).style(Style::default().fg(theme.dim)),
@@ -955,7 +988,12 @@ fn draw_ack(frame: &mut Frame, area: Rect, ui: &mut Ui, theme: Theme) {
     let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).split(area);
     let block = theme.block("READTHIS.NFO", true);
     let inner = block.inner(rows[0]);
-    let paragraph = Paragraph::new(DISCLAIMER).wrap(Wrap { trim: false });
+    let text = if ui.first_run {
+        format!("{FIRST_RUN_NOTICE}\n\n{DISCLAIMER}")
+    } else {
+        DISCLAIMER.to_owned()
+    };
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     let total = paragraph.line_count(inner.width).min(u16::MAX as usize) as u16;
     ui.ack_scroll = ui.ack_scroll.min(total.saturating_sub(inner.height));
     frame.render_widget(paragraph.scroll((ui.ack_scroll, 0)).block(block), rows[0]);
@@ -1135,7 +1173,10 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     }
     lines.extend([
         Line::default(),
-        Line::from("CONSOLE  [o]").style(Style::default().fg(theme.accent).bold()),
+        Line::from("SIGN IN  [l]").style(Style::default().fg(theme.accent).bold()),
+        Line::from(p.login_url().to_owned()).style(Style::default().fg(theme.dim)),
+        Line::default(),
+        Line::from("API KEYS  [o]").style(Style::default().fg(theme.accent).bold()),
         Line::from(p.console.clone()).style(Style::default().fg(theme.dim)),
         Line::default(),
         Line::from("DOCUMENTATION  [d]").style(Style::default().fg(theme.accent).bold()),
@@ -1154,10 +1195,39 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     ]);
     let block = theme.block(p.name.clone(), false);
     let inner = block.inner(cols[1]);
+    frame.render_widget(block, cols[1]);
+    let areas = Layout::vertical([Constraint::Length(4), Constraint::Min(1)]).split(inner);
+    let link_line = |key: &str, name: &str, url: &str| {
+        let label = format!("[{key}] {name:<8} ");
+        let display = url
+            .strip_prefix("https://")
+            .unwrap_or(url)
+            .split('?')
+            .next()
+            .unwrap_or(url);
+        Line::from(vec![
+            Span::styled(label.clone(), Style::default().fg(theme.accent).bold()),
+            Span::styled(
+                fit_name(
+                    display,
+                    (areas[0].width as usize).saturating_sub(label.len()),
+                ),
+                Style::default().fg(theme.text),
+            ),
+        ])
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            link_line("l", "Sign in", p.login_url()),
+            link_line("o", "API keys", &p.console),
+            link_line("d", "Docs", &p.docs),
+        ]),
+        areas[0],
+    );
     let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-    let total = paragraph.line_count(inner.width).min(u16::MAX as usize) as u16;
-    ui.scroll = ui.scroll.min(total.saturating_sub(inner.height));
-    frame.render_widget(paragraph.scroll((ui.scroll, 0)).block(block), cols[1]);
+    let total = paragraph.line_count(areas[1].width).min(u16::MAX as usize) as u16;
+    ui.scroll = ui.scroll.min(total.saturating_sub(areas[1].height));
+    frame.render_widget(paragraph.scroll((ui.scroll, 0)), areas[1]);
 }
 
 fn popup(area: Rect, width: u16, height: u16) -> Rect {
@@ -1216,9 +1286,9 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
     }
 }
 fn draw_help(frame: &mut Frame, theme: Theme) {
-    let area = popup(frame.area(), 80, 23);
+    let area = popup(frame.area(), 86, 25);
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k, Up/Down   Choose a provider\nTab, Left/Right Choose one of its keys\nEnter          Add or replace selected key\nPgUp/PgDn      Read the provider notes\nHome           Top of notes\no / d          Provider console / documentation\ni              Show the Picard image (downloads on first view)\np              Picard loop: play / stop (downloads on first play)\nv              Open the original YTMND source\nr              Reload local key status\nq, Esc, Ctrl-C Leave; stop playback\n\nKey entry: type or paste, Backspace, Ctrl-U clear,\nEnter save, Esc cancel. No reveal switch.\n\nKey status is local; provider access has not been checked.\nPress any key to return.").wrap(Wrap{trim:false}).block(theme.block("KEYS",true)),area);
+    frame.render_widget(Paragraph::new("j/k, Up/Down   Choose a provider\nTab, Left/Right Choose one of its keys\nEnter          Add or replace selected key\nPgUp/PgDn      Read the provider notes\nHome           Top of notes\nl / o / d      Provider sign-in / API keys / documentation\nn              Next key, then next provider\ns              Skip remaining keys for this provider\ni              Show the Picard image (downloads on first view)\np              Picard loop: play / stop (downloads on first play)\nv              Open the original YTMND source\nr              Reload local key status\nq, Esc, Ctrl-C Leave; stop playback\n\nKey entry: type or paste, Backspace, Ctrl-U clear,\nEnter save, Esc cancel. No reveal switch.\n\nKey status is local; provider access has not been checked.\nPress any key to return.").wrap(Wrap{trim:false}).block(theme.block("KEYS",true)),area);
 }
 
 /// Read a secret from an actual raw-mode TTY, including large bracketed pastes.
@@ -1403,6 +1473,7 @@ mod tests {
                 id: "sample".into(),
                 name: "Sample provider".into(),
                 purpose: "Deploy and manage the selected account".into(),
+                login: "https://example.invalid/login".into(),
                 console: "https://example.invalid/keys".into(),
                 docs: "https://example.invalid/docs".into(),
                 notes: vec![],
@@ -1424,8 +1495,8 @@ mod tests {
                 let text = buffer_text(&terminal);
                 assert!(text.contains("SAMPLE_API_TOKEN"));
                 assert!(text.contains("1/1 keys stored"));
-                assert!(text.contains("p audio"));
-                assert!(text.contains("v source"));
+                assert!(text.contains("Sign in"));
+                assert!(text.contains("Docs"));
                 assert!(text.contains("PICARD .. OFF"));
                 if width == 80 {
                     assert!(text.contains("godmode "));
@@ -1453,11 +1524,7 @@ mod tests {
         assert!(path.is_absolute(), "preview destination must be absolute");
         let registry: Registry =
             toml::from_str(include_str!("../registry/providers.toml")).unwrap();
-        let store = Store::new(
-            "/demo/.config/godmode".into(),
-            "/demo/.local/state/godmode/cli".into(),
-        )
-        .unwrap();
+        let store = Store::new("/demo/.godmode".into(), "/demo/.godmode/state".into()).unwrap();
         let mut ui = Ui::new(true, &registry);
         ui.states[0][0] = KeyState::Set;
         ui.states[1][0] = KeyState::Set;
@@ -1504,6 +1571,7 @@ mod tests {
             ui.show_visual = kind.starts_with("picard");
             ui.visual_tiled = kind == "picard-tiled";
             ui.accepted = kind != "disclaimer";
+            ui.first_run = kind == "disclaimer";
             ui.editing = if kind == "masked" {
                 let mut input = SecretInput::new();
                 input

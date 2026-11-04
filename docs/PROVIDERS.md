@@ -18,6 +18,7 @@ schema = 1
 id = "acme"
 name = "Acme"
 purpose = "Manage the operator's Acme projects"
+login = "https://example.com/login"
 console = "https://example.com/settings/tokens"
 docs = "https://example.com/docs/authentication"
 notes = ["Use the account that owns your projects."]
@@ -33,7 +34,17 @@ format = "Opaque token issued by Acme"
 verify = "Use the authenticated client to read the account identity"
 ```
 
-Providers merge by `id`. Reusing an existing ID replaces its entire entry; a new ID appends a provider. IDs are lowercase slugs, and key names must be unique across the merged catalog. The schema rejects unknown fields. Console and documentation links must be HTTPS. Guidance is data: the CLI does not execute setup steps, verification hints or commands from a catalog.
+Providers merge by `id`. Reusing an existing ID replaces its entire entry; a new ID appends a provider. IDs are lowercase slugs, and key names must be unique across the merged catalog. The schema rejects unknown fields. `login`, `console` and `docs` links must be HTTPS. `login` is optional for older overlays; when omitted or empty, the console link is used for sign-in. Guidance is data: the CLI does not execute setup steps, verification hints or commands from a catalog.
+
+Provider links:
+
+| Field | Meaning |
+| --- | --- |
+| `login` | Account sign-in page; optional, with `console` as the fallback |
+| `console` | Direct credential-management or API-key page |
+| `docs` | Official setup or authentication documentation |
+
+In interactive setup, `l` opens sign-in, `o` opens the key page and `d` opens documentation for the selected provider. The links are also displayed as text so you can copy them. Browsers open only after a keypress; entering a credential never opens a browser. If you prefer a plain command, `godmode guide PROVIDER` prints all three URLs and the setup instructions.
 
 Key metadata:
 
@@ -54,21 +65,23 @@ Avoid storing derivable account IDs or duplicating product runtime keys merely t
 
 ## Bundled guides
 
-The bundled [registry](../registry/providers.toml) covers the following providers. Documentation links were reviewed on 2026-11-03. Their interfaces and permission models can change; confirm the exact account and scope in the provider before relying on a credential.
+The bundled [registry](../registry/providers.toml) covers the following providers. Public sign-in and documentation entry points were checked on **2026-11-04**. This was a link review without signing in or submitting credentials; some provider pages require JavaScript. Interfaces and permission models can change, so confirm the account and scope in the provider before relying on a credential.
 
-| Provider | Official documentation |
-| --- | --- |
-| GitHub | [Personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) |
-| Cloudflare | [Create API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) |
-| Vercel | [Access tokens](https://vercel.com/docs/accounts/access-tokens) |
-| Supabase | [Personal access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens) |
-| Stripe | [API keys](https://docs.stripe.com/keys) |
-| PostHog | [Personal API keys](https://posthog.com/docs/api/personal-api-keys) |
-| Notion | [Internal connections](https://developers.notion.com/guides/connections-and-tokens/internal-connections) |
-| Gmail | [App passwords](https://support.google.com/accounts/answer/185833) |
-| Google | [Ads service accounts](https://developers.google.com/google-ads/api/docs/oauth/service-accounts), [Search Console authorization](https://developers.google.com/webmaster-tools/v1/how-tos/authorizing) |
-| Higgsfield | [Authentication](https://docs.higgsfield.ai/docs/authentication) |
-| Zernio | [Quickstart](https://docs.zernio.com/quickstart) |
-| Prodigi | [Print API](https://www.prodigi.com/print-api/docs/) |
+| Provider | Sign in | Official documentation |
+| --- | --- | --- |
+| GitHub | [GitHub login](https://github.com/login) | [Personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) |
+| Cloudflare | [Dashboard login](https://dash.cloudflare.com/login) | [Create API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) |
+| Vercel | [Vercel login](https://vercel.com/login) | [Access tokens](https://vercel.com/docs/accounts/access-tokens) |
+| Supabase | [Dashboard sign-in](https://supabase.com/dashboard/sign-in) | [Personal access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens) |
+| Stripe | [Dashboard login](https://dashboard.stripe.com/login) | [API keys](https://docs.stripe.com/keys) |
+| PostHog | [US Cloud login](https://us.posthog.com/login) | [Personal API keys](https://posthog.com/docs/api/personal-api-keys) |
+| Notion | [Notion login](https://app.notion.com/login) | [Internal connections](https://developers.notion.com/guides/connections-and-tokens/internal-connections) |
+| Gmail | [Google Account sign-in](https://accounts.google.com/) | [App passwords](https://support.google.com/accounts/answer/185833) |
+| Google | [Google Account sign-in](https://accounts.google.com/) | [Ads service accounts](https://developers.google.com/google-ads/api/docs/oauth/service-accounts), [Search Console authorization](https://developers.google.com/webmaster-tools/v1/how-tos/authorizing) |
+| Higgsfield | [API platform login](https://open.higgsfield.ai/auth/sign-in?redirect_url=%2Fapi-keys) | [Authentication](https://docs.higgsfield.ai/docs/authentication) |
+| Zernio | [Zernio sign-in](https://zernio.com/signin) | [Quickstart](https://docs.zernio.com/quickstart) |
+| Prodigi | [Dashboard login](https://dashboard.prodigi.com/login) | [Print API](https://www.prodigi.com/print-api/docs/) |
+
+PostHog's bundled entry uses US Cloud. If your project is hosted in the EU, use `https://eu.posthog.com/login` and its matching console URL in an overlay. The Higgsfield API console now lives at `open.higgsfield.ai`; its former `console.higgsfield.ai` entry redirects there. Login links lead to the provider's normal browser authentication and do not enroll an OAuth grant, supply a password, or verify the saved API key.
 
 Search Console user OAuth grants belong in a separate state store; see [Google setup](GOOGLE.md). A Gmail app password does not provide Google SSO, Gmail API or Workspace administration access.

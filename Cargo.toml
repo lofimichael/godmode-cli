@@ -1,6 +1,6 @@
 [package]
 name = "godmode"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Onboard a machine into Godmode: one credential file, a disclaimer, and a terminal UI that never shows a secret."

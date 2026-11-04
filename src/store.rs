@@ -14,6 +14,12 @@ use std::{
 };
 use zeroize::Zeroizing;
 
+pub const FIRST_RUN_NOTICE: &str = "No existing Godmode setup found
+
+An account-wide key can let an agent delete your projects, publish under your name or run up a bill. The provider does not give a shit whether a valid request came from you, a model, or instructions the model picked up from a web page. It will carry out whatever the key permits.
+
+If your plan is to paste every administrator key you own and hope the model knows what it is doing, stop here. Read the permissions. Check which account gets billed. Start with the providers you actually need. This program cannot undo the damage after you hand over the wrong access.";
+
 pub const DISCLAIMER: &str = "Before you start
 
 Godmode keeps provider credentials in one .env.godmode file so your agents can use them. Depending on the permissions you give them, those agents can deploy code, delete infrastructure, send mail, publish things and spend money. If that is more access than you intended, change the permissions at the provider before saving the key here.
@@ -49,6 +55,9 @@ impl Store {
             state_dir,
             scope: format!("{:016x}", hasher.finish()),
         })
+    }
+    pub fn needs_setup(&self) -> Result<bool, String> {
+        Ok(!crate::paths::has_configuration(&self.config_dir)?)
     }
     fn receipt(&self) -> PathBuf {
         self.state_dir.join(format!("ack-v1-{}", self.scope))

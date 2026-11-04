@@ -7,6 +7,7 @@ schema = 1
 id = "github"
 name = "GitHub"
 purpose = "Account-wide repo, code, Actions, secrets, issue and PR automation for the owner's products"
+login = "https://github.com/login"
 console = "https://github.com/settings/personal-access-tokens/new?name=godmode&expires_in=366&administration=write&contents=write&workflows=write&actions=write&secrets=write&actions_variables=write&environments=write&issues=write&pull_requests=write"
 docs = "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
 
@@ -25,6 +26,7 @@ docs = "https://docs.github.com/en/authentication/keeping-your-account-and-data-
 id = "cloudflare"
 name = "Cloudflare"
 purpose = "Provision and operate Workers, D1, R2, KV, Queues, Workflows, DNS, Email Routing and logs via API/Wrangler"
+login = "https://dash.cloudflare.com/login"
 console = "https://dash.cloudflare.com/profile/api-tokens"
 docs = "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/"
 
@@ -42,6 +44,7 @@ docs = "https://developers.cloudflare.com/fundamentals/api/get-started/create-to
 id = "vercel"
 name = "Vercel"
 purpose = "Create projects, deploy, and manage domains/env vars on the owner's Vercel team via CLI/REST API"
+login = "https://vercel.com/login"
 console = "https://vercel.com/account/tokens"
 docs = "https://vercel.com/docs/accounts/access-tokens"
 
@@ -59,6 +62,7 @@ docs = "https://vercel.com/docs/accounts/access-tokens"
 id = "supabase"
 name = "Supabase"
 purpose = "Provision and manage Supabase projects, databases, auth, Edge Functions and keys via the Management API"
+login = "https://supabase.com/dashboard/sign-in"
 console = "https://supabase.com/dashboard/account/tokens"
 docs = "https://supabase.com/docs/guides/platform/personal-access-tokens"
 
@@ -77,6 +81,7 @@ docs = "https://supabase.com/docs/guides/platform/personal-access-tokens"
 id = "stripe"
 name = "Stripe"
 purpose = "Sell the owner's products via Stripe: products, prices, Checkout, Payment Links, subscriptions"
+login = "https://dashboard.stripe.com/login"
 console = "https://dashboard.stripe.com/test/apikeys"
 docs = "https://docs.stripe.com/keys"
 
@@ -86,7 +91,7 @@ docs = "https://docs.stripe.com/keys"
   required = true
   usage = "Server-side authentication for every Stripe API call in the test sandbox: creating products, prices, customers, Checkout Sessions, Payment Links, subscriptions, invoices and webhook endpoints."
   scope = "In the sandbox use the default unrestricted sk_test_ key, or an rk_test_ restricted key with Write on Products, Prices, Customers, Checkout Sessions, Payment Links, Subscriptions, Invoices, Payment Intents, Charges and Refunds and Webhook Endpoints plus Read on Balance; no real money is at risk."
-  steps = ["Sign in at dashboard.stripe.com; click the account picker > Switch to sandbox and open (or create) a sandbox.", "Go to dashboard.stripe.com/test/apikeys (Developers > API keys) and confirm the sandbox banner at the top.", "Either reveal the default Secret key (sk_test_) or click Create restricted key for an rk_test_ key.", "For a restricted key, name it godmode-test and set Write on the resource groups agents need; Create key.", "If prompted, complete verification (email/SMS code or two-factor), click the key value to copy, paste it.", "Add a note on the key saying it lives in ~/.config/godmode/.env.godmode."]
+  steps = ["Sign in at dashboard.stripe.com; click the account picker > Switch to sandbox and open (or create) a sandbox.", "Go to dashboard.stripe.com/test/apikeys (Developers > API keys) and confirm the sandbox banner at the top.", "Either reveal the default Secret key (sk_test_) or click Create restricted key for an rk_test_ key.", "For a restricted key, name it godmode-test and set Write on the resource groups agents need; Create key.", "If prompted, complete verification (email/SMS code or two-factor), click the key value to copy, paste it.", "Add a note identifying the Godmode home where this key is stored."]
   format = "starts with sk_test_ (standard) or rk_test_ (restricted); length not officially documented"
   prefixes = ["sk_test_", "rk_test_"]
   forbid_prefixes = ["sk_live_", "rk_live_"]
@@ -132,6 +137,7 @@ docs = "https://docs.stripe.com/keys"
 id = "posthog"
 name = "PostHog"
 purpose = "Agents provision PostHog orgs/projects, manage flags and insights, and query product analytics"
+login = "https://us.posthog.com/login"
 console = "https://us.posthog.com/settings/user-api-keys"
 docs = "https://posthog.com/docs/api/personal-api-keys"
 
@@ -141,7 +147,7 @@ docs = "https://posthog.com/docs/api/personal-api-keys"
   required = true
   usage = "Bearer token for PostHog's private REST API so agents can create and configure organizations and projects, manage feature flags, insights and dashboards, and run HogQL queries."
   scope = "Set 'Organization & project access' to All access (or Organizations with your org, which covers all its projects) and grant organization:write, project:write, feature_flag:write, insight:write, dashboard:write, query:read and user:read - or pick the 'All access' preset (*) for one unrestricted key - and keep it local, never in frontend or deployed code."
-  steps = ["Sign in at us.posthog.com (eu.posthog.com for EU) and open Settings > User > Personal API keys.", "Click Create a personal API Key, label it godmode and choose an expiration.", "Under 'Organization & project access' choose All access, or Organizations + your org (all its projects).", "Scopes: preset 'All access', or organization, project, feature_flag, insight write + query:read, user:read.", "Create it and copy the phx_ value immediately - PostHog never shows it again.", "Save it as POSTHOG_PERSONAL_API_KEY in ~/.config/godmode/.env.godmode."]
+  steps = ["Sign in at us.posthog.com (eu.posthog.com for EU) and open Settings > User > Personal API keys.", "Click Create a personal API Key, label it godmode and choose an expiration.", "Under 'Organization & project access' choose All access, or Organizations + your org (all its projects).", "Scopes: preset 'All access', or organization, project, feature_flag, insight write + query:read, user:read.", "Create it and copy the phx_ value immediately - PostHog never shows it again.", "Save it as POSTHOG_PERSONAL_API_KEY in the credential file shown by Godmode."]
   format = "Personal API key beginning with phx_; keep it local and server-side."
   prefixes = ["phx_"]
   verify = "Read the current user or organization on the correct US/EU API host with an authenticated client."
@@ -150,6 +156,7 @@ docs = "https://posthog.com/docs/api/personal-api-keys"
 id = "notion"
 name = "Notion"
 purpose = "Read, create and update pages, databases and comments in the owner's Notion workspace via the API"
+login = "https://app.notion.com/login"
 console = "https://app.notion.com/developers/connections"
 docs = "https://developers.notion.com/guides/connections-and-tokens/internal-connections"
 
@@ -168,6 +175,7 @@ docs = "https://developers.notion.com/guides/connections-and-tokens/internal-con
 id = "gmail"
 name = "Gmail"
 purpose = "Read inboxes and send mail for agents over IMAP/SMTP using a Google account and app password"
+login = "https://accounts.google.com/"
 console = "https://myaccount.google.com/apppasswords"
 docs = "https://support.google.com/accounts/answer/185833"
 notes = ["App passwords are for IMAP/SMTP. They do not grant browser login, Google SSO, Workspace administration or Gmail API OAuth access. Some organizations and security configurations disable app passwords."]
@@ -196,6 +204,7 @@ notes = ["App passwords are for IMAP/SMTP. They do not grant browser login, Goog
 id = "google"
 name = "Google Ads + Search Console"
 purpose = "Advertising workflows and owned-site search reporting with static service-account credentials"
+login = "https://accounts.google.com/"
 console = "https://console.cloud.google.com/iam-admin/serviceaccounts"
 docs = "https://developers.google.com/google-ads/api/docs/oauth/service-accounts"
 notes = ["Google Ads requires an enabled API, the appropriate API access level and Ads-account authorization; key storage alone establishes none of these.", "Keep Ads API usage within the approved advertising purpose. Search Console is a separate owned-site measurement API.", "Desktop OAuth is a separate attended flow. Keep refresh grants in private local state outside this credential file and Git; this CLI does not enroll or refresh user sessions. See docs/GOOGLE.md."]
@@ -226,7 +235,8 @@ notes = ["Google Ads requires an enabled API, the appropriate API access level a
 id = "higgsfield"
 name = "Higgsfield"
 purpose = "Create images and video through Higgsfield API credentials"
-console = "https://console.higgsfield.ai/"
+login = "https://open.higgsfield.ai/auth/sign-in?redirect_url=%2Fapi-keys"
+console = "https://open.higgsfield.ai/api-keys"
 docs = "https://docs.higgsfield.ai/docs/authentication"
 notes = ["Credentials identify an account; individual models may have separate restrictions. Generation can consume paid credits. This CLI does not fund an account or start generation."]
 
@@ -254,6 +264,7 @@ notes = ["Credentials identify an account; individual models may have separate r
 id = "zernio"
 name = "Zernio"
 purpose = "Connect social accounts and operate publishing, scheduling and analytics through one API"
+login = "https://zernio.com/signin"
 console = "https://zernio.com/dashboard/api-keys"
 docs = "https://docs.zernio.com/quickstart"
 
@@ -271,6 +282,7 @@ docs = "https://docs.zernio.com/quickstart"
 id = "prodigi"
 name = "Prodigi"
 purpose = "Print-on-demand fulfilment: quote, order and track physical products via the Prodigi Print API"
+login = "https://dashboard.prodigi.com/login"
 console = "https://dashboard.prodigi.com/settings/api"
 docs = "https://www.prodigi.com/print-api/docs/reference/"
 notes = ["Sandbox orders are intended for testing. Check the API-version documentation before other writes: shared catalogue, artwork or account-setting operations may affect live data. Live orders can print, ship and incur charges."]

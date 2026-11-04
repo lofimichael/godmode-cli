@@ -122,6 +122,15 @@ def main():
         env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'HOME': str(root),
                'TERM': 'xterm-256color', 'COLORTERM': 'truecolor',
                'GODMODE_REDUCE_MOTION': '1'}
+        # Verify link dispatch without opening a browser or making a request.
+        browser_log = root / 'opened-links'
+        stub_bin = root / 'test-bin'
+        stub_bin.mkdir()
+        for name in ['open', 'xdg-open']:
+            stub = stub_bin / name
+            stub.write_text("#!/bin/sh\nprintf '%s\\n' \"$1\" >> " + shlex.quote(str(browser_log)) + "\n")
+            stub.chmod(0o700)
+        env['PATH'] = str(stub_bin) + ':' + env['PATH']
         command = [str(binary), '--config-dir', str(config), '--state-dir', str(state), '--no-motion']
         token = 'github_pat_PTY_SECRET_SENTINEL_9b6f2054'
         cancelled = 'CANCELLED_PRIVATE_SENTINEL_f08d'
@@ -132,14 +141,25 @@ def main():
             first = Terminal(command + ['onboard'], env)
             sessions.append(first)
             first.seen('READTHIS.NFO')
+            first.seen('No existing Godmode setup found')
+            assert not browser_log.exists(), 'link opened before explicit request'
             assert not env_file.exists(), 'onboarding wrote before acknowledgement'
             first.send(b'GODMODE\r')
             first.seen('PROVIDERS')
+            for index, key in enumerate([b'l', b'o', b'd']):
+                first.send(key)
+                first.wait(lambda: browser_log.exists() and len(browser_log.read_text().splitlines()) == index + 1)
+            import tomllib
+            registry = tomllib.loads((Path(__file__).resolve().parent.parent / 'registry/providers.toml').read_text())
+            github = registry['provider'][0]
+            assert browser_log.read_text().splitlines() == [github['login'], github['console'], github['docs']]
             first.send(b'\r')
             first.seen('ADD / REPLACE')
             first.paste(token)
             first.send(b'\r')
             first.wait(lambda: env_file.exists() and values(env_file).get('GH_TOKEN') == token)
+            first.send(b'n')
+            first.seen('Next provider selected')
             first.send(b'q')
             first.done()
             assert env_file.stat().st_mode & 0o777 == 0o600
@@ -179,7 +199,7 @@ def main():
             for session in sessions:
                 for sentinel in [token, cancelled, 'MULTILINE_PTY_SENTINEL_21a0_']:
                     assert sentinel.encode() not in session.capture, 'credential leaked into terminal output'
-            print('PTY smoke passed: acknowledgement, provider save, 14 KB JSON paste, cancel, Ctrl-C, masking, terminal restoration.')
+            print('PTY smoke passed: new-setup notice, acknowledgement, exact login/key/docs dispatch, guided next, provider save, 14 KB JSON paste, cancel, Ctrl-C, masking, terminal restoration.')
         finally:
             for session in sessions:
                 session.close()

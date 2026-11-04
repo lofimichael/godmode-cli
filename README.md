@@ -6,7 +6,9 @@ The agents already know how to read an environment file, so there didn't seem mu
 
 The program is a single Rust executable. It needs no package manager, service or account of its own, and sends no telemetry. Credentials stay local unless you pass them to another program; what that program can do depends on the permissions attached to those credentials. See [the storage notes](docs/SECURITY.md) before adding them.
 
-![Godmode provider board, rendered from the actual UI with synthetic credentials](docs/images/provider-board.png)
+![Interactive setup recorded from the real CLI using synthetic credentials](docs/images/setup.gif)
+
+The recording uses an isolated temporary home and a synthetic key. It demonstrates local setup, not provider authentication. [How the GIF is recorded](https://github.com/lofimichael/godmode-cli/blob/main/scripts/README.md).
 
 The interface uses a small ASCII masthead and text panels. [READTHIS.NFO](READTHIS.NFO) contains the release notes. The [language and culture study](docs/CULTURE.md) documents the period sources, including the Usenet post preserved on Ratpoison's inspiration page, and the choices made here.
 
@@ -18,9 +20,8 @@ From this checkout, with Rust 1.96 installed:
 cargo build --release --locked
 GODMODE_DEMO_DIR=$(mktemp -d "$PWD/target/godmode-demo.XXXXXX")
 ./target/release/godmode \
-  --config-dir "$GODMODE_DEMO_DIR/config" \
-  --state-dir "$GODMODE_DEMO_DIR/state" \
-  onboard
+  --home "$GODMODE_DEMO_DIR/.godmode" \
+  init
 ```
 
 This runs the build directly. It does not install over an existing `godmode` executable or read your normal credential directory. Use synthetic credentials for this demo. The interface asks you to type `GODMODE` before creating its local files. `--no-motion` disables animation; `NO_COLOR=1` disables color.
@@ -42,17 +43,21 @@ For a downloaded release archive and its `SHA256SUMS`:
 
 ```sh
 sh install.sh \
-  --archive ./godmode-v0.3.0-aarch64-apple-darwin.tar.gz \
+  --archive ./godmode-v0.4.0-aarch64-apple-darwin.tar.gz \
   --checksum ./SHA256SUMS
 ```
 
 Choose the archive for your system: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-musl`, or `x86_64-unknown-linux-musl`. The installer verifies integrity against the supplied digest; obtain both the artifact and trusted checksum from the intended release. Archives are not currently Developer ID signed or notarized, and checksums are not a signature.
 
-The destination is `~/.local/bin/godmode`. **An existing executable is refused by default.** Use `--bin-dir /your/directory` for a separate installation. `--force` explicitly replaces a regular destination file; a symlink is always refused. If the directory is not on your PATH, invoke the full path. The installer never modifies PATH for you.
+The default destination is `~/.godmode/bin/godmode`. **An existing executable is refused by default.** Installer `--home DIR` keeps a separate installation under `DIR/bin`; `--bin-dir DIR` changes only the binary destination. The installer prints an absolute setup command and PATH instructions when needed. It never changes your shell profile. See [installation and existing-home detection](docs/INSTALLATION.md).
 
 ## Onboard and use a credential
 
-Run `godmode` in a terminal to open the provider board. Read the disclaimer, choose only the providers you need, and save keys individually. Progress comes from the file, so you can leave and resume. With redirected input/output, the default command prints local status instead of opening a full-screen interface.
+Run `godmode init` or `godmode` in a terminal for interactive setup. A machine without existing Godmode configuration gets a blunt first-run explanation of account permissions and consequences before anything is created. Type `GODMODE` to acknowledge it, then choose only the providers you need.
+
+Each provider has visible actions for sign-in (`l`), API keys (`o`) and documentation (`d`). They open the exact provider links in your browser; return to the terminal to paste the key into masked input. Enter saves it, `n` moves to the next key/provider, and `s` skips the rest of a provider. Arrow keys and Tab still let you browse freely. Full URLs are also printed by `godmode guide PROVIDER`. Nothing opens a browser or checks provider access automatically.
+
+Saved progress comes from the credential file, so you can leave and resume. With redirected input/output, the default command prints local status; if setup is absent, it also prints the first-run notice to stderr. `init --accept-disclaimer` remains the explicit scripting path.
 
 The command-line path is equally usable:
 
@@ -106,18 +111,22 @@ Repeat `--with` to pass multiple credentials. In `SOURCE_KEY=CHILD_NAME`, the le
 
 Exit codes are `0` for success, `1` for a failed `has`/`doctor` check or declined initialization, and `2` for invocation or operation errors. `run` propagates the child exit code (or `128 + signal`). `status` reports presence, not provider authentication, scope, account ownership, billing readiness or permission to act.
 
-Global options: `--config-dir DIR`, `--state-dir DIR`, `--no-motion`. Directory flags override `GODMODE_CONFIG_DIR` and `GODMODE_STATE_DIR`. `GODMODE_REGISTRY` selects an explicit overlay; `GODMODE_NO_MOTION=1` also disables animation.
+Global options: `--home DIR` (alias `--config-dir`), `--state-dir DIR`, `--no-motion`. Home selection uses the explicit flag, then `GODMODE_HOME`, then the compatibility variable `GODMODE_CONFIG_DIR`, then automatic discovery. State selection uses its flag, then `GODMODE_STATE_DIR`, then the selected home's default. `GODMODE_REGISTRY` selects an explicit overlay; `GODMODE_NO_MOTION=1` also disables animation.
 
 ## One credential file, optional metadata
 
-Defaults:
+New installations keep everything in one home:
 
 ```text
-~/.local/bin/godmode                  executable, if installed
-~/.config/godmode/.env.godmode        credentials, mode 0600
-~/.config/godmode/providers.toml      optional provider metadata, no credentials
-~/.local/state/godmode/cli/           local acknowledgments, locks and optional Picard cache
+~/.godmode/
+  bin/godmode          executable
+  .env.godmode         credentials, mode 0600
+  providers.toml       optional provider metadata, no credentials
+  AGENTS.md            operating rules, if supplied separately
+  state/               acknowledgements, locks and optional Picard media
 ```
+
+If `~/.godmode` has no credential file, provider catalog or operating rules, an existing `~/.config/godmode` is adopted with its existing `~/.local/state/godmode/cli` state path. Installing only the new binary does not hide that legacy setup. No credentials, rules or OAuth state are migrated. An explicit `--home` selects that home and defaults its state to `DIR/state`.
 
 Existing configuration directories and operating rules stay in place. New directories are private; state files use mode 0600. Acknowledgments are named `ack-v1-<config-path hash>` and locks `write-<config-path hash>.lock`. Writes use a private temporary file and atomic replacement; this is local plaintext storage, not encryption.
 
@@ -136,4 +145,4 @@ sh tests/install.sh
 
 [Release instructions](docs/RELEASING.md) describe local checks, CI opt-in for private repositories and the four-target draft release workflow. CI does not need provider secrets. There is no telemetry or automatic updater. Picard runs only while its foreground command or board is open; it leaves no background service.
 
-To uninstall, first confirm which binary this installer placed, then remove that executable. Credentials and operating rules remain intact. Remove the CLI's acknowledgment/lock directory separately if no CLI process is active; never recursively delete `~/.config/godmode` to uninstall this tool. Deleting a local key does not revoke it at its provider.
+To uninstall, first confirm which binary this installer placed, then remove that executable. Credentials and operating rules remain intact. Remove the CLI's acknowledgment/lock directory separately if no CLI process is active; do not delete an entire Godmode home merely to remove its executable. Deleting a local key does not revoke it at its provider.

@@ -15,11 +15,24 @@ pub struct Provider {
     pub id: String,
     pub name: String,
     pub purpose: String,
+    #[serde(default)]
+    pub login: String,
     pub console: String,
     pub docs: String,
     #[serde(default)]
     pub notes: Vec<String>,
     pub key: Vec<Key>,
+}
+
+impl Provider {
+    /// Older overlays can omit a dedicated login URL; their console remains usable.
+    pub fn login_url(&self) -> &str {
+        if self.login.is_empty() {
+            &self.console
+        } else {
+            &self.login
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -104,7 +117,7 @@ impl Registry {
             {
                 return Err("Provider IDs must be unique lowercase slugs".into());
             }
-            for url in [&p.console, &p.docs] {
+            for url in [&p.console, &p.docs, p.login_url()] {
                 if !url.starts_with("https://")
                     || url.chars().any(char::is_whitespace)
                     || url.chars().any(char::is_control)
@@ -149,6 +162,7 @@ pub const TEMPLATE: &str = r#"schema = 1
 id = "example"
 name = "Example"
 purpose = "Describe what your agents can do with this provider"
+login = "https://example.com/login"
 console = "https://example.com/settings/tokens"
 docs = "https://example.com/docs/auth"
 
@@ -170,5 +184,42 @@ mod tests {
         r.validate().unwrap();
         let r: Registry = toml::from_str(TEMPLATE).unwrap();
         r.validate().unwrap();
+    }
+
+    #[test]
+    fn optional_login_preserves_old_overlays_and_rejects_unsafe_links() {
+        let legacy = TEMPLATE.replace("login = \"https://example.com/login\"\n", "");
+        let mut registry: Registry = toml::from_str(&legacy).unwrap();
+        registry.validate().unwrap();
+        let provider = &mut registry.provider[0];
+        assert!(provider.login.is_empty());
+        assert_eq!(provider.login_url(), provider.console);
+        provider.login = "https://example.com/sign-in".into();
+        assert_eq!(provider.login_url(), "https://example.com/sign-in");
+        registry.validate().unwrap();
+        for unsafe_url in [
+            "http://example.com/login",
+            "https://example.com/ bad",
+            "https://example.com/\u{1b}[31m",
+        ] {
+            registry.provider[0].login = unsafe_url.into();
+            assert!(registry.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn every_bundled_provider_has_separate_login_and_documentation() {
+        let registry: Registry =
+            toml::from_str(include_str!("../registry/providers.toml")).unwrap();
+        registry.validate().unwrap();
+        for provider in registry.provider {
+            assert!(
+                !provider.login.is_empty(),
+                "{} has no login entry",
+                provider.id
+            );
+            assert!(!provider.docs.is_empty());
+            assert_eq!(provider.login_url(), provider.login);
+        }
     }
 }

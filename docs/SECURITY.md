@@ -9,7 +9,7 @@ The credential inventory is plaintext. Mode 0600 prevents other ordinary users f
 - Stores one flat `.env.godmode`, with shell-compatible quoting and no evaluation of shell expressions.
 - Preserves unrelated content during edits and checks ownership, permissions, file type, size and symlink components.
 - Serializes cooperating writers and replaces the file atomically; temporary credential files are private.
-- Requires an acknowledgment before mutations. Acknowledgment is a local receipt, not an enforceable authorization boundary.
+- Requires an acknowledgment before mutations. A fresh setup shows the stronger first-run notice; existing setups use the ordinary storage disclosure. Acknowledgment is a local receipt, not an enforceable authorization boundary.
 - Prints names and local states. Masked input has no reveal control, and parsing errors suppress credential content.
 - Makes no provider API calls and sends no telemetry. Provider verification guidance is for a separate manual operation. Explicit Picard picture/audio requests download pinned media from YTMND; the standalone commands do not read credentials, and no credentials are sent. Browser links open only on command.
 
@@ -27,7 +27,7 @@ Do not run an untrusted command merely because its environment is restricted. Av
 
 The installer refuses an existing executable unless replacement is explicitly requested with `--force`, and always refuses a symlink destination. It verifies a supplied SHA-256 digest before installation and makes no network requests. Checksums establish integrity relative to the supplied digest, not publisher identity.
 
-The CLI does not install hooks, edit shell profiles, replace operating rules, synchronize credentials or enroll OAuth sessions. Test with explicit configuration and state directories when evaluating it alongside an existing installation.
+The CLI does not install hooks, edit shell profiles, replace operating rules, synchronize credentials or enroll OAuth sessions. New installs keep the binary, credentials and state under `~/.godmode`. Existing `~/.config/godmode` is detected when the new home has no configuration markers; the binary alone is not such a marker. No existing setup is moved. Use `--home DIR` for an isolated setup, and `--state-dir DIR` if a separate state path is wanted.
 
 ## Reporting a problem
 

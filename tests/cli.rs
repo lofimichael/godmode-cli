@@ -358,3 +358,28 @@ fn picard_show_requires_terminal_before_network_or_storage() {
     assert!(!f.env().exists());
     assert!(!f.state.exists());
 }
+
+#[test]
+fn new_setup_warning_precedes_init_and_is_not_repeated_for_existing_setup() {
+    let f = Fixture::new();
+    let declined = f.run(&["init"]);
+    assert!(!declined.status.success());
+    assert!(String::from_utf8_lossy(&declined.stderr).contains("No existing Godmode setup found"));
+    assert!(!f.config.exists());
+    assert!(!f.state.exists());
+    let accepted = f.run(&["init", "--accept-disclaimer"]);
+    assert!(accepted.status.success());
+    assert!(String::from_utf8_lossy(&accepted.stderr).contains("No existing Godmode setup found"));
+    let original = fs::read(f.env()).unwrap();
+    let repeated = f.run(&["init", "--accept-disclaimer"]);
+    assert!(repeated.status.success());
+    assert!(!String::from_utf8_lossy(&repeated.stderr).contains("No existing Godmode setup found"));
+    assert_eq!(fs::read(f.env()).unwrap(), original);
+
+    let legacy = Fixture::new();
+    fs::create_dir(&legacy.config).unwrap();
+    fs::write(legacy.config.join("AGENTS.md"), "existing operator rules").unwrap();
+    let out = legacy.run(&["init", "--accept-disclaimer"]);
+    assert!(out.status.success());
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("No existing Godmode setup found"));
+}

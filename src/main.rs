@@ -1,4 +1,5 @@
 mod envfile;
+mod paths;
 mod picard;
 mod picard_visual;
 mod registry;
@@ -24,8 +25,8 @@ use zeroize::Zeroizing;
     disable_help_subcommand = true
 )]
 struct Cli {
-    /// Credential directory (default: ~/.config/godmode). Does not install or replace rules.
-    #[arg(long, global = true)]
+    /// Godmode home (default: ~/.godmode; existing ~/.config/godmode is detected)
+    #[arg(long = "home", visible_alias = "config-dir", global = true)]
     config_dir: Option<PathBuf>,
     /// Local acknowledgements, writer locks and optional Picard cache
     #[arg(long, global = true)]
@@ -160,15 +161,15 @@ fn execute(cli: Cli) -> Result<i32, String> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or("HOME is not set; cannot resolve local directories")?;
-    let config = cli
+    let requested_home = cli
         .config_dir
-        .or_else(|| std::env::var_os("GODMODE_CONFIG_DIR").map(PathBuf::from))
-        .unwrap_or_else(|| home.join(".config/godmode"));
-    let state = cli
+        .or_else(|| std::env::var_os("GODMODE_HOME").map(PathBuf::from))
+        .or_else(|| std::env::var_os("GODMODE_CONFIG_DIR").map(PathBuf::from));
+    let requested_state = cli
         .state_dir
-        .or_else(|| std::env::var_os("GODMODE_STATE_DIR").map(PathBuf::from))
-        .unwrap_or_else(|| home.join(".local/state/godmode/cli"));
-    let store = Store::new(config, state)?;
+        .or_else(|| std::env::var_os("GODMODE_STATE_DIR").map(PathBuf::from));
+    let resolved = paths::resolve(&home, requested_home, requested_state)?;
+    let store = Store::new(resolved.config_dir, resolved.state_dir)?;
     if let Some(Commands::Picard { action }) = &cli.command {
         match action {
             Some(PicardCommand::Show) => tui::show_picard(&store.state_dir)?,
@@ -194,6 +195,12 @@ fn execute(cli: Cli) -> Result<i32, String> {
             || !io::stdout().is_terminal()
             || std::env::var("TERM").as_deref() == Ok("dumb") =>
         {
+            if store.needs_setup()? {
+                eprintln!(
+                    "{}\n\nRun `godmode init` in a terminal to begin.\n",
+                    store::FIRST_RUN_NOTICE
+                );
+            }
             status(&store, &registry, false)
         }
         None | Some(Commands::Onboard) => {
@@ -213,10 +220,16 @@ fn execute(cli: Cli) -> Result<i32, String> {
         Some(Commands::Init { accept_disclaimer }) => {
             if !accept_disclaimer {
                 if !io::stdin().is_terminal() {
+                    if store.needs_setup()? {
+                        eprintln!("{}\n", store::FIRST_RUN_NOTICE);
+                    }
                     return Err("Read the disclaimer with interactive init, or explicitly pass --accept-disclaimer".into());
                 }
                 tui::run(&store, &registry, cli.no_motion)?;
                 return Ok(if store.is_initialized() { 0 } else { 1 });
+            }
+            if store.needs_setup()? {
+                eprintln!("{}\n", store::FIRST_RUN_NOTICE);
             }
             store.acknowledge()?;
             println!(
@@ -307,8 +320,12 @@ fn execute(cli: Cli) -> Result<i32, String> {
                 .find(|p| p.id == provider)
                 .ok_or("Unknown provider; use providers to list IDs")?;
             println!(
-                "{}\n{}\n\nConsole: {}\nDocs: {}",
-                p.name, p.purpose, p.console, p.docs
+                "{}\n{}\n\nSign in: {}\nAPI keys: {}\nDocs: {}",
+                p.name,
+                p.purpose,
+                p.login_url(),
+                p.console,
+                p.docs
             );
             for key in &p.key {
                 println!(

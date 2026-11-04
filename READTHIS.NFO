@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.3.0                                                      |
+| version .. 0.4.0                                                      |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -13,8 +13,19 @@
   installer refuses to replace an existing binary unless you pass --force.
   It leaves credentials, operating rules and shell profiles alone.
 
-  To try it alongside an existing setup, give --config-dir and --state-dir
-  separate temporary paths. There is an example in README.md.
+  New installs use ~/.godmode/bin/godmode, with keys and state under the
+  same ~/.godmode home. Existing ~/.config/godmode setups are detected and
+  left in place. Installation alone does not start setup or migrate keys.
+  To try it separately, pass --home with a temporary path; see README.md.
+
+[ interactive setup ]
+
+  Run godmode init. A new setup gets the first-run warning before anything
+  is created. Type GODMODE to continue, then choose a provider.
+
+  l opens sign-in, o opens API keys, d opens documentation. Return here
+  to paste the key; Enter saves, n continues, s skips this provider.
+  q leaves; saved keys are already on disk. No browser opens automatically.
 
 [ before adding keys ]
 

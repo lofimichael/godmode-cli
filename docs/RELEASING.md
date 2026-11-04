@@ -17,6 +17,8 @@ python3 tests/pty_smoke.py target/release/godmode
 
 Test the UI with synthetic values and explicit isolated `--config-dir` and `--state-dir` paths, including narrow terminal sizes, bracketed paste and cancellation. Do not use a real credential store for development. Running the build path is enough; installing over another `godmode` is unnecessary.
 
+The [installation guide](INSTALLATION.md) documents the self-contained Godmode home, legacy detection, PATH handoff and side-by-side installation. Installer tests use synthetic executables and temporary home directories; they never install into the developer's home directory.
+
 ## CI and cost
 
 `Check` runs formatting, Clippy, tests, shlex fixture parity, installer tests, a release build and a real-terminal onboarding smoke test on Linux and macOS. Public repositories run it on pushes and pull requests. Private repositories require `GODMODE_CI_ENABLED=true` as a repository variable, or an explicit manual dispatch.
