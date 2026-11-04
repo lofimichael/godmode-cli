@@ -14,12 +14,8 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{
-        Block, BorderType, Borders, Clear, Gauge, List, ListItem, ListState, Padding, Paragraph,
-        Wrap,
-    },
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap},
 };
-use tui_big_text::{BigText, PixelSize};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
@@ -38,7 +34,7 @@ struct Theme {
     panel: Color,
     text: Color,
     dim: Color,
-    purple: Color,
+    accent: Color,
     amber: Color,
     green: Color,
     red: Color,
@@ -53,7 +49,7 @@ impl Theme {
                 panel: Color::Reset,
                 text: Color::Reset,
                 dim: Color::Reset,
-                purple: Color::Reset,
+                accent: Color::Reset,
                 amber: Color::Reset,
                 green: Color::Reset,
                 red: Color::Reset,
@@ -63,23 +59,23 @@ impl Theme {
         let rgb = std::env::var("COLORTERM").is_ok_and(|v| v == "truecolor" || v == "24bit");
         if rgb {
             Self {
-                bg: Color::Rgb(12, 12, 20),
-                panel: Color::Rgb(19, 19, 30),
-                text: Color::Rgb(231, 230, 243),
-                dim: Color::Rgb(139, 137, 163),
-                purple: Color::Rgb(173, 136, 255),
-                amber: Color::Rgb(255, 200, 109),
+                bg: Color::Rgb(10, 10, 9),
+                panel: Color::Rgb(10, 10, 9),
+                text: Color::Rgb(224, 220, 209),
+                dim: Color::Rgb(139, 136, 124),
+                accent: Color::Rgb(214, 172, 95),
+                amber: Color::Rgb(241, 205, 142),
                 green: Color::Rgb(118, 218, 181),
                 red: Color::Rgb(255, 120, 135),
                 mono,
             }
         } else {
             Self {
-                bg: Color::Indexed(233),
-                panel: Color::Indexed(235),
+                bg: Color::Indexed(232),
+                panel: Color::Indexed(232),
                 text: Color::Indexed(255),
                 dim: Color::Indexed(245),
-                purple: Color::Indexed(141),
+                accent: Color::Indexed(179),
                 amber: Color::Indexed(222),
                 green: Color::Indexed(115),
                 red: Color::Indexed(210),
@@ -92,10 +88,19 @@ impl Theme {
     }
     fn block(self, title: impl Into<String>, active: bool) -> Block<'static> {
         Block::default()
-            .title(format!(" {} ", title.into()))
+            .title(format!(" [ {} ] ", title.into()))
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(if active { self.purple } else { self.dim }))
+            .border_set(ratatui::symbols::border::Set {
+                top_left: "+",
+                top_right: "+",
+                bottom_left: "+",
+                bottom_right: "+",
+                vertical_left: "|",
+                vertical_right: "|",
+                horizontal_top: "-",
+                horizontal_bottom: "-",
+            })
+            .border_style(Style::default().fg(if active { self.accent } else { self.dim }))
             .style(Style::default().fg(self.text).bg(self.panel))
             .padding(Padding::horizontal(1))
     }
@@ -181,7 +186,7 @@ impl SecretInput {
         Ok(())
     }
     fn mask(&self, width: usize) -> String {
-        "•".repeat(self.value.chars().count().min(width))
+        "*".repeat(self.value.chars().count().min(width))
     }
 }
 
@@ -221,6 +226,7 @@ struct Ui {
     editing: Option<SecretInput>,
     notice: String,
     help: bool,
+    picard_active: bool,
     started: Instant,
 }
 impl Ui {
@@ -240,6 +246,7 @@ impl Ui {
             editing: None,
             notice: String::new(),
             help: false,
+            picard_active: false,
             started: Instant::now(),
         }
     }
@@ -258,6 +265,35 @@ impl Ui {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum LoadingAction {
+    Continue,
+    Cancel,
+    Exit,
+}
+
+fn loading_action(event: Event) -> LoadingAction {
+    match event {
+        Event::Key(key) if key.kind != KeyEventKind::Release => {
+            if key.code == KeyCode::Char('q')
+                || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                LoadingAction::Exit
+            } else if matches!(key.code, KeyCode::Char('p') | KeyCode::Esc) {
+                LoadingAction::Cancel
+            } else {
+                LoadingAction::Continue
+            }
+        }
+        Event::Paste(value) => {
+            // A paste while loading is not credential input. Clear it and cancel playback.
+            let _discarded = Zeroizing::new(value);
+            LoadingAction::Cancel
+        }
+        _ => LoadingAction::Continue,
+    }
+}
+
 /// Open the provider board. Persistence is delegated to Store; UI never reads values for display.
 pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), String> {
     let mut ui = Ui::new(store.is_initialized(), registry);
@@ -267,7 +303,22 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
     let theme = Theme::new();
     let no_motion = no_motion || theme.mono || std::env::var_os("GODMODE_REDUCE_MOTION").is_some();
     let (mut terminal, _guard) = start_terminal()?;
+    let mut picard: Option<crate::picard::Player> = None;
     loop {
+        if let Some(player) = &mut picard {
+            match player.tick() {
+                Ok(true) => {}
+                Ok(false) => {
+                    picard = None;
+                    ui.notice = "Picard stopped.".into();
+                }
+                Err(error) => {
+                    picard = None;
+                    ui.notice = error;
+                }
+            }
+        }
+        ui.picard_active = picard.is_some();
         terminal
             .draw(|frame| draw(frame, store, registry, &mut ui, theme, no_motion))
             .map_err(|_| "Could not draw the terminal.".to_owned())?;
@@ -304,7 +355,10 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 match store.set(&k.name, &input.value, registry) {
                                     Ok(()) => {
                                         ui.editing = None;
-                                        ui.notice = format!("{} saved · mode 0600", k.name);
+                                        ui.notice = format!(
+                                            "{} saved. chmod 600. Do not fucking leak it.",
+                                            k.name
+                                        );
                                         ui.refresh(store, registry);
                                     }
                                     Err(e) => ui.notice = e,
@@ -327,8 +381,7 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                                 ui.accepted = true;
                                 ui.ack.clear();
                                 ui.notice =
-                                    "Ready. Choose a provider, then press Enter to add a key."
-                                        .into();
+                                    "Read the notes. Pick a provider. Enter adds the key.".into();
                                 ui.refresh(store, registry);
                             }
                             Err(e) => ui.notice = e,
@@ -393,6 +446,72 @@ pub fn run(store: &Store, registry: &Registry, no_motion: bool) -> Result<(), St
                     KeyCode::Enter if ui.selected_key(registry).is_some() => {
                         ui.editing = Some(SecretInput::new());
                         ui.notice.clear();
+                    }
+                    KeyCode::Char('p') => {
+                        if let Some(mut player) = picard.take() {
+                            ui.notice = match player.stop() {
+                                Ok(()) => "Picard stopped. Back to business.".into(),
+                                Err(error) => error,
+                            };
+                        } else {
+                            ui.notice = "Picard loading... [p]/Esc cancel; q/Ctrl-C exit.".into();
+                            terminal
+                                .draw(|frame| {
+                                    draw(frame, store, registry, &mut ui, theme, no_motion)
+                                })
+                                .map_err(|_| "Could not draw the terminal.")?;
+                            let mut exit_after_cancel = false;
+                            let mut input_failed = false;
+                            let started =
+                                crate::picard::Player::start_cancellable(&store.state_dir, || {
+                                    // Drain ready events before allowing the download or audio to continue.
+                                    loop {
+                                        match event::poll(Duration::ZERO) {
+                                            Ok(false) => return false,
+                                            Ok(true) => match event::read() {
+                                                Ok(event) => match loading_action(event) {
+                                                    LoadingAction::Continue => {}
+                                                    LoadingAction::Cancel => return true,
+                                                    LoadingAction::Exit => {
+                                                        exit_after_cancel = true;
+                                                        return true;
+                                                    }
+                                                },
+                                                Err(_) => {
+                                                    input_failed = true;
+                                                    return true;
+                                                }
+                                            },
+                                            Err(_) => {
+                                                input_failed = true;
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                });
+                            if exit_after_cancel {
+                                drop(started);
+                                return Ok(());
+                            }
+                            if input_failed {
+                                drop(started);
+                                return Err("Could not read terminal input.".into());
+                            }
+                            match started {
+                                Ok(player) => {
+                                    picard = Some(player);
+                                    ui.notice =
+                                        "Picard is playing. [p] stop / [v] original source.".into();
+                                }
+                                Err(error) => ui.notice = error,
+                            }
+                        }
+                    }
+                    KeyCode::Char('v') => {
+                        ui.notice = match crate::picard::open_source() {
+                            Ok(()) => "Original YTMND source opened in your browser.".into(),
+                            Err(error) => error,
+                        };
                     }
                     KeyCode::Char('r') => {
                         ui.notice = "Local file refreshed. Set means stored, not verified.".into();
@@ -471,7 +590,11 @@ fn draw(
         return;
     }
     let rows = Layout::vertical([
-        Constraint::Length(5),
+        Constraint::Length(if area.width > 80 && area.height > 24 {
+            7
+        } else {
+            3
+        }),
         Constraint::Length(2),
         Constraint::Min(5),
         Constraint::Length(2),
@@ -482,17 +605,20 @@ fn draw(
     draw_banner(frame, rows[0], theme, ui.started.elapsed(), no_motion);
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(
-                    "ONE FILE. EVERY CAPABILITY.",
-                    Style::default().fg(theme.amber).bold(),
-                ),
-                Span::styled(
-                    "  /  YOUR AGENTS, UNLEASHED",
-                    Style::default().fg(theme.dim),
-                ),
-            ]),
-            Line::from(store.env_path.display().to_string()).style(Style::default().fg(theme.dim)),
+            Line::from(format!(
+                "BUILD .. v{}   LOCAL .. plaintext   PICARD .. {}",
+                env!("CARGO_PKG_VERSION"),
+                if !ui.accepted {
+                    "OFF / controls after setup"
+                } else if ui.picard_active {
+                    "ON [p] / source [v]"
+                } else {
+                    "OFF [p] / source [v]"
+                }
+            ))
+            .style(Style::default().fg(theme.dim)),
+            Line::from(format!("FILE ... {}", store.env_path.display()))
+                .style(Style::default().fg(theme.text)),
         ]),
         rows[1],
     );
@@ -511,8 +637,12 @@ fn draw(
         "Enter save   Esc cancel   Ctrl-U clear   paste supported"
     } else if !ui.accepted {
         "GODMODE + Enter accept   PgUp/PgDn read   Esc leave"
+    } else if area.width >= 100 {
+        "j/k provider  Tab key  Enter edit  PgDn read  o console  p audio  v source  ? help  q quit"
+    } else if area.width >= 72 {
+        "j/k provider Tab key Enter edit PgDn read p audio v source ? help q quit"
     } else {
-        "↑↓ provider  ←→ key  Enter add  PgDn read  o console  ? help  q quit"
+        "j/k Tab Enter PgDn | p audio v source ? help q quit"
     };
     frame.render_widget(
         Paragraph::new(controls).style(Style::default().fg(theme.dim)),
@@ -528,56 +658,60 @@ fn draw(
     }
 }
 
+// Original masthead drawn for this project, rather than a copied scene logo.
+const MASTHEAD: [&str; 6] = [
+    r"   _____  ___  ____  __  __  ___  ____  _____ ",
+    r"  / ____|/ _ \|  _ \|  \/  |/ _ \|  _ \| ____|",
+    r" | |  __| | | | | | | |\/| | | | | | | |  _|  ",
+    r" | | |_ | |_| | |_| | |  | | |_| | |_| | |___ ",
+    r"  \_____|\___/|____/|_|  |_|\___/|____/|_____|",
+    r"       [ godmode.nfo / hand your agents the keys ]",
+];
+
 fn draw_banner(frame: &mut Frame, area: Rect, theme: Theme, elapsed: Duration, no_motion: bool) {
-    let banner = BigText::builder()
-        .pixel_size(PixelSize::Quadrant)
-        .style(Style::default().fg(theme.purple))
-        .lines(vec!["GODMODE".into()])
-        .build();
-    frame.render_widget(
-        banner,
-        Rect::new(area.x, area.y, area.width.min(30), area.height.min(4)),
-    );
-    if area.width >= 70 {
-        let right = Rect::new(area.x + 37, area.y + 1, area.width.saturating_sub(37), 3);
+    if area.height >= 7 {
+        let lines: Vec<_> = MASTHEAD.iter().map(|line| Line::from(*line)).collect();
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().fg(theme.text)),
+            Rect::new(area.x, area.y, area.width.min(51), 6),
+        );
+        if area.width >= 84 {
+            frame.render_widget(
+                Paragraph::new(vec![
+                    Line::from("YOU WILL FUCKING").style(Style::default().fg(theme.amber).bold()),
+                    Line::from("PWN YOURSELF.").style(Style::default().fg(theme.amber).bold()),
+                    Line::default(),
+                    Line::from("LOBOTOMIZED AGENTS").style(Style::default().fg(theme.text)),
+                    Line::from("HELP NOBODY.").style(Style::default().fg(theme.text)),
+                ]),
+                Rect::new(area.x + 55, area.y + 1, area.width - 55, 5),
+            );
+        }
+    } else {
         frame.render_widget(
             Paragraph::new(vec![
-                Line::from("LOBOTOMIZED AGENTS").style(Style::default().fg(theme.text).bold()),
-                Line::from("HELP NOBODY.").style(Style::default().fg(theme.amber).bold()),
-                Line::from(format!(
-                    "v{}  ·  LOCAL CREDENTIAL ONBOARDING",
-                    env!("CARGO_PKG_VERSION")
-                ))
-                .style(Style::default().fg(theme.dim)),
+                Line::from("GODMODE // hand your agents the keys")
+                    .style(Style::default().fg(theme.text).bold()),
+                Line::from("YOU WILL FUCKING PWN YOURSELF. READ THE NFO.")
+                    .style(Style::default().fg(theme.amber).bold()),
             ]),
-            right,
+            area,
         );
     }
-    if !no_motion {
-        let sweep = (elapsed.as_millis() / 100) as u16 % 50;
-        for y in area.y..area.y + area.height.min(4) {
-            for x in area.x..area.x + area.width.min(28) {
-                let relative = x - area.x;
-                let color = if relative.abs_diff(sweep) < 2 {
-                    theme.amber
-                } else {
-                    theme.purple
-                };
-                frame.buffer_mut()[(x, y)].set_fg(color);
-            }
-        }
-    }
-    if area.height >= 5 {
-        frame.render_widget(
-            Paragraph::new("─".repeat(area.width as usize)).style(Style::default().fg(theme.dim)),
-            Rect::new(area.x, area.y + 4, area.width, 1),
-        );
+    let rule_y = area.y + area.height.saturating_sub(1);
+    frame.render_widget(
+        Paragraph::new("-".repeat(area.width as usize)).style(Style::default().fg(theme.dim)),
+        Rect::new(area.x, rule_y, area.width, 1),
+    );
+    if !no_motion && area.width > 0 {
+        let offset = ((elapsed.as_millis() / 150) % area.width as u128) as u16;
+        frame.buffer_mut()[(area.x + offset, rule_y)].set_fg(theme.amber);
     }
 }
 
 fn draw_ack(frame: &mut Frame, area: Rect, ui: &mut Ui, theme: Theme) {
     let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).split(area);
-    let block = theme.block("THE DEAL", true);
+    let block = theme.block("READTHIS.NFO", true);
     let inner = block.inner(rows[0]);
     let paragraph = Paragraph::new(DISCLAIMER).wrap(Wrap { trim: false });
     let total = paragraph.line_count(inner.width).min(u16::MAX as usize) as u16;
@@ -646,11 +780,11 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
             let (glyph, color) = if bad {
                 ("!", theme.red)
             } else if set == p.key.len() {
-                ("●", theme.green)
+                ("+", theme.green)
             } else if set > 0 {
-                ("◐", theme.amber)
+                ("~", theme.amber)
             } else {
-                ("○", theme.dim)
+                ("-", theme.dim)
             };
             let count = format!("  {set}/{}", p.key.len());
             // Reserve room for borders, padding, selection, state glyph, and count.
@@ -665,14 +799,14 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     let mut list_state = ListState::default().with_selected(Some(ui.selected));
     frame.render_stateful_widget(
         List::new(items)
-            .block(theme.block("CAPABILITIES", true))
+            .block(theme.block("PROVIDERS.NFO", true))
             .highlight_style(
                 Style::default()
                     .fg(theme.text)
                     .bg(if theme.mono { Color::Reset } else { theme.bg })
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol("▸ "),
+            .highlight_symbol("> "),
         left[0],
         &mut list_state,
     );
@@ -683,15 +817,18 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
         .flatten()
         .filter(|&&s| s == KeyState::Set)
         .count();
+    let meter_width = (left[1].width as usize).saturating_sub(2);
+    let filled = (set * meter_width).checked_div(total).unwrap_or(0);
     frame.render_widget(
-        Gauge::default()
-            .gauge_style(Style::default().fg(theme.purple).bg(theme.bg))
-            .ratio(if total == 0 {
-                0.0
-            } else {
-                set as f64 / total as f64
-            })
-            .label(format!("{set}/{total} keys stored")),
+        Paragraph::new(vec![
+            Line::from(format!("{set}/{total} keys stored")).style(Style::default().fg(theme.text)),
+            Line::from(format!(
+                "[{}{}]",
+                "#".repeat(filled),
+                ".".repeat(meter_width - filled)
+            ))
+            .style(Style::default().fg(theme.accent)),
+        ]),
         left[1],
     );
     let p = &registry.provider[ui.selected];
@@ -703,7 +840,7 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
         let state = ui.states[ui.selected][i];
         lines.push(Line::from(vec![
             Span::styled(
-                if i == ui.selected_key { "▸ " } else { "  " },
+                if i == ui.selected_key { "> " } else { "  " },
                 Style::default().fg(theme.amber),
             ),
             Span::styled(
@@ -733,33 +870,33 @@ fn draw_board(frame: &mut Frame, area: Rect, registry: &Registry, ui: &mut Ui, t
     if let Some(key) = p.key.get(ui.selected_key) {
         lines.extend([
             Line::default(),
-            Line::from("GET THE KEY").style(Style::default().fg(theme.purple).bold()),
+            Line::from("[ INSTALL NOTES ]").style(Style::default().fg(theme.accent).bold()),
         ]);
         for (i, step) in key.steps.iter().enumerate() {
             lines.push(Line::from(format!("{}. {step}", i + 1)));
         }
         lines.extend([
             Line::default(),
-            Line::from("UNLOCKS").style(Style::default().fg(theme.purple).bold()),
+            Line::from("[ WHAT THIS UNLOCKS ]").style(Style::default().fg(theme.accent).bold()),
             Line::from(key.usage.clone()),
             Line::default(),
-            Line::from("PERMISSIONS").style(Style::default().fg(theme.purple).bold()),
+            Line::from("[ SCOPE ]").style(Style::default().fg(theme.accent).bold()),
             Line::from(key.scope.clone()),
         ]);
         if !key.format.is_empty() {
             lines.extend([
                 Line::default(),
-                Line::from("EXPECTED FORMAT").style(Style::default().fg(theme.purple).bold()),
+                Line::from("[ EXPECTED FORMAT ]").style(Style::default().fg(theme.accent).bold()),
                 Line::from(key.format.clone()),
             ]);
         }
     }
     lines.extend([
         Line::default(),
-        Line::from("CONSOLE  [o]").style(Style::default().fg(theme.purple).bold()),
+        Line::from("CONSOLE  [o]").style(Style::default().fg(theme.accent).bold()),
         Line::from(p.console.clone()).style(Style::default().fg(theme.dim)),
         Line::default(),
-        Line::from("DOCUMENTATION  [d]").style(Style::default().fg(theme.purple).bold()),
+        Line::from("DOCUMENTATION  [d]").style(Style::default().fg(theme.accent).bold()),
         Line::from(p.docs.clone()).style(Style::default().fg(theme.dim)),
     ]);
     for note in &p.notes {
@@ -811,21 +948,21 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
     } else if !key.prefixes.is_empty() && !key.prefixes.iter().any(|p| input.value.starts_with(p)) {
         "Prefix differs from the guide. Check the key type before saving.".into()
     } else {
-        "Input captured. No value is shown or copied.".into()
+        "Captured. Keep this shit out of screenshots and Git.".into()
     };
     let text = vec![
-        Line::from("One reusable key. Stored locally with mode 0600.")
+        Line::from("Local plaintext. Mode 0600. Your machine, your problem.")
             .style(Style::default().fg(theme.dim)),
         Line::default(),
         Line::from(format!("> {}", input.mask(mask_width))).style(Style::default().fg(theme.amber)),
         Line::from(format!("{} bytes entered", input.value.len()))
             .style(Style::default().fg(theme.dim)),
         Line::default(),
-        Line::from(shape).style(Style::default().fg(theme.purple)),
+        Line::from(shape).style(Style::default().fg(theme.accent)),
         Line::default(),
         Line::from(notice).style(Style::default().fg(theme.amber)),
         Line::default(),
-        Line::from("Enter save  ·  Esc keep existing  ·  Ctrl-U clear")
+        Line::from("Enter save / Esc keep existing / Ctrl-U clear")
             .style(Style::default().fg(theme.dim)),
     ];
     frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), inner);
@@ -837,9 +974,9 @@ fn draw_input(frame: &mut Frame, key: &Key, input: &SecretInput, notice: &str, t
     }
 }
 fn draw_help(frame: &mut Frame, theme: Theme) {
-    let area = popup(frame.area(), 70, 18);
+    let area = popup(frame.area(), 74, 21);
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("↑ / ↓, j / k     Choose a provider\n← / →, Tab       Choose one of its keys\nEnter           Add or replace the selected key\nPgUp / PgDn     Read the provider guide\nHome            Return to the top of the guide\no / d           Open console / documentation\nr               Reload local key status\nq, Esc, Ctrl-C  Leave\n\nWhile entering a key: paste, type, Backspace,\nCtrl-U to clear, Enter to save, Esc to cancel.\n\nKeys are masked. Stored does not mean verified.\nAny key closes this panel.").wrap(Wrap{trim:false}).block(theme.block("CONTROLS",true)),area);
+    frame.render_widget(Paragraph::new("j/k, Up/Down   Choose a provider\nTab, Left/Right Choose one of its keys\nEnter          Add or replace selected key\nPgUp/PgDn      Read the provider notes\nHome           Top of notes\no / d          Provider console / documentation\np              Picard loop: play / stop (downloads on first play)\nv              Open the original YTMND source\nr              Reload local key status\nq, Esc, Ctrl-C Leave; stop playback\n\nKey entry: type or paste, Backspace, Ctrl-U clear,\nEnter save, Esc cancel. No reveal switch.\n\nStored != verified. Read the fucking scope.\nAny key closes this file.").wrap(Wrap{trim:false}).block(theme.block("KEYS.TXT",true)),area);
 }
 
 /// Read a secret from an actual raw-mode TTY, including large bracketed pastes.
@@ -862,14 +999,14 @@ pub fn prompt_secret(label: &str) -> Result<Zeroizing<String>, String> {
                             "> {}",
                             input.mask(popup.width.saturating_sub(7) as usize)
                         )),
-                        Line::from(format!("{} bytes · hidden", input.value.len()))
+                        Line::from(format!("{} bytes / hidden", input.value.len()))
                             .style(Style::default().fg(theme.dim)),
                         Line::from(notice.as_str()).style(Style::default().fg(theme.amber)),
-                        Line::from("Enter save · Esc cancel · Ctrl-U clear")
+                        Line::from("Enter save / Esc cancel / Ctrl-U clear")
                             .style(Style::default().fg(theme.dim)),
                     ])
                     .wrap(Wrap { trim: false })
-                    .block(theme.block("GODMODE / CREDENTIAL", true)),
+                    .block(theme.block("GODMODE / KEY ENTRY", true)),
                     popup,
                 );
             })
@@ -967,6 +1104,53 @@ mod tests {
         assert!(input.push("\0").is_err());
     }
     #[test]
+    fn loading_cancellation_preserves_exit_intent_and_ignores_key_release() {
+        for key in [KeyCode::Char('p'), KeyCode::Esc] {
+            assert_eq!(
+                loading_action(Event::Key(KeyEvent::new(key, KeyModifiers::NONE))),
+                LoadingAction::Cancel
+            );
+        }
+        assert_eq!(
+            loading_action(Event::Key(KeyEvent::new(
+                KeyCode::Char('q'),
+                KeyModifiers::NONE
+            ))),
+            LoadingAction::Exit
+        );
+        assert_eq!(
+            loading_action(Event::Key(KeyEvent::new(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL
+            ))),
+            LoadingAction::Exit
+        );
+        let mut released = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE);
+        released.kind = KeyEventKind::Release;
+        assert_eq!(
+            loading_action(Event::Key(released)),
+            LoadingAction::Continue
+        );
+        assert_eq!(
+            loading_action(Event::Resize(80, 24)),
+            LoadingAction::Continue
+        );
+        assert_eq!(
+            loading_action(Event::Paste("DISCARDED_SYNTHETIC_INPUT".into())),
+            LoadingAction::Cancel
+        );
+    }
+
+    #[test]
+    fn masthead_is_original_plain_ascii_and_fits_its_area() {
+        assert!(
+            MASTHEAD
+                .iter()
+                .all(|line| line.is_ascii() && line.len() <= 51)
+        );
+    }
+
+    #[test]
     fn board_and_disclaimer_render_across_sizes_without_values() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
@@ -998,6 +1182,12 @@ mod tests {
                 let text = buffer_text(&terminal);
                 assert!(text.contains("SAMPLE_API_TOKEN"));
                 assert!(text.contains("1/1 keys stored"));
+                assert!(text.contains("p audio"));
+                assert!(text.contains("v source"));
+                assert!(text.contains("PICARD .. OFF"));
+                if width == 80 {
+                    assert!(text.contains("GODMODE //"));
+                }
             }
             let mut input = SecretInput::new();
             input.push("BOARD_FRAME_PRIVATE_SENTINEL").unwrap();
@@ -1029,14 +1219,14 @@ mod tests {
         let mut ui = Ui::new(true, &registry);
         ui.states[0][0] = KeyState::Set;
         ui.states[1][0] = KeyState::Set;
-        ui.notice = "Ready. Choose a capability, add its key, and put your agents to work.".into();
+        ui.notice = "Read the notes. Pick a provider. Enter adds the key. No bullshit.".into();
         let theme = Theme {
-            bg: Color::Rgb(12, 12, 20),
-            panel: Color::Rgb(19, 19, 30),
-            text: Color::Rgb(231, 230, 243),
-            dim: Color::Rgb(139, 137, 163),
-            purple: Color::Rgb(173, 136, 255),
-            amber: Color::Rgb(255, 200, 109),
+            bg: Color::Rgb(10, 10, 9),
+            panel: Color::Rgb(10, 10, 9),
+            text: Color::Rgb(224, 220, 209),
+            dim: Color::Rgb(139, 136, 124),
+            accent: Color::Rgb(214, 172, 95),
+            amber: Color::Rgb(241, 205, 142),
             green: Color::Rgb(118, 218, 181),
             red: Color::Rgb(255, 120, 135),
             mono: false,

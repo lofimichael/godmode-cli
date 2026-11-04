@@ -131,10 +131,10 @@ def main():
         try:
             first = Terminal(command + ['onboard'], env)
             sessions.append(first)
-            first.seen('THE DEAL')
+            first.seen('READTHIS.NFO')
             assert not env_file.exists(), 'onboarding wrote before acknowledgement'
             first.send(b'GODMODE\r')
-            first.seen('CAPABILITIES')
+            first.seen('PROVIDERS.NFO')
             first.send(b'\r')
             first.seen('ADD / REPLACE')
             first.paste(token)
@@ -146,7 +146,7 @@ def main():
 
             second = Terminal(command + ['set', 'GOOGLE_ADS_SERVICE_ACCOUNT_JSON'], env)
             sessions.append(second)
-            second.seen('GODMODE / CREDENTIAL')
+            second.seen('GODMODE / KEY ENTRY')
             second.paste(large)
             second.send(b'\r')
             second.done()
@@ -157,8 +157,8 @@ def main():
             before = env_file.read_bytes()
             third = Terminal(command + ['onboard'], env)
             sessions.append(third)
-            third.seen('CAPABILITIES')
-            assert b'THE DEAL' not in third.capture, 'acknowledgement did not persist'
+            third.seen('PROVIDERS.NFO')
+            assert b'READTHIS.NFO' not in third.capture, 'acknowledgement did not persist'
             third.send(b'\r')
             third.seen('ADD / REPLACE')
             third.paste(cancelled)
@@ -170,7 +170,7 @@ def main():
 
             fourth = Terminal(command + ['set', 'GH_TOKEN'], env)
             sessions.append(fourth)
-            fourth.seen('GODMODE / CREDENTIAL')
+            fourth.seen('GODMODE / KEY ENTRY')
             fourth.paste(cancelled)
             fourth.send(b'\x03')
             fourth.done(expected=2)

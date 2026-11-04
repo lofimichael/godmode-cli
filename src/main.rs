@@ -1,4 +1,5 @@
 mod envfile;
+mod picard;
 mod registry;
 mod store;
 mod tui;
@@ -18,7 +19,7 @@ use zeroize::Zeroizing;
 #[command(
     name = "godmode",
     version,
-    about = "Hand your agents the keys. One file. Your machine.",
+    about = "Hand your agents the keys. Try not to fucking pwn yourself.",
     disable_help_subcommand = true
 )]
 struct Cli {
@@ -36,6 +37,11 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
+    /// Optional YTMND Picard loop. Explicit play/stop; no autoplay
+    Picard {
+        #[command(subcommand)]
+        action: Option<PicardCommand>,
+    },
     /// Open the interactive provider board
     Onboard,
     /// Acknowledge the disclaimer; create the credential file only if absent
@@ -86,6 +92,18 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum PicardCommand {
+    /// Print the original Picard YTMND URL without opening a browser
+    Link,
+    /// Open the original Picard YTMND in your browser
+    Open,
+    /// Play the original ~8-second YTMND loop until stopped (foreground)
+    Play,
+    /// Stop Godmode's active player for this state directory
+    Stop,
+}
+
 fn main() {
     // Panic payloads can contain values from third-party parsers; never display them.
     std::panic::set_hook(Box::new(|_| {
@@ -117,6 +135,25 @@ fn main() {
     }
 }
 fn execute(cli: Cli) -> Result<i32, String> {
+    if let Some(Commands::Picard { action }) = &cli.command {
+        match action {
+            None | Some(PicardCommand::Link) => {
+                println!("{}", picard::SOURCE_URL);
+                if action.is_none() {
+                    println!(
+                        "Picard mode: `godmode picard play` / `godmode picard stop`. No autoplay. You're welcome."
+                    );
+                }
+                return Ok(0);
+            }
+            Some(PicardCommand::Open) => {
+                picard::open_source()?;
+                println!("Opened {}", picard::SOURCE_URL);
+                return Ok(0);
+            }
+            _ => {}
+        }
+    }
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or("HOME is not set; cannot resolve local directories")?;
@@ -129,8 +166,31 @@ fn execute(cli: Cli) -> Result<i32, String> {
         .or_else(|| std::env::var_os("GODMODE_STATE_DIR").map(PathBuf::from))
         .unwrap_or_else(|| home.join(".local/state/godmode/cli"));
     let store = Store::new(config, state)?;
+    if let Some(Commands::Picard { action }) = &cli.command {
+        match action {
+            Some(PicardCommand::Play) => {
+                println!(
+                    "PICARD MODE / original YTMND loop. Ctrl-C or `godmode picard stop` to stop."
+                );
+                picard::play_foreground(&store.state_dir)?;
+            }
+            Some(PicardCommand::Stop) => {
+                println!(
+                    "{}",
+                    if picard::stop(&store.state_dir)? {
+                        "Picard stopped. Back to your regularly scheduled shit."
+                    } else {
+                        "Picard is already quiet."
+                    }
+                );
+            }
+            _ => unreachable!(),
+        }
+        return Ok(0);
+    }
     let registry = Registry::load(&store.config_dir)?;
     match cli.command {
+        Some(Commands::Picard { .. }) => unreachable!(),
         None if !io::stdin().is_terminal()
             || !io::stdout().is_terminal()
             || std::env::var("TERM").as_deref() == Ok("dumb") =>

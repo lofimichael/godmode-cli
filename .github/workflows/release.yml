@@ -77,9 +77,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p package dist
-          cp "target/$TARGET/release/godmode" LICENSE README.md install.sh package/
+          cp "target/$TARGET/release/godmode" LICENSE README.md READTHIS.NFO install.sh package/
           cp -R docs package/docs
-          tar -czf "dist/godmode-$RELEASE_TAG-$TARGET.tar.gz" -C package godmode LICENSE README.md install.sh docs
+          tar -czf "dist/godmode-$RELEASE_TAG-$TARGET.tar.gz" -C package godmode LICENSE README.md READTHIS.NFO install.sh docs
       - uses: actions/upload-artifact@v4
         with:
           name: godmode-${{ matrix.target }}

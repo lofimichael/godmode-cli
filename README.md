@@ -1,12 +1,21 @@
 # GODMODE
 
-**Hand your agents the keys. One file. Your machine.**
+```text
+[ GODMODE / RELEASE NOTES ]
+ONE FILE. REAL KEYS. READ THE FUCKING SCOPES.
+```
 
-Godmode is a local onboarding CLI with a Ratatui terminal interface. Choose a provider, read its setup and scope instructions, paste a credential into a masked field, and save it into one reusable `.env.godmode`. It also accepts arbitrary key names and your own provider catalog.
+**Give your agents the keys. Try not to fucking pwn yourself.**
 
-One Rust binary. No daemon, hosted account, Homebrew package or runtime toolchain. MIT licensed. Godmode does not contact provider APIs or send telemetry; opening a provider link and running another command are explicit actions.
+Godmode puts reusable provider credentials in one `.env.godmode` and gives you a terminal full of actual setup instructions. Pick a provider, read what its token can do, paste it into a masked field, get on with it. Got some obscure provider? Use its literal key names or add a TOML entry. No key-factory bullshit.
+
+One Rust binary. No Homebrew dance. No account with us. No telemetry. Your keys stay on your machine until you hand them to a command. That command can spend, delete, publish, or print them according to its access. This is a power tool, not an undo button.
+
+The interface borrows the structure of 2000s scene NFOs: original ASCII lettering, compact release fields, install notes, and a blunt `READTHIS.NFO`. Its voice is an intentional blend of NFO/readme culture, gamer slang, and YTMND-era web humor. [The historical research](docs/CULTURE.md) separates the evidence from the nostalgia. We aren't claiming that all Usenet sounded like this, or pretending to be a warez group.
 
 ![Godmode provider board, rendered from the actual UI with synthetic credentials](docs/images/provider-board.png)
+
+The warning is blunt; the file operations remain precise. [Read the NFO](READTHIS.NFO).
 
 ## Try it without touching an existing Godmode setup
 
@@ -40,7 +49,7 @@ For a downloaded release archive and its `SHA256SUMS`:
 
 ```sh
 sh install.sh \
-  --archive ./godmode-v0.1.0-aarch64-apple-darwin.tar.gz \
+  --archive ./godmode-v0.2.0-aarch64-apple-darwin.tar.gz \
   --checksum ./SHA256SUMS
 ```
 
@@ -67,6 +76,19 @@ godmode run --with GH_TOKEN -- gh api user --jq .login
 
 `init --accept-disclaimer` is explicit noninteractive acknowledgment of the [storage and authority terms](docs/SECURITY.md). It preserves existing credentials and rules. In a Git checkout, `.env.godmode` must be ignored and untracked before Godmode writes it.
 
+## Picard mode
+
+```sh
+godmode picard link    # print https://picard.ytmnd.com/
+godmode picard open    # open the original site
+godmode picard play    # loop the original YTMND audio; stays in the foreground
+godmode picard stop    # stop it from another terminal
+```
+
+On the provider board, `p` toggles playback and `v` opens the original site. Quitting the board stops its player. There is no autoplay. When using a custom `--state-dir`, give `stop` the same directory.
+
+The recording is the approximately eight-second excerpt used by the original Picard YTMND, repeated until stopped, **not the full DarkMateria track**. First playback downloads that exact audio from YTMND into a private local cache and checks its pinned SHA-256. The recording is not bundled in the source or release archive. YTMND receives the download request; no credential file is read or sent for Picard mode. Attribution and implementation details are in [PICARD.md](docs/PICARD.md).
+
 ## Commands
 
 | Command | Result |
@@ -82,6 +104,7 @@ godmode run --with GH_TOKEN -- gh api user --jq .login
 | `providers [--json]` | List the merged provider catalog |
 | `providers-template` | Print a credential-free TOML overlay template |
 | `run --with KEY[=ALIAS] -- CMD...` | Give selected credentials to a child process |
+| `picard [link \| open \| play \| stop]` | Optional original YTMND audio and source link |
 
 Repeat `--with` to pass multiple credentials. In `SOURCE_KEY=CHILD_NAME`, the left side names the stored key and the right side names the child's environment variable. `run` clears the inherited environment, preserves basic process context such as PATH, HOME, locale and terminal settings, and adds only the selected credentials. Its stdout/stderr are the child's own output and are **not redacted**.
 
@@ -97,7 +120,7 @@ Defaults:
 ~/.local/bin/godmode                  executable, if installed
 ~/.config/godmode/.env.godmode        credentials, mode 0600
 ~/.config/godmode/providers.toml      optional provider metadata, no credentials
-~/.local/state/godmode/cli/           local acknowledgments and writer locks
+~/.local/state/godmode/cli/           local acknowledgments, locks and optional Picard cache
 ```
 
 Existing configuration directories and operating rules stay in place. New directories are private; state files use mode 0600. Acknowledgments are named `ack-v1-<config-path hash>` and locks `write-<config-path hash>.lock`. Writes use a private temporary file and atomic replacement; this is local plaintext storage, not encryption.
@@ -115,6 +138,6 @@ cargo test --locked
 sh tests/install.sh
 ```
 
-[Release instructions](docs/RELEASING.md) describe local checks, CI opt-in for private repositories and the four-target draft release workflow. CI does not need provider secrets. There is no telemetry, recurring service or automatic updater to disable.
+[Release instructions](docs/RELEASING.md) describe local checks, CI opt-in for private repositories and the four-target draft release workflow. CI does not need provider secrets. There is no telemetry or automatic updater. Picard runs only while its foreground command or board is open; it leaves no background service.
 
 To uninstall, first confirm which binary this installer placed, then remove that executable. Credentials and operating rules remain intact. Remove the CLI's acknowledgment/lock directory separately if no CLI process is active; never recursively delete `~/.config/godmode` to uninstall this tool. Deleting a local key does not revoke it at its provider.

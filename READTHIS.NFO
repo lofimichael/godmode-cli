@@ -1,0 +1,54 @@
++--[ GODMODE / RELEASE iNFO ]---------------------------------------------+
+| VERSION .. 0.2.0                                                       |
+| TYPE ..... local agent credential bootstrapper                         |
+| STORE .... one .env.godmode                                            |
+| SOURCE ... https://github.com/lofimichael/godmode-cli                    |
++-----------------------------------------------------------------------+
+
+                 READ THE FUCKING SCOPES.
+
+  Hand your agents the keys. Try not to fucking pwn yourself.
+
+[ INSTALL NOTES ]
+
+  One binary. Run it directly, or verify its SHA-256 and use install.sh.
+  The installer refuses an existing binary unless you explicitly force it.
+  It does not replace your credential file, rules, or shell profile.
+
+  Testing next to an existing setup? Use BOTH --config-dir and --state-dir
+  with separate paths. README.md has a copy-ready isolated demo command.
+
+[ READ THIS BEFORE YOU PWN YOURSELF ]
+
+  Broad keys can delete infrastructure, spend money, publish, send mail,
+  and commit as you. That's the point. Scope is not fucking decoration.
+
+  The file is plaintext, mode 0600. Your user and unrestricted agents can
+  read it. No sandbox. No spending limiter. No undo fairy. A saved live
+  key does not authorize live charges. Don't post your fucking .env.
+
+  Commands launched with `run` get only the selected keys plus basic
+  process context. Their output is NOT filtered. Know what you're running.
+
+[ PICARD MODE ]
+
+  godmode picard link     original YTMND URL
+  godmode picard open     open the original in your browser
+  godmode picard play     play the original excerpt on repeat
+  godmode picard stop     stop Godmode's player
+
+  In the board: p = play/stop, v = original source. Nothing autoplays.
+  First play fetches the approximately eight-second YTMND loop. It does
+  not read your credentials. The recording is not included in this release.
+  Use the same --state-dir when stopping a player started with an override.
+
+[ CREDITS / SOURCES ]
+
+  Original lettering and prose. No borrowed scene logos or fake affiliation.
+  NFO layout, Usenet etiquette/satire, gamer slang, and 2004 YTMND are related
+  references, not one mythical culture. docs/CULTURE.md has the receipts.
+
+  Picard music: DarkMateria. Original page: https://picard.ytmnd.com/
+  The MIT license covers this project's code, not the source recording.
+
++-------------------[ YOUR KEYS. YOUR CALLS. ]---------------------------+

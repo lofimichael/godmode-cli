@@ -327,3 +327,22 @@ fn from_file_refuses_fifo_and_input_limits_leave_file_unchanged() {
     assert!(!f.set("TOKEN", "").status.success());
     assert_eq!(fs::read(f.env()).unwrap(), before);
 }
+
+#[test]
+fn picard_link_bypasses_credentials_and_registry_without_writes() {
+    let f = Fixture::new();
+    fs::create_dir(&f.config).unwrap();
+    fs::write(f.config.join("providers.toml"), "broken registry").unwrap();
+    let out = f.run(&["picard", "link"]);
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap().trim(),
+        "https://picard.ytmnd.com/"
+    );
+    assert!(!f.env().exists());
+    assert!(!f.state.exists());
+    let out = f.run(&["picard", "stop"]);
+    assert!(out.status.success());
+    assert!(!f.env().exists());
+    assert!(!f.state.exists());
+}

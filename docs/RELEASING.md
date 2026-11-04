@@ -39,6 +39,6 @@ The workflow refuses a tag that differs from the package version or does not poi
 | `x86_64-unknown-linux-musl` | `ubuntu-24.04` with `musl-tools` |
 | `aarch64-unknown-linux-musl` | `ubuntu-24.04-arm` with `musl-tools` |
 
-Each archive contains `godmode`, `install.sh`, `LICENSE`, `README.md` and `docs/`. A separate `SHA256SUMS` covers the archives. The final job uses only the repository-scoped workflow token to create a **draft** GitHub release; it refuses to replace an existing release. Release publication is a separate maintainer action. There is no crates.io publish, automatic version bump, Apple signing or notarization step.
+Each archive contains `godmode`, `install.sh`, `LICENSE`, `README.md`, `READTHIS.NFO` and `docs/`. A separate `SHA256SUMS` covers the archives. The final job uses only the repository-scoped workflow token to create a **draft** GitHub release; it refuses to replace an existing release. Release publication is a separate maintainer action. There is no crates.io publish, automatic version bump, Apple signing or notarization step.
 
 The workflow is a packaging implementation, not evidence that any release or target has been tested remotely. Record the actual build results when a release is run. Source and checksums should be distributed through the intended repository; hashes alone do not authenticate a compromised publisher.

@@ -14,7 +14,15 @@ use std::{
 };
 use zeroize::Zeroizing;
 
-pub const DISCLAIMER: &str = "Godmode hands your agents the keys. Those keys can create and destroy infrastructure, spend money, publish, send mail, and commit code as you. That is the point. You decide which capabilities to enable and authorize their use.\n\nThis is plaintext local storage, readable by your user and unrestricted agents. Godmode is an onboarding tool, not a sandbox or a spending-control system. Store only credentials you are entitled to use; understand their scope and revoke anything that leaks. Saving a live key does not authorize live charges or public actions.\n\nThe CLI does not contact providers or send telemetry. Provider links open only when you ask. A command launched with `run` can use and disclose the keys you give it.\n\nExisting credentials and operating rules are preserved. Acknowledgement creates only the credential file if absent and a local receipt. Type GODMODE to continue.";
+pub const DISCLAIMER: &str = "READTHIS.NFO / BEFORE YOU HAND OVER THE KEYS
+
+YOU WILL FUCKING PWN YOURSELF if you hand an agent account-wide tokens and assume this screen will save you. Those keys can delete infrastructure, spend money, publish, send mail, and commit as you. That is the whole fucking point. Read the scopes. Know what you are handing over.
+
+One plaintext file. Mode 0600. Your user, unrestricted agents, and privileged processes can still read it. No sandbox. No spending limiter. No undo fairy. Use credentials you are entitled to use; revoke anything that leaks. A saved live key is not permission to charge people or publish as you.
+
+No telemetry. No automatic provider requests. Picard audio downloads from YTMND only when you press play; links open only when you ask. A command launched with `run` can use AND print its selected keys. Don't post your fucking .env.
+
+Existing credentials and rules stay put. Accepting creates the credential file only if absent, plus a local receipt. Type GODMODE to accept, or Esc to bail.";
 
 struct WriteGuard {
     _config: File,
