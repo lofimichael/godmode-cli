@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.7.0                                                      |
+| version .. 0.8.0                                                      |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -22,10 +22,14 @@
 
 [ interactive setup ]
 
-  Run godmode setup. Pick a provider by number or name, follow its links,
-  and paste the credential when prompted. It is masked. Enter saves it;
-  an empty prompt skips it. Existing values are kept unless you choose to
-  replace them. Esc or Ctrl-C cancels the current input. No editor opens.
+  Run godmode setup. Pick a provider by number or name and paste the
+  credential when prompted. It shows up masked, sk_*****123 style, and
+  the line above it shows what will be executed on your machine: the
+  printf (or sed, for a key you already saved) with that value filled in,
+  and the file it goes to. Godmode makes that edit itself; no shell runs.
+  Enter saves; an empty prompt skips or keeps what you had. Tab opens the
+  key's page, ? prints the steps, Esc goes back, Ctrl-C quits. Pasting
+  again replaces what you pasted.
   Colors follow your terminal, with restrained accents; NO_COLOR opts out.
 
   godmode setup github goes straight to GitHub. Use godmode edit for nano,

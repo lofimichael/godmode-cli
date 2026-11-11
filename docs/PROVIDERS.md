@@ -1,6 +1,6 @@
 # Provider help
 
-Choose a provider in `godmode`, or use `godmode setup github`. Press `l` for sign-in, `o` for API keys, `d` for documentation, or `?` to print the full links and setup instructions. Browsers open only when requested.
+Choose a provider in `godmode`, or use `godmode setup github`. At each key prompt, Tab opens that key's page in your browser (Stripe live keys and the Prodigi sandbox key have their own), and `?` prints the step-by-step instructions with the full key-page, sign-in and documentation links. Esc returns to the provider list. Browsers open only when requested. A key's optional `console` field in providers.json overrides the provider page; `null` means it has none. `prompt` replaces the input label, and `"secret": false` shows a non-secret value, such as an email address, as typed.
 
 Any key works without provider registration:
 
@@ -8,7 +8,7 @@ Any key works without provider registration:
 godmode set ACME_ACCOUNT_ADMIN_TOKEN
 ```
 
-Paste the value at the masked prompt. Enter keeps an existing value. `godmode edit` opens nano for manual changes or removing keys.
+Paste the value at the masked prompt and check the preview of the line it writes. Enter on an empty prompt keeps an existing value. `godmode edit` opens nano for manual changes or removing keys.
 
 The bundled provider list is static help in [providers.json](../providers.json). It does not authenticate, validate account permissions, enroll OAuth, or impose token-prefix rules. Runtime catalogs and overlays are no longer needed. Never put credentials in this help file.
 

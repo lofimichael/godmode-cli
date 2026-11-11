@@ -209,32 +209,30 @@ def main() -> None:
         subprocess.run([str(binary), "--home", str(config), "init", "--accept-disclaimer"],
                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
         command = [str(binary), "--home", str(config), "setup"]
-        terminal = Terminal(command, env, cols=120, rows=40)
-        recorder = Recorder(terminal, 120, 40, font, args.theme)
+        terminal = Terminal(command, env, cols=96, rows=36)
+        recorder = Recorder(terminal, 96, 36, font, args.theme)
         try:
-            recorder.wait_for("Provider number or name")
-            recorder.capture(1600)
+            recorder.wait_for("Choose a provider")
+            recorder.capture(1500)
             terminal.send(b"github")
-            recorder.capture(400)
+            recorder.wait_for("› github")
+            recorder.capture(500)
             terminal.send(b"\r")
-            recorder.wait_for("Enter to add keys;")
-            recorder.wait_for("[l] Sign in")
-            recorder.wait_for("[o] API keys")
-            recorder.wait_for("[d] Documentation")
-            recorder.capture(1600)
-            terminal.send(b"\r")
-            recorder.wait_for("Paste GH_TOKEN (masked;")
-            recorder.capture(1000)
+            recorder.wait_for("Paste your token:")
+            recorder.wait_for("$ printf '%s\\n' 'GH_TOKEN=…' >> ~/.godmode/.env.godmode")
+            recorder.capture(1700)
             before = (config / ".env.godmode").read_bytes()
             terminal.paste(SYNTHETIC)
-            recorder.capture(1900)
+            recorder.wait_for("$ printf '%s\\n' 'GH_TOKEN=git•••••d8f' >> ~/.godmode/.env.godmode")
+            recorder.wait_for("Paste your token: git•••••d8f")
+            recorder.capture(2400)
             assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
             terminal.send(b"\r")
-            recorder.wait_for("GH_TOKEN saved.")
-            recorder.wait_for("1/1 saved")
-            recorder.capture(1900)
+            recorder.wait_for("Saved GH_TOKEN")
+            recorder.wait_for("✓ saved")
+            recorder.capture(1800)
             terminal.send(b"\r")
-            recorder.wait_for("Setup finished.")
+            recorder.wait_for("Done. Your keys are in")
             terminal.done()
             recorder.capture(800)
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"
@@ -243,7 +241,7 @@ def main() -> None:
             recorder.write(args.output.resolve())
             if args.frames_dir:
                 args.frames_dir.mkdir(parents=True, exist_ok=True)
-                names = ["providers", "selected", "links", "prompt", "masked", "saved", "finished"]
+                names = ["providers", "selected", "prompt", "masked", "saved", "finished"]
                 for name, frame in zip(names, recorder.frames, strict=True):
                     frame.save(args.frames_dir / f"{name}.png")
         finally:

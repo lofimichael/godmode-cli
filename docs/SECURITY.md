@@ -1,8 +1,9 @@
 # What happens to a pasted value
 
-1. The terminal reads it with echo disabled and displays only a mask. A bracketed paste does not save until you press Enter.
-2. The storage helper validates the key name, quotes the value, and replaces that key's assignment in `.env.godmode`.
-3. A private temporary file is atomically renamed over the original. Unrelated lines are preserved.
+1. The terminal reads it with echo disabled. A value pasted into an empty field is shown as its first and last three characters around five dots (`sk_•••••123`); values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Pasting again replaces the value rather than appending to it. Typed or edited values show one dot per character and no ends, because otherwise each character would pass through the visible end while you type. A bracketed paste does not save until you press Enter.
+2. Above the input, a preview titled "What will be executed on your machine" shows a shell command with the same effect on the file, updated as you paste: `printf '%s\n' 'KEY=…' >> ~/.godmode/.env.godmode` for a new key (with a leading line break when the file lacks a final one, and CRLF when the file uses it), `sed -i 's/^KEY=.*/KEY=…/' …` for a key saved on one ordinary line, and a line-numbered `sed` that also deletes extra lines when the key is indented, exported or listed more than once. The kind of command depends only on the file, never on the value, so it reveals nothing about hidden characters. Notes say when a line is rewritten, duplicates are removed, or a line keeps a CRLF ending. Run with the real value, these commands produce the same bytes as Godmode; the test suite checks that for LF files. Godmode makes the edit itself; no shell runs and nothing is sent. If the value cannot be saved (for example multiline text that is not JSON), the preview says why and Enter does nothing. After a successful save, the command stays on screen as a one-line receipt. Keys marked `"secret": false` in providers.json, such as the Gmail address, are shown as typed.
+3. The storage helper validates the key name, quotes the value, and replaces that key's assignment in `.env.godmode`.
+4. A private temporary file is atomically renamed over the original. Unrelated lines are preserved.
 
 That is the credential flow. No provider login, remote verification, telemetry, synchronization, database, daemon or command runner participates. The installed script is readable Python source; its file writer is [godmode_store.py](../lib/godmode_store.py), and its input handling is [godmode_terminal.py](../lib/godmode_terminal.py). Readability helps inspection; it is not a security guarantee.
 
@@ -20,7 +21,7 @@ Mode 0600 keeps other ordinary users out. Programs running as you, privileged pr
 
 ## Optional external actions
 
-Provider pages open only after you choose their browser action. The browser and nano receive a small ordinary process environment, not a loaded credential inventory. Nano displays the file's values while editing.
+Provider pages open only when you press Tab at a key prompt. The browser opener is started in the background, so a slow browser cannot hold the prompt. The browser and nano receive a small ordinary process environment, not a loaded credential inventory. Nano displays the file's values while editing.
 
 Picard is a separate, explicitly requested media feature. Its code never opens the credential file. It downloads only its pinned image/audio assets and starts only its own foreground player. See [Picard](PICARD.md).
 

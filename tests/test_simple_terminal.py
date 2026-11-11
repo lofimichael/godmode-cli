@@ -16,15 +16,26 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import godmode_terminal as terminal
 
+DOT = "•".encode()
+DOTS = DOT * 5
+
 TERM_HARNESS = '''
 import hashlib, os, termios
 import godmode_terminal
-from godmode_terminal import read_secret, read_choice, Cancelled
+from godmode_terminal import read_secret, read_choice, Cancelled, Prompt
+
+class Strict(Prompt):
+    actions = {'?': lambda: ['HELP_ROWS_PRINTED']}
+    def ready(self, value):
+        return value != 'not yet'
+
 godmode_terminal.TERM_MAX_INPUT = int(os.environ.get("MAX_FIELD_SIZE", 1024 * 1024))
 before = termios.tcgetattr(0)
 try:
     if os.environ['PROMPT_MODE'] == 'choice':
         value = read_choice('Select provider:', ['', 'github', 'q', 'café'])
+    elif os.environ['PROMPT_MODE'] == 'strict':
+        value = read_secret(Strict('Paste key (hidden; Enter saves):'))
     else:
         value = read_secret('Paste key (hidden; Enter saves):')
     print('ACCEPTED ' + hashlib.sha256(value.encode()).hexdigest())
@@ -51,7 +62,7 @@ class Session:
         self.process = subprocess.Popen([sys.executable, "-c", TERM_HARNESS],
                                         stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env=env)
-        self.wait(b"> ")
+        self.wait(b"Select provider:" if mode == "choice" else b"Paste key")
 
     def send(self, data):
         pending = memoryview(data)
@@ -70,9 +81,16 @@ class Session:
             if select.select([self.master], [], [], 0.02)[0]:
                 self.output.extend(os.read(self.master, 65536))
 
-    def wait(self, marker):
+    def until(self, predicate):
         end = time.monotonic() + 5
-        while marker not in self.output:
+        while not predicate():
+            if time.monotonic() > end:
+                raise AssertionError("prompt state timed out; capture withheld")
+            self.drain(0.03)
+
+    def wait(self, marker, start=0):
+        end = time.monotonic() + 5
+        while marker not in self.output[start:]:
             if time.monotonic() > end:
                 raise AssertionError("prompt state timed out; capture withheld")
             self.drain(0.03)
@@ -108,10 +126,9 @@ class TerminalTests(unittest.TestCase):
         session.send(b"0~" + secret.encode() + b"\x1b[20")
         time.sleep(0.02)
         session.send(b"1~")
-        session.wait(b"*" * len(secret))
+        session.wait(DOTS)
         self.assertIsNone(session.process.poll())
         self.assertNotIn(b"ACCEPTED", session.output)
-        self.assertIn(b"****", session.output)
         self.assertNotIn(b"SYNTHETIC_ONLY", session.output)
         session.send(b"\r")
         session.accepted(secret)
@@ -171,6 +188,87 @@ class TerminalTests(unittest.TestCase):
             session.send(value)
             session.wait(b"RESTORED True")
             self.assertIn(b"REJECTED", session.output)
+
+    def test_mask_shows_at_most_a_quarter_and_three_characters_per_end(self):
+        with patch.object(terminal, "glyph", lambda fancy, plain: fancy):
+            self.assertEqual(terminal.mask(""), "")
+            self.assertEqual(terminal.mask("short12"), "•••••")
+            self.assertEqual(terminal.mask("abcdefgh"), "a•••••h")
+            self.assertEqual(terminal.mask("abcdefghijklmnop"), "ab•••••op")
+            self.assertEqual(terminal.mask("sk_test_" + "x" * 30 + "123"), "sk_•••••123")
+            self.assertEqual(terminal.mask("sk_test_" + "x" * 30 + "123", reveal=False), "•" * 24)
+            self.assertEqual(terminal.mask("abc", reveal=False), "•••")
+            self.assertEqual(terminal.mask(" b\ncdefghijklm\tn"), "•b" + "•••••" + "•n")
+            self.assertEqual(terminal.mask("é" * 30), "•" * 11)
+        for length in range(0, 80):
+            value = "".join(chr(65 + i % 26) for i in range(length))
+            shown = terminal.mask(value).replace("•", "").replace("*", "")
+            self.assertLessEqual(len(shown), min(6, length // 4))
+            self.assertLessEqual(len(terminal.mask(value)), 11)
+            self.assertEqual(terminal.mask(value, reveal=False).strip("•*"), "")
+
+    def test_pasted_value_shows_its_ends_but_typing_and_editing_do_not(self):
+        pasted = self.start()
+        secret = "sk_live_SYNTHETIC_MIDDLE_ONLY_987"
+        pasted.send(b"\x1b[200~" + secret.encode() + b"\x1b[201~")
+        pasted.wait("sk_•••••987".encode())
+        pasted.send(b"\r")
+        pasted.accepted(secret)
+        self.assertNotIn(b"SYNTHETIC_MIDDLE", pasted.output)
+        typed = self.start()
+        for char in b"typed_SYNTHETIC_only_42":
+            typed.send(bytes([char]))
+            typed.drain(0.02)
+        typed.send(b"\r")
+        typed.accepted("typed_SYNTHETIC_only_42")
+        self.assertIn("•".encode() * 23, typed.output)
+        for leak in (b"t" + DOT, DOT + b"2", b"typ", b"_42"):
+            self.assertNotIn(leak, typed.output)
+        edited = self.start()
+        short = "sk_live_SYNTH_MID_9876"
+        edited.send(b"\x1b[200~" + short.encode() + b"\x1b[201~")
+        edited.wait("sk•••••76".encode())
+        for count in range(1, 4):
+            mark = len(edited.output)
+            edited.send(b"\x7f")  # One at a time, so every intermediate state is drawn.
+            edited.until(lambda: bytes(edited.output[mark:]).endswith(
+                "› ".encode() + DOT * (len(short) - count)))
+            drawn = bytes(edited.output[mark:])
+            self.assertNotIn(b"sk", drawn)
+            self.assertNotIn(DOT + short[-2 - count:-count].encode(), drawn)
+        edited.send(b"\r")
+        edited.accepted(short[:-3])
+
+    def test_pasting_again_replaces_and_help_keys_never_change_a_paste(self):
+        session = self.start("strict")
+        session.send(b"\x1b[200~first_SYNTHETIC_value_0001\x1b[201~")
+        session.wait("fir•••••001".encode())
+        session.send(b"\x1b[200~second_SYNTHETIC_value_0002\x1b[201~")
+        session.wait("sec•••••002".encode())
+        session.send(b"?")
+        session.wait(b"HELP_ROWS_PRINTED")
+        session.send(b"\r")
+        session.accepted("second_SYNTHETIC_value_0002")
+        self.assertNotIn(b"first_SYNTHETIC", session.output)
+        typed = self.start()
+        typed.send(b"ab")
+        typed.drain(0.1)
+        typed.send(b"\x1b[200~cd\x1b[201~\r")
+        typed.accepted("abcd")  # A paste after typing appends, and stays fully masked.
+        self.assertNotIn(b"ab" + DOTS, typed.output)
+
+    def test_enter_waits_until_ready_and_actions_only_run_before_input(self):
+        session = self.start("strict")
+        session.send(b"?")
+        session.wait(b"HELP_ROWS_PRINTED")
+        session.send(b"not yet\r")
+        session.drain(0.2)
+        self.assertNotIn(b"ACCEPTED", session.output)
+        self.assertIn(b"\a", session.output)
+        session.send(b"?\r")
+        session.accepted("not yet?")
+        self.assertEqual(session.output.count(b"HELP_ROWS_PRINTED"), 1)
+        self.assertIn(b"\x1b[?2004l", session.output)
 
     def test_color_opt_out_and_redirected_text(self):
         class Output:

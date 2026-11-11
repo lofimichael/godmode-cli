@@ -5,6 +5,7 @@ import ast
 import json
 from pathlib import Path
 import pprint
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,7 +28,7 @@ def main():
     data = pprint.pformat(json.loads((ROOT / 'providers.json').read_text()), width=100, sort_dicts=False)
     source = source.replace('PROVIDERS = None  # The build script inserts the plain provider data here.',
                             'PROVIDERS = ' + data)
-    source = source.replace("VERSION = '0.7.0'", 'VERSION = ' + repr(version))
+    source = re.sub(r"^VERSION = '[^']*'$", lambda _: 'VERSION = ' + repr(version), source, count=1, flags=re.M)
     sections.append('\n# --- command line and static provider guidance ---\n' + source)
     script = '\n'.join(sections)
     ast.parse(script)

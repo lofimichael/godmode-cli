@@ -78,6 +78,23 @@ class StoreTests(unittest.TestCase):
                     self.store.set(key, 'synthetic replacement')
                 self.assertEqual(self.store.env_path.read_bytes(), before)
 
+    def test_unusual_line_breaks_are_left_for_the_editor(self):
+        for text in ["A=1\rKEY=old\rB=2\r", "KEY=old\rB=2\n", "A=1\x0cKEY=old\n", "A=1\u2028KEY=old\n"]:
+            self.write(text)
+            before = self.store.env_path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "unusual line breaks.*godmode edit"):
+                self.store.set("KEY", "synthetic")
+            self.assertEqual(self.store.env_path.read_bytes(), before)
+
+    def test_plan_describes_the_edit_without_values(self):
+        self.write("A=1\nexport KEY=fixture_secret\nKEY=dup\r\n")
+        plan = self.store.plan("KEY")
+        self.assertEqual(plan, {"lines": [2, 3], "plain": False, "kept_cr": False, "crlf": False, "separate": False})
+        self.assertNotIn("fixture_secret", repr(plan))
+        self.write("KEY=old\r\nB=2\r\n")
+        self.assertEqual(self.store.plan("KEY")["kept_cr"], True)
+        self.assertEqual(self.store.plan("NEW"), {"lines": [], "plain": False, "kept_cr": False, "crlf": True, "separate": False})
+
     def test_clipboard_json_and_invalid_input(self):
         self.assertEqual(normalize("synthetic value\r\n"), "synthetic value")
         self.assertEqual(normalize("{\n  \"private_key\": \"fixture\\nvalue\"\n}\r\n"),

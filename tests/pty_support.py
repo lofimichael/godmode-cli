@@ -65,6 +65,16 @@ class Terminal:
         pattern = re.compile(separator.join(re.escape(word.encode()) for word in text.split()))
         self.wait(lambda: bool(pattern.search(self.capture)))
 
+    def settle(self, duration=0.4):
+        """Keep reading until the deadline: for checks that something does not happen."""
+        deadline = time.monotonic() + duration
+        while time.monotonic() < deadline:
+            self.drain(0.02)
+
+    def after(self, mark, text, timeout=8):
+        """Wait for text in the output written since mark, ignoring color and cursor codes."""
+        self.wait(lambda: text in plain(self.capture[mark:]), timeout)
+
     def expect(self, text):
         self.seen(text)
 
@@ -101,9 +111,18 @@ class Terminal:
     def close(self):
         if self.process.poll() is None:
             os.killpg(self.process.pid, signal.SIGKILL)
-            self.process.wait()
+            # A dying session leader waits for unread terminal output to drain; keep reading.
+            deadline = time.monotonic() + 5
+            while self.process.poll() is None and time.monotonic() < deadline:
+                self.drain(0.05)
         os.close(self.master)
         os.close(self.slave)
+        self.process.wait(timeout=5)
+
+
+def plain(capture):
+    """Terminal output without color or cursor sequences."""
+    return re.sub(rb'\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07', b'', bytes(capture)).decode('utf-8', 'replace')
 
 
 def values(path):
@@ -115,3 +134,54 @@ def values(path):
             if len(parsed) == 1:
                 result[key] = parsed[0]
     return result
+
+
+class Screen:
+    """A small terminal model, enough to check that a prompt redraws in place.
+
+    Handles printing with autowrap, CR, LF, cursor up (CSI n A) and erase below
+    (CSI J); other escape sequences are ignored. Rows are kept without scrolling,
+    so the whole session can be inspected.
+    """
+    def __init__(self, cols):
+        self.cols, self.rows, self.x, self.y = cols, [[]], 0, 0
+
+    def _row(self):
+        while len(self.rows) <= self.y:
+            self.rows.append([])
+        return self.rows[self.y]
+
+    def feed(self, data):
+        text = bytes(data).decode('utf-8', 'replace')
+        i = 0
+        while i < len(text):
+            char = text[i]
+            if char == '\x1b':
+                match = re.match(r'\x1b(?:\[([0-9;?]*)([@-~])|\][^\x07]*\x07|.)', text[i:], re.S)
+                if match and match.group(2) == 'A':
+                    self.y = max(0, self.y - int(match.group(1) or 1))
+                elif match and match.group(2) == 'J':
+                    del self._row()[self.x:]
+                    del self.rows[self.y + 1:]
+                i += match.end() if match else 1
+                continue
+            if char == '\r':
+                self.x = 0
+            elif char == '\n':
+                self.y += 1
+                self._row()
+            elif char >= ' ':
+                if self.x >= self.cols:
+                    self.x, self.y = 0, self.y + 1
+                row = self._row()
+                row.extend(' ' * (self.x - len(row)))
+                row[self.x:self.x + 1] = [char]
+                self.x += 1
+            i += 1
+        return self
+
+    def lines(self):
+        return [''.join(row).rstrip() for row in self.rows]
+
+    def count(self, text):
+        return sum(text in row for row in self.lines())

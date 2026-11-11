@@ -117,6 +117,7 @@
       },
       {
         "name": "STRIPE_LIVE_SECRET_KEY",
+        "console": "https://dashboard.stripe.com/apikeys",
         "usage": "Server-side key for real-money operations (live products, prices, Checkout, Payment Links, subscriptions, refunds) once the owner has explicitly authorized live mode.",
         "steps": [
           "Only after explicit owner authorization: open dashboard.stripe.com/apikeys and switch to live mode.",
@@ -128,6 +129,7 @@
       },
       {
         "name": "STRIPE_LIVE_PUBLISHABLE_KEY",
+        "console": "https://dashboard.stripe.com/apikeys",
         "usage": "Client-side key for live Stripe.js, Elements and embedded Checkout; public and paired with STRIPE_LIVE_SECRET_KEY.",
         "steps": [
           "Open dashboard.stripe.com/apikeys in live mode (toggle sandbox mode to live mode).",
@@ -191,6 +193,9 @@
     "key": [
       {
         "name": "GMAIL_USER",
+        "console": null,
+        "prompt": "Enter your Gmail address",
+        "secret": false,
         "usage": "Full address of the Gmail or Workspace mailbox agents use for IMAP reads and SMTP sends; also the login name paired with the app password.",
         "steps": [
           "Choose the Google account that will send and read mail for automation; a dedicated account is safest.",
@@ -228,7 +233,7 @@
           "Open the service account > Keys > Add key > Create new key > JSON.",
           "In Google Ads, open Admin > Access and security > Users and add its client_email.",
           "Choose the access level your workflow needs, such as Read only or Standard.",
-          "Import downloaded JSON with --from-file, or paste raw JSON; Godmode compacts it."
+          "Paste the downloaded JSON here (Godmode compacts it), or run: godmode set GOOGLE_ADS_SERVICE_ACCOUNT_JSON --stdin < key.json"
         ]
       },
       {
@@ -239,7 +244,7 @@
           "Create a service account and download its JSON key from IAM & Admin > Service Accounts > Keys.",
           "Add its client_email to each Search Console property under Settings > Users and permissions.",
           "Choose property permissions and OAuth scopes for the operations you need.",
-          "Import raw JSON with --from-file; user OAuth enrollment is a separate alternative."
+          "Paste the raw JSON here, or run: godmode set GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON --stdin < key.json; user OAuth enrollment is a separate alternative."
         ]
       }
     ]
@@ -304,6 +309,7 @@
     "key": [
       {
         "name": "PRODIGI_SANDBOX_API_KEY",
+        "console": "https://sandbox-beta-dashboard.pwinty.com/settings/api",
         "usage": "Sent as the X-API-Key header (v4: https://api.sandbox.prodigi.com; v5: https://api.prodigi.com/v5 with the sandbox_ prefix) so agents can test catalogue lookups, quotes and order flows without anything being printed, shipped or charged.",
         "steps": [
           "Register once at https://dashboard.prodigi.com/register; this creates linked Live and Sandbox accounts.",

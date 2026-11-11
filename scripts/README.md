@@ -2,7 +2,8 @@
 
 The README animation is made from a scripted session of the actual readable script
 in a pseudo-terminal. It shows the inline setup wizard: choosing a provider,
-reading its links, pasting a masked key and saving it. `pyte` interprets the ANSI
+the "What will be executed on your machine" preview filling in as a masked key
+is pasted, and saving it. `pyte` interprets the ANSI
 output, including its colors and emphasis; Pillow draws the resulting terminal
 cells. The frame holds are chosen for readability and total at most ten
 seconds. It is not a desktop recording or a mock interface.

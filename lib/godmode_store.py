@@ -34,7 +34,9 @@ def normalize(value, key=""):
                 raise ValueError()
             value = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
         except (ValueError, RecursionError):
-            raise ValueError("Multiline credentials must be a valid JSON object.") from None
+            if "\n" in value or "\r" in value:
+                raise ValueError("Multiline credentials must be a valid JSON object.") from None
+            raise ValueError("This key needs the JSON key file's contents, starting with {.") from None
     if not value:
         raise ValueError("Nothing entered; the existing value was kept.")
     if any(ord(c) < 32 or 127 <= ord(c) < 160 or c in "\u2028\u2029" for c in value):
@@ -49,6 +51,9 @@ def _store_lines(text):
     lines = []
     for line in text.splitlines(keepends=True):
         content = line.rstrip("\r\n")
+        if line[len(line.splitlines()[0]):] not in ("", "\n", "\r\n"):
+            # A lone CR, form feed or Unicode line separator would merge lines on rewrite.
+            raise ValueError("Existing file has unusual line breaks. Use godmode edit to edit it in nano.")
         quote, escaped, word = None, False, False
         for index, char in enumerate(content):
             if escaped:
@@ -72,6 +77,11 @@ def _store_lines(text):
             raise ValueError("Existing file has multiline or unfinished quoting. Use godmode edit to edit it in nano.")
         lines.append((line, content))
     return lines
+
+
+def _store_newline(text):
+    """The file's dominant line ending, used for an appended line."""
+    return "\r\n" if text.count("\r\n") > text.count("\n") - text.count("\r\n") else "\n"
 
 
 def _store_stamp(info):
@@ -208,12 +218,34 @@ class Store:
             if previous is None:
                 self._write(text, previous, directory)
 
+    def plan(self, key):
+        """Describe what set(key, value) changes, without reading any value.
+
+        lines: 1-based numbers of the lines assigning key; set() rewrites the first
+        as KEY=value and deletes the others. plain: there is exactly one, already
+        written as KEY=... with a Unix line ending. kept_cr: the first one ends in
+        CRLF, which set() keeps. crlf: a new key is appended with CRLF, the file's
+        usual ending. separate: a new key needs a line break first because the file
+        does not end with one.
+        """
+        valid_key(key)
+        text, _ = self._read()
+        rows = _store_lines(text)
+        numbers = [number for number, (line, _) in enumerate(rows, 1)
+                   if (STORE_ASSIGNMENT.match(line.rstrip("\r\n")) or [None, None])[1] == key]
+        first = rows[numbers[0] - 1][0] if numbers else ""
+        return {"lines": numbers,
+                "plain": len(numbers) == 1 and first.startswith(key + "=") and not first.endswith("\r\n"),
+                "kept_cr": first.endswith("\r\n"),
+                "crlf": _store_newline(text) == "\r\n",
+                "separate": bool(text) and not text.endswith("\n")}
+
     def set(self, key, value):
         valid_key(key)
         value = normalize(value, key)
         with self._writer() as directory:
             text, previous = self._read()
-            newline = "\r\n" if text.count("\r\n") > text.count("\n") - text.count("\r\n") else "\n"
+            newline = _store_newline(text)
             lines, replaced = [], False
             for line, _ in _store_lines(text):
                 match = STORE_ASSIGNMENT.match(line.rstrip("\r\n"))

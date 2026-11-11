@@ -109,7 +109,8 @@ class PicardTests(unittest.TestCase):
         child = subprocess.Popen([sys.executable, "-c", program], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  env={"PATH": "/usr/bin:/bin", "HOME": str(self.root)})
         deadline = time.monotonic() + 5
-        while not pid_file.exists():
+        # The stub's shell creates the file before printf fills it; wait for the digits.
+        while not (pid_file.exists() and pid_file.read_text().strip()):
             if child.poll() is not None or time.monotonic() > deadline:
                 child.kill()
                 _, error = child.communicate()

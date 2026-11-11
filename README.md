@@ -1,6 +1,6 @@
 # Godmode
 
-Paste keys behind a mask. Save them to one ordinary `.env.godmode` file. The CLI is readable Python; your agents do not need it.
+Paste keys behind a mask. Before you press Enter, Godmode shows a shell command with the same effect as the save, with your value filled in as `sk_•••••123`, and the file it writes. Everything goes into one ordinary `.env.godmode` file. The CLI is readable Python; your agents do not need it.
 
 ![Interactive setup using a synthetic key](docs/images/setup.gif)
 
