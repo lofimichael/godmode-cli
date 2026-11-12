@@ -19,7 +19,7 @@ godmodeup
 godmode
 ```
 
-`godmodeup` updates managed scripts, keeps the previous executable, and does not reopen setup unless you pass `--setup`. `--version v0.7.0` pins a release. The updater refuses unrelated or modified executables; `--force` explicitly adopts them. It never edits your keys.
+`godmodeup` updates managed scripts, keeps the previous executable, and does not reopen setup unless you pass `--setup`. `--version v0.9.0` pins a release. The updater refuses unrelated or modified executables; `--force` explicitly adopts them. It never edits your keys.
 
 ## One home
 

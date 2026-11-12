@@ -1,6 +1,6 @@
 # Godmode
 
-Paste keys behind a mask. Before you press Enter, Godmode shows a shell command with the same effect as the save, with your value filled in as `sk_•••••123`, and the file it writes. Everything goes into one ordinary `.env.godmode` file. The CLI is readable Python; your agents do not need it.
+Pick a provider with the arrow keys. Godmode shows what to create and where, in three steps or fewer, and Enter opens the page. Paste the key behind a mask; before you save, it shows a shell command with the same effect, with your value filled in as `sk_•••••123`, and the file it writes. Everything goes into one ordinary `.env.godmode` file. The CLI is readable Python; your agents do not need it.
 
 ![Interactive setup using a synthetic key](docs/images/setup.gif)
 

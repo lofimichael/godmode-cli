@@ -1,9 +1,9 @@
 # Setup recording
 
 The README animation is made from a scripted session of the actual readable script
-in a pseudo-terminal. It shows the inline setup wizard: choosing a provider,
-the "What will be executed on your machine" preview filling in as a masked key
-is pasted, and saving it. `pyte` interprets the ANSI
+in a pseudo-terminal. It shows choosing a provider with the arrow keys, the
+key's three steps, the "What will be executed on your machine" preview filling
+in as a masked key is pasted, and saving it. `pyte` interprets the ANSI
 output, including its colors and emphasis; Pillow draws the resulting terminal
 cells. The frame holds are chosen for readability and total at most ten
 seconds. It is not a desktop recording or a mock interface.
@@ -23,7 +23,7 @@ Use `--theme light` to inspect the same ANSI output on a light terminal palette;
 terminal themes; Godmode uses the user's terminal colors and default background.
 
 The recording uses a temporary HOME, config and state directory and a deliberately
-synthetic GitHub token. The temporary file is created before recording so
+synthetic Cloudflare token. The temporary file is created before recording so
 the short animation can focus on entering a key. First-run confirmation and
 cancellation are exercised separately by `tests/test_simple_cli.py`. Input stays masked.
 It never loads the ordinary Godmode configuration, launches a browser, requests Picard media, authenticates with a

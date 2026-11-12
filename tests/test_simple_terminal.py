@@ -14,7 +14,9 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import godmode_terminal as terminal
+from pty_support import Screen
 
 DOT = "•".encode()
 DOTS = DOT * 5
@@ -22,18 +24,28 @@ DOTS = DOT * 5
 TERM_HARNESS = '''
 import hashlib, os, termios
 import godmode_terminal
-from godmode_terminal import read_secret, read_choice, Cancelled, Prompt
+from godmode_terminal import read_secret, read_choice, read_menu, quiet, Cancelled, Prompt
 
 class Strict(Prompt):
-    actions = {'?': lambda: ['HELP_ROWS_PRINTED']}
-    def ready(self, value):
-        return value != 'not yet'
+    def enter(self, value):
+        return ['ROWS_PRINTED_ABOVE'] if not value else value != 'not yet'
+
+ITEMS = [('Alpha', 'saved', 'ABOUT_ALPHA'), ('Beta', '', 'ABOUT_BETA'), ('Bravo', 'saved', ''), None, ('Gamma', '', ''), ('Done', '', '')]
 
 godmode_terminal.TERM_MAX_INPUT = int(os.environ.get("MAX_FIELD_SIZE", 1024 * 1024))
 before = termios.tcgetattr(0)
 try:
     if os.environ['PROMPT_MODE'] == 'choice':
         value = read_choice('Select provider:', ['', 'github', 'q', 'café'])
+    elif os.environ['PROMPT_MODE'] == 'menu':
+        value = str(read_menu(ITEMS, int(os.environ.get('MENU_START', 0)), 'MENU_HINT', 'MENU_TITLE'))
+    elif os.environ['PROMPT_MODE'] == 'longmenu':
+        value = str(read_menu([('Item %02d' % n, '', '') for n in range(40)], 0, 'MENU_HINT'))
+    elif os.environ['PROMPT_MODE'] == 'quiet':
+        with quiet():
+            first = read_secret('Paste key (hidden; Enter saves):')
+            print('BETWEEN echo=' + str(bool(termios.tcgetattr(0)[3] & termios.ECHO)), flush=True)
+            value = first + read_secret('Paste key again:')
     elif os.environ['PROMPT_MODE'] == 'strict':
         value = read_secret(Strict('Paste key (hidden; Enter saves):'))
     else:
@@ -49,20 +61,21 @@ finally:
 
 
 class Session:
-    def __init__(self, mode="secret", limit=1024 * 1024):
+    def __init__(self, mode="secret", limit=1024 * 1024, rows=24, start=0):
         self.master, self.slave = os.openpty()
         # A new PTY starts at 0x0. Give it a real terminal geometry instead of
         # depending on Python-version-specific get_terminal_size fallbacks.
-        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, 80, 0, 0))
         os.set_blocking(self.master, False)
         self.output = bytearray()
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "lib"),
-               "TERM": "xterm-256color", "PROMPT_MODE": mode, "MAX_FIELD_SIZE": str(limit)}
+               "TERM": "xterm-256color", "PROMPT_MODE": mode, "MAX_FIELD_SIZE": str(limit),
+               "MENU_START": str(start)}
         self.process = subprocess.Popen([sys.executable, "-c", TERM_HARNESS],
                                         stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env=env)
-        self.wait(b"Select provider:" if mode == "choice" else b"Paste key")
+        self.wait({"choice": b"Select provider:", "menu": b"MENU_HINT", "longmenu": b"MENU_HINT"}.get(mode, b"Paste key"))
 
     def send(self, data):
         pending = memoryview(data)
@@ -182,6 +195,26 @@ class TerminalTests(unittest.TestCase):
             session.wait(b"RESTORED True")
             self.assertIn(b"CANCELLED", session.output)
 
+    def test_a_refused_paste_is_read_to_its_end_before_the_prompt_leaves(self):
+        """Leaving mid-paste would hand the rest of the paste to the shell as commands."""
+        for mode, limit, body in (("secret", 1024 * 1024, b"bad\0paste"), ("secret", 32, b"x" * 40)):
+            session = self.start(mode, limit)
+            session.send(b"\x1b[200~" + body)
+            session.drain(0.4)
+            self.assertIsNone(session.process.poll(), "left in the middle of a paste")
+            self.assertNotIn(b"REJECTED", session.output)
+            session.send(b"SYNTHETIC_REST_OF_PASTE; echo SYNTHETIC_COMMAND\r\n" * 20 + b"\x1b[201~")
+            session.wait(b"RESTORED True")
+            self.assertIn(b"REJECTED", session.output)
+            self.assertNotIn(b"SYNTHETIC", session.output)
+        menu = self.menu()
+        menu.send(b"\x1b[200~bad\0" + b"SYNTHETIC_PASTE_LINE\r\n" * 2500 + b"\x1b[201~")  # About 50 KB.
+        self.assertEqual(self.pointed(menu), "Alpha")
+        self.assertIsNone(menu.process.poll(), "a menu ignores every paste, whatever is in it")
+        self.assertNotIn(b"SYNTHETIC", menu.output)
+        menu.send(b"\r")
+        self.chosen(menu, 0)
+
     def test_invalid_utf8_and_nul_restore_terminal(self):
         for value in (b"\xff\r", b"\x1b[200~bad\0paste\x1b[201~"):
             session = self.start()
@@ -239,14 +272,12 @@ class TerminalTests(unittest.TestCase):
         edited.send(b"\r")
         edited.accepted(short[:-3])
 
-    def test_pasting_again_replaces_and_help_keys_never_change_a_paste(self):
+    def test_pasting_again_replaces_a_paste_and_appends_to_typing(self):
         session = self.start("strict")
         session.send(b"\x1b[200~first_SYNTHETIC_value_0001\x1b[201~")
         session.wait("fir•••••001".encode())
         session.send(b"\x1b[200~second_SYNTHETIC_value_0002\x1b[201~")
         session.wait("sec•••••002".encode())
-        session.send(b"?")
-        session.wait(b"HELP_ROWS_PRINTED")
         session.send(b"\r")
         session.accepted("second_SYNTHETIC_value_0002")
         self.assertNotIn(b"first_SYNTHETIC", session.output)
@@ -257,18 +288,138 @@ class TerminalTests(unittest.TestCase):
         typed.accepted("abcd")  # A paste after typing appends, and stays fully masked.
         self.assertNotIn(b"ab" + DOTS, typed.output)
 
-    def test_enter_waits_until_ready_and_actions_only_run_before_input(self):
+    def test_enter_can_refuse_or_print_rows_above_the_prompt(self):
         session = self.start("strict")
-        session.send(b"?")
-        session.wait(b"HELP_ROWS_PRINTED")
+        session.send(b"\r")  # Nothing entered: this prompt answers with rows instead of submitting.
+        session.wait(b"ROWS_PRINTED_ABOVE")
         session.send(b"not yet\r")
         session.drain(0.2)
         self.assertNotIn(b"ACCEPTED", session.output)
         self.assertIn(b"\a", session.output)
-        session.send(b"?\r")
-        session.accepted("not yet?")
-        self.assertEqual(session.output.count(b"HELP_ROWS_PRINTED"), 1)
+        session.send(b"!\r")
+        session.accepted("not yet!")
         self.assertIn(b"\x1b[?2004l", session.output)
+        # The rows stay on screen above the prompt through the later redraws.
+        self.assertEqual(Screen(80).feed(session.output).count("ROWS_PRINTED_ABOVE"), 1)
+
+    def test_no_echo_between_two_prompts_of_one_session(self):
+        session = self.start("quiet")
+        session.send(b"\x1b[200~first_SYNTHETIC_0001\x1b[201~\r")
+        session.wait(b"BETWEEN echo=False")
+        session.wait(b"Paste key again:")
+        session.send(b"\x1b[200~second_SYNTHETIC_0002\x1b[201~\r")
+        session.accepted("first_SYNTHETIC_0001second_SYNTHETIC_0002")
+        self.assertNotIn(b"SYNTHETIC", session.output)
+
+    def menu(self, **options):
+        session = Session("menu", **options)
+        self.addCleanup(session.close)
+        return session
+
+    def chosen(self, session, index):
+        session.accepted(str(index))
+        screen = Screen(80).feed(session.output)
+        # The menu erases itself and shows the cursor again.
+        self.assertEqual(screen.count("MENU_TITLE") + screen.count("MENU_HINT") + screen.count("Alpha"), 0)
+        self.assertTrue(session.output.rstrip().endswith(b"RESTORED True"))
+        self.assertIn(b"\x1b[?25l", session.output)  # Hidden while the menu is up, shown again after.
+        self.assertLess(session.output.rfind(b"\x1b[?25l"), session.output.rfind(b"\x1b[?25h"))
+
+    def pointed(self, session):
+        """The name on the row the pointer is on, read from the screen as drawn."""
+        session.drain(0.15)
+        rows = [row for row in Screen(80).feed(session.output).lines() if row.startswith("❯ ")]
+        self.assertEqual(len(rows), 1, "the menu was not redrawn in place")
+        return rows[0][2:].split()[0]
+
+    def test_menu_moves_with_arrows_wraps_and_skips_gaps(self):
+        session = self.menu()
+        self.assertEqual(self.pointed(session), "Alpha")
+        for keys, name in ((b"\x1b[B", "Beta"), (b"\x1bOB", "Bravo"), (b"\x1b[B", "Gamma"), (b"\x1b[B", "Done"),
+                           (b"\x1b[B", "Alpha"), (b"\x1b[A", "Done"), (b"\x1b[H", "Alpha"), (b"\x1b[F", "Done"),
+                           (b"\x1b[1~", "Alpha"), (b"\x1b[1;5B", "Beta"), (b"\x10", "Alpha"), (b"\x0e", "Beta"),
+                           (b"\x1b[6~", "Done"), (b"\x1b[5~", "Alpha")):
+            session.send(keys)
+            self.assertEqual(self.pointed(session), name)
+        screen = Screen(80).feed(session.output)
+        self.assertEqual((screen.count("MENU_TITLE"), screen.count("MENU_HINT"), screen.count("Alpha")), (1, 1, 1))
+        # Status shows on every row in one column; the description only on the pointed row.
+        rows = screen.lines()
+        self.assertIn("❯ Alpha  saved  ABOUT_ALPHA", rows)
+        self.assertIn("  Beta", rows)
+        self.assertIn("  Bravo  saved", rows)
+        self.assertEqual(screen.count("ABOUT_BETA"), 0)
+        session.send(b"\x1b[B\x1b[B\r")
+        self.chosen(session, 2)
+
+    def test_menu_jumps_to_typed_letters_and_ignores_pastes(self):
+        session = self.menu(start=4)
+        self.assertEqual(self.pointed(session), "Gamma")
+        for keys, name in ((b"b", "Beta"), (b"r", "Bravo"), (b"g", "Gamma"), (b"zz", "Gamma"), (b"D", "Done")):
+            session.send(keys)
+            self.assertEqual(self.pointed(session), name)
+        session.send(b"\x1b[200~SYNTHETIC_MISPLACED_credential_9437\x1b[201~")
+        self.assertEqual(self.pointed(session), "Done")
+        self.assertNotIn(b"SYNTHETIC_MISPLACED", session.output)
+        session.send(b"\x1b[200~gamma\x1b[201~")  # Even a pasted row name does not move the pointer.
+        self.assertEqual(self.pointed(session), "Done")
+        # An arrow ends a search: the next letter starts a new one instead of extending "d".
+        session.send(b"b")
+        self.assertEqual(self.pointed(session), "Beta")
+        session.send(b"\x1b[B\x1b[A")
+        session.send(b"r")
+        self.assertEqual(self.pointed(session), "Beta")  # "r" alone matches nothing; "br" would be Bravo.
+        session.send(b"\x1b[B\x1b[B\r")
+        self.chosen(session, 4)
+
+    def test_menu_survives_odd_key_sequences(self):
+        session = self.menu()
+        # Each case would move the pointer somewhere else if its bytes leaked through as typed letters.
+        for keys, name, why in ((b"\x1b\x1b[A", "Done", "Alt+Up is Escape followed by Up"),
+                                (b"\x1b[[A", "Done", "a Linux console function key is one unknown key"),
+                                ("é".encode(), "Done", "a letter outside ASCII is not a search"),
+                                (b"\x1b[1;", "Done", "a stalled fragment is dropped, not read as Escape"),
+                                (b"\x1b[3~", "Done", "Delete does nothing"),
+                                (b"g", "Gamma", "typing still works afterwards")):
+            session.send(keys)
+            time.sleep(0.15)
+            self.assertEqual(self.pointed(session), name, why)
+            self.assertIsNone(session.process.poll(), why)
+        self.assertNotIn(b"CANCELLED", session.output)
+        session.send(b"\r")
+        self.chosen(session, 4)
+
+    def test_menu_escape_goes_back_and_long_lists_scroll(self):
+        for cancel in (b"\x1b", b"\x03"):
+            session = self.menu()
+            started = time.monotonic()
+            session.send(cancel)
+            session.wait(b"RESTORED True")
+            self.assertLess(time.monotonic() - started, 1.5, "a lone Escape closes the menu promptly")
+            self.assertIn(b"CANCELLED", session.output)
+            self.assertEqual(Screen(80).feed(session.output).count("Alpha"), 0)
+            self.assertLess(session.output.rfind(b"\x1b[?25l"), session.output.rfind(b"\x1b[?25h"))
+        session = Session("longmenu", rows=10)
+        self.addCleanup(session.close)
+
+        def window():
+            session.drain(0.3)
+            return [row for row in Screen(80).feed(session.output).lines() if "Item" in row or row.strip() == "⋮"]
+        # At the top the pointed first row is visible, with one marker below; at the end the reverse.
+        self.assertEqual((window()[0], window()[-1].strip()), ("❯ Item 00", "⋮"))
+        session.send(b"\x1b[6~")
+        self.assertEqual(sum(row.startswith("❯ Item 05") for row in window()), 1)  # Page Down moves five rows.
+        session.send(b"\x1b[F")
+        self.assertEqual((window()[0].strip(), window()[-1]), ("⋮", "❯ Item 39"))
+        session.send(b"\x1b[H")
+        for _ in range(25):
+            session.send(b"\x1b[B")
+        rows = window()
+        self.assertEqual(sum(row.startswith("❯ Item 25") for row in rows), 1)
+        self.assertEqual(sum("Item" in row for row in rows), 5)  # 10 rows: gap, hint, two markers, five items.
+        self.assertEqual(sum(row.strip() == "⋮" for row in rows), 2)
+        session.send(b"\r")
+        session.accepted("25")
 
     def test_color_opt_out_and_redirected_text(self):
         class Output:

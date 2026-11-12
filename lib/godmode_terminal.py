@@ -1,4 +1,5 @@
-"""Small terminal prompts: partly masked values, a live preview, explicit Enter and plain ANSI color."""
+"""Small terminal prompts: an arrow-key menu, partly masked input with a live preview, plain ANSI color."""
+import contextlib
 import os
 import re
 import select
@@ -6,11 +7,17 @@ import shutil
 import signal
 import sys
 import termios
+import textwrap
 import tty
 import unicodedata
 
 TERM_MAX_INPUT = 1024 * 1024
 TERM_STYLE = re.compile(r"\033\[[0-9;]*m")
+TERM_PASTE = (b"\x1b[200~", b"\x1b[201~")
+TERM_KEYS = {3: "cancel", 4: "cancel", 9: "tab", 10: "enter", 13: "enter", 8: "backspace", 127: "backspace",
+             14: "down", 16: "up", 21: "clear"}
+TERM_ARROWS = {"A": "up", "B": "down", "C": "right", "D": "left", "H": "home", "F": "end",
+               "1~": "home", "7~": "home", "4~": "end", "8~": "end", "5~": "pageup", "6~": "pagedown"}
 
 
 class Cancelled(Exception):
@@ -25,7 +32,7 @@ def color_enabled(stream=None):
     stream = sys.stdout if stream is None else stream
     return (stream.isatty() and "NO_COLOR" not in os.environ
             and os.environ.get("CLICOLOR") != "0"
-            and os.environ.get("TERM") != "dumb")
+            and os.environ.get("TERM", "dumb") not in ("", "dumb"))
 
 
 def style(text, role="accent"):
@@ -37,8 +44,9 @@ def style(text, role="accent"):
 
 
 def glyph(fancy, plain):
-    """Use a Unicode symbol only when the terminal encoding can show it."""
-    return fancy if "utf" in (getattr(sys.stdout, "encoding", "") or "").lower() else plain
+    """Use a Unicode symbol only when the terminal can show it (the Linux console font cannot)."""
+    unicode = "utf" in (getattr(sys.stdout, "encoding", "") or "").lower() and os.environ.get("TERM") != "linux"
+    return fancy if unicode else plain
 
 
 def mask(value, reveal=True):
@@ -101,38 +109,26 @@ def screen_rows():
 
 
 class Prompt:
-    """What a prompt draws. The last rendered row is the input line, where the cursor rests."""
-    # key -> function returning rows to print above the prompt. Tab always works;
-    # printable keys work only while nothing has been typed into the field.
-    actions = {}
+    """What a text prompt draws. The last rendered row is the input line, where the cursor rests."""
+    pastes = True  # False for a field shown as typed, so a secret pasted there by mistake never appears.
+    pasted = False  # read_secret sets this while the field holds any pasted text.
 
     def __init__(self, label, hidden=True):
         self.label, self.hidden = label, hidden
 
     def render(self, value, width, reveal=True):
         shown = mask(value, reveal) if self.hidden else value
-        rows = fit(self.label, width)
+        rows = textwrap.wrap(self.label, max(1, width - 1)) or [""]
         entry = glyph("› ", "> ")
         return rows[:-1] + [style(rows[-1], "accent"), entry + fit(shown, width - cells(entry))[-1]]
 
-    def ready(self, value):
-        """Whether Enter may submit this value."""
+    def enter(self, value):
+        """What Enter does: True submits, False refuses, a list of rows is printed above the prompt."""
         return True
 
     def final(self, value, width, reveal, submitted):
         """Rows left on screen once the prompt ends."""
         return self.render(value, width, reveal)
-
-
-def read_secret(prompt):
-    """Return a hidden value. Pasting never submits; only Enter does."""
-    return _term_read(prompt if isinstance(prompt, Prompt) else Prompt(prompt), None)
-
-
-def read_choice(label, choices):
-    """Return a listed choice; never echo an unexpected pasted value."""
-    return _term_read(Prompt(label, hidden=False),
-                      {str(choice).casefold(): str(choice) for choice in choices})
 
 
 def _draw(rows, previous):
@@ -155,181 +151,351 @@ def _draw(rows, previous):
     return widths
 
 
-def _term_read(prompt, choices):
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        raise ValueError("This prompt needs a terminal.")
+@contextlib.contextmanager
+def quiet():
+    """Keep the terminal from echoing between prompts, for a whole interactive session.
+
+    Each prompt reads in raw mode, but between two prompts the terminal would be back
+    to normal and would print a paste that lands in that moment. With echo off for the
+    session, such input is dropped unseen. The terminal is restored at the end.
+    """
+    if not sys.stdin.isatty():
+        yield
+        return
     fd = sys.stdin.fileno()
     saved = termios.tcgetattr(fd)
-    handlers = {}
-    value = bytearray()
-    pending = bytearray()
-    paste_value = bytearray()
-    pasting = False
-    # Ends are shown only for a value pasted into an empty field. Typing or deleting
-    # would otherwise reveal every character as it passes through the visible end.
-    reveal = True
-    submitted = False
-    drawn = []
-    paste_start, paste_end = b"\x1b[200~", b"\x1b[201~"
-    # A resize writes to this pipe so the region is redrawn at the new width at once.
-    wake, wake_write = os.pipe()
-    os.set_blocking(wake, False)
-    os.set_blocking(wake_write, False)
-    previous_wake = None
+    silent = termios.tcgetattr(fd)
+    silent[3] &= ~termios.ECHO
 
     def interrupted(_number, _frame):
         raise Cancelled()
+    handlers = {number: signal.signal(number, interrupted) for number in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        termios.tcsetattr(fd, termios.TCSADRAIN, silent)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, saved)
+        for number, previous in handlers.items():
+            signal.signal(number, previous)
 
-    def append(data, pasted=False):
-        if len(value) + len(data) > TERM_MAX_INPUT or b"\0" in data:
-            raise ValueError("Input is too large or contains a NUL byte; nothing saved.")
-        if choices is not None:
-            try:
-                candidate = (value + data).decode("utf-8").casefold()
-            except UnicodeDecodeError:
-                if not pasted and any(option.encode("utf-8").startswith(value + data)
-                                      for option in choices):
-                    value.extend(data)
-                return
-            # Pasting a credential into a menu must not put it in scrollback.
-            if not (candidate in choices if pasted else
-                    any(option.startswith(candidate) for option in choices)):
-                return
-        value.extend(data)
+
+def _key_name(code):
+    """Name the key for the body of an escape sequence, such as "A", "1;5B" or "5~"."""
+    if code.endswith("~"):
+        return TERM_ARROWS.get(code[:-1].split(";")[0] + "~")
+    return TERM_ARROWS.get(code[-1:])
+
+
+class _Keyboard:
+    """Raw terminal input for one prompt, restored on every way out.
+
+    read() waits for the next event:
+      ("text", bytes)    typed characters
+      ("paste", bytes)   one whole bracketed paste, never interpreted as keys
+      ("reject", None)   a paste that was too large or held a NUL byte, once all of it has arrived
+      ("key", name)      enter, esc, tab, backspace, clear, up, down, left, right, home, end, pageup, pagedown
+      ("resize", None)   the window changed size
+    Ctrl-C, Ctrl-D and termination signals raise Cancelled.
+    """
+
+    def __enter__(self):
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise ValueError("This prompt needs a terminal.")
+        if os.environ.get("TERM", "dumb") in ("", "dumb"):
+            raise ValueError("This terminal cannot redraw. Pipe a value to godmode set KEY --stdin")
+        self.fd = sys.stdin.fileno()
+        self.saved = termios.tcgetattr(self.fd)
+        self.events, self.pending, self.paste, self.rejected = [], bytearray(), None, False
+        self.handlers, self.previous_wake = {}, None
+        # A resize writes to this pipe, so select() wakes up and the prompt redraws at once.
+        self.wake, self.wake_write = os.pipe()
+        os.set_blocking(self.wake, False)
+        os.set_blocking(self.wake_write, False)
+
+        def interrupted(_number, _frame):
+            raise Cancelled()
+        try:
+            for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                self.handlers[number] = signal.signal(number, interrupted)
+            self.handlers[signal.SIGWINCH] = signal.signal(signal.SIGWINCH, lambda *_: None)
+            self.previous_wake = signal.set_wakeup_fd(self.wake_write)
+            tty.setraw(self.fd)
+            sys.stdout.write("\033[?2004h")
+        except BaseException:
+            self.__exit__()
+            raise
+        return self
+
+    def __exit__(self, *_):
+        # Flush unread input so a cancelled paste cannot become a shell command.
+        termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.saved)
+        if self.previous_wake is not None:
+            signal.set_wakeup_fd(self.previous_wake)
+        for number, previous in self.handlers.items():
+            signal.signal(number, previous)
+        os.close(self.wake)
+        os.close(self.wake_write)
+        sys.stdout.write("\033[?2004l\033[?25h")
+        sys.stdout.flush()
+
+    def read(self):
+        while not self.events:
+            # An isolated Escape is the Escape key; a fragmented sequence gets time to arrive.
+            waiting = self.pending.startswith(b"\x1b") and self.paste is None
+            ready = select.select([self.fd, self.wake], [], [], 0.08 if waiting else None)[0]
+            if not ready:
+                alone = self.pending == b"\x1b"
+                self.pending.clear()  # A stalled fragment of a longer sequence is dropped, not a key.
+                if alone:
+                    return ("key", "esc")
+                continue
+            if self.wake in ready:
+                with contextlib.suppress(BlockingIOError):
+                    while os.read(self.wake, 512):
+                        pass
+                return ("resize", None)
+            chunk = os.read(self.fd, 4096)
+            if not chunk:
+                raise Cancelled()
+            self.pending.extend(chunk)
+            self._parse()
+        return self.events.pop(0)
+
+    def _parse(self):
+        """Turn complete input into events; leave an unfinished sequence for the next read."""
+        pending, start, end = self.pending, TERM_PASTE[0], TERM_PASTE[1]
+        while pending:
+            if self.paste is not None:
+                found = pending.find(end)
+                # Hold back a possibly split end marker; pasted bytes are data, never keys.
+                take = found if found >= 0 else max(0, len(pending) - len(end))
+                if not self.rejected:
+                    self.paste.extend(pending[:take])
+                del pending[:take]
+                if len(self.paste) > TERM_MAX_INPUT or b"\0" in self.paste:
+                    # Keep reading to the end of the paste before refusing it. Leaving now would
+                    # let the terminal deliver the rest of it to the shell as commands.
+                    self.rejected = True
+                    self.paste[:] = b""
+                if found < 0:
+                    return
+                del pending[:len(end)]
+                self.events.append(("reject", None) if self.rejected else ("paste", bytes(self.paste)))
+                self.paste, self.rejected = None, False
+            elif pending[0] != 27:
+                char = pending.pop(0)
+                if TERM_KEYS.get(char) == "cancel":
+                    raise Cancelled()
+                if char in TERM_KEYS:
+                    self.events.append(("key", TERM_KEYS[char]))
+                elif char >= 32:
+                    self.events.append(("text", bytes([char])))
+            elif pending.startswith(start):
+                del pending[:len(start)]
+                self.paste = bytearray()
+            elif len(pending) < 2 or start.startswith(bytes(pending)):
+                return  # Only an Escape so far; read() decides after a short wait.
+            elif pending[1] == 27:
+                del pending[:1]  # Alt+arrow arrives as Escape, then the arrow's own sequence.
+            elif pending[1] not in b"[O":
+                del pending[:2]  # Ignore an Alt-key sequence.
+            elif pending[1:3] == b"[[":
+                if len(pending) < 4:
+                    return
+                del pending[:4]  # A Linux console function key.
+            else:
+                last = next((i for i in range(2, len(pending)) if 0x40 <= pending[i] <= 0x7e), None)
+                if last is None and len(pending) < 32:
+                    return
+                last = len(pending) - 1 if last is None else last
+                name = _key_name(bytes(pending[2:last + 1]).decode("ascii", "ignore"))
+                del pending[:last + 1]
+                if name:
+                    self.events.append(("key", name))
+
+
+def read_secret(prompt):
+    """Return a hidden value. Pasting never submits; only Enter does."""
+    prompt = prompt if isinstance(prompt, Prompt) else Prompt(prompt)
+    value, drawn, submitted = bytearray(), [], False
+    # Ends are shown only for a value pasted into an empty field. Typing or deleting
+    # would otherwise reveal every character as it passes through the visible end.
+    reveal = True
+
+    def text():
+        return value.decode("utf-8", "ignore")
 
     def clear():
         value[:] = b"\0" * len(value)
         value.clear()
 
-    def render(final=False):
-        text = value.decode("utf-8", "ignore")
-        if final:
-            return prompt.final(text, columns(), reveal, submitted)
-        return prompt.render(text, columns(), reveal)
+    def add(data):
+        if len(value) + len(data) > TERM_MAX_INPUT:
+            raise ValueError("Input is too large; nothing saved.")
+        value.extend(data)
 
-    try:
-        for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            handlers[number] = signal.signal(number, interrupted)
-        handlers[signal.SIGWINCH] = signal.signal(signal.SIGWINCH, lambda *_: None)
-        previous_wake = signal.set_wakeup_fd(wake_write)
-        tty.setraw(fd)
-        sys.stdout.write("\033[?2004h")
-        while True:
-            if not pasting:
-                drawn = _draw(render(), drawn)
-            # An isolated Escape goes back; fragmented terminal sequences get time
-            # to arrive before it is interpreted as the Escape key.
-            timeout = 0.08 if pending.startswith(b"\x1b") and not pasting else None
-            ready = select.select([fd, wake], [], [], timeout)[0]
-            if wake in ready:
-                while True:
-                    try:
-                        if not os.read(wake, 512):
-                            break
-                    except BlockingIOError:
-                        break
-                if fd not in ready:
-                    continue
-            if not ready:
-                raise Back()
-            chunk = os.read(fd, 4096)
-            if not chunk:
-                raise Cancelled()
-            pending.extend(chunk)
-            while pending:
-                if pasting:
-                    end = pending.find(paste_end)
-                    if end < 0:
-                        # Retain a possible split end marker without interpreting
-                        # any pasted control characters as terminal commands.
-                        if len(pending) > len(paste_end):
-                            if choices is None:
-                                append(pending[:-len(paste_end)])
-                            else:
-                                paste_value.extend(pending[:-len(paste_end)])
-                                if len(paste_value) > TERM_MAX_INPUT:
-                                    raise ValueError("Input is too large; nothing saved.")
-                            del pending[:-len(paste_end)]
-                        break
-                    if choices is None:
-                        append(pending[:end], pasted=True)
-                    else:
-                        paste_value.extend(pending[:end])
-                        append(paste_value, pasted=True)
-                    del pending[:end + len(paste_end)]
-                    pasting = False
-                    continue
-                if pending[0] == 27:
-                    if len(pending) < len(paste_start) and paste_start.startswith(pending):
-                        break
-                    if pending.startswith(paste_start):
-                        del pending[:len(paste_start)]
-                        pasting = True
-                        paste_value = bytearray()
-                        if choices is None and reveal:
-                            clear()  # Pasting again replaces a pasted value instead of doubling it.
-                        continue
-                    if len(pending) < 2:
-                        break
-                    if pending[1] in (ord("["), ord("O")):
-                        end = next((i for i in range(2, len(pending))
-                                    if 0x40 <= pending[i] <= 0x7e), None)
-                        if end is None and len(pending) < 32:
-                            break
-                        del pending[:(end + 1 if end is not None else len(pending))]
-                    else:
-                        del pending[:2]  # Ignore an Alt-key sequence.
-                    continue
-                char = pending.pop(0)
-                if char in (3, 4):
-                    raise Cancelled()
-                if char in (10, 13):
+    with _Keyboard() as keyboard:
+        try:
+            while True:
+                drawn = _draw(prompt.render(text(), columns(), reveal), drawn)
+                kind, key = keyboard.read()
+                if kind == "reject":
+                    raise ValueError("Input is too large or contains a NUL byte; nothing saved.")
+                elif kind == "paste" and not prompt.pastes:
+                    sys.stdout.write("\a")
+                elif kind == "paste":
+                    if reveal:
+                        clear()  # Pasting again replaces a pasted value instead of doubling it.
+                    add(key)
+                    prompt.pasted = True
+                elif kind == "text":
+                    add(key)
+                    reveal = False
+                elif key == "backspace" and value:
+                    start = len(value) - 1
+                    while start > 0 and (value[start] & 0xc0) == 0x80:
+                        start -= 1
+                    del value[start:]
+                    reveal = False
+                elif key == "clear":
+                    clear()
+                elif key == "esc":
+                    raise Back()
+                elif key == "enter":
                     try:
                         answer = value.decode("utf-8")
                     except UnicodeDecodeError:
                         raise ValueError("Input is not valid UTF-8; nothing saved.") from None
-                    if choices is None and prompt.ready(answer):
+                    outcome = prompt.enter(answer)
+                    if outcome is True:
                         submitted = True
                         return answer
-                    if choices is not None and answer.casefold() in choices:
-                        submitted = True
-                        return choices[answer.casefold()]
-                    sys.stdout.write("\a")
-                elif (choices is None and chr(char) in prompt.actions
-                      and (char == 9 or not value or reveal)):
-                    _draw([], drawn)
-                    rows = prompt.actions[chr(char)]()
-                    sys.stdout.write("".join(row + "\r\n" for row in rows))
-                    drawn = []
-                elif char == 21:
-                    clear()
-                elif char in (8, 127):
-                    if value:
-                        start = len(value) - 1
-                        while start > 0 and (value[start] & 0xc0) == 0x80:
-                            start -= 1
-                        del value[start:]
-                        reveal = False
-                elif char >= 32:
-                    append(bytes([char]))
-                    reveal = False
+                    if outcome is False:
+                        sys.stdout.write("\a")
+                    else:
+                        _draw([], drawn)
+                        sys.stdout.write("".join(row + "\r\n" for row in outcome))
+                        drawn = []
                 if not value:
-                    reveal = True
-    finally:
-        left = []
-        try:
-            left = render(final=True)
-            _draw(left, drawn)
+                    reveal, prompt.pasted = True, False
         finally:
-            # Flush unsaved input so a cancelled paste cannot become a shell command.
-            termios.tcsetattr(fd, termios.TCSAFLUSH, saved)
-            if previous_wake is not None:
-                signal.set_wakeup_fd(previous_wake)
-            for number, previous in handlers.items():
-                signal.signal(number, previous)
-            os.close(wake)
-            os.close(wake_write)
+            left = prompt.final(text(), columns(), reveal, submitted)
+            _draw(left, drawn)
             clear()
-            # An empty final region leaves the cursor on a fresh line already.
-            sys.stdout.write("\033[?2004l" + ("\r\n" if left else ""))
-            sys.stdout.flush()
+            sys.stdout.write("\r\n" if left else "")
+
+
+def read_choice(label, choices):
+    """Return a listed choice typed in full; never echo an unexpected pasted value."""
+    options = {str(choice).casefold(): str(choice) for choice in choices}
+    prompt, value, drawn = Prompt(label, hidden=False), bytearray(), []
+
+    def fits(data, pasted):
+        try:
+            candidate = (value + data).decode("utf-8").casefold()
+        except UnicodeDecodeError:  # The first bytes of a character still being typed.
+            return not pasted and any(option.encode("utf-8").startswith(value + data) for option in options)
+        # Pasting a credential into a confirmation must not put it in scrollback.
+        return candidate in options if pasted else any(option.startswith(candidate) for option in options)
+
+    with _Keyboard() as keyboard:
+        try:
+            while True:
+                drawn = _draw(prompt.render(value.decode("utf-8", "ignore"), columns()), drawn)
+                kind, key = keyboard.read()
+                if kind in ("text", "paste"):
+                    if fits(key, kind == "paste"):
+                        value.extend(key)
+                elif key == "backspace" and value:
+                    del value[-1:]
+                    while value and (value[-1] & 0xc0) == 0x80:
+                        del value[-1:]
+                elif key == "clear":
+                    value.clear()
+                elif key == "esc":
+                    raise Back()
+                elif key == "enter":
+                    answer = value.decode("utf-8", "ignore").casefold()
+                    if answer in options:
+                        return options[answer]
+                    sys.stdout.write("\a")
+        finally:
+            sys.stdout.write("\r\n")
+
+
+def read_menu(items, start=0, hint="", title="", gap=False):
+    """Choose a row with the arrow keys and return its index; Escape raises Back.
+
+    items are (name, status, about) rows; None leaves a gap that cannot be chosen.
+    The status shows on every row, the description only on the row the pointer is on.
+    Typing letters jumps to the first name that starts with them, and the same letter
+    again moves to the next such name. gap adds a blank row above. The menu erases
+    itself when it ends, so the caller decides what stays on screen.
+    """
+    choices = [index for index, item in enumerate(items) if item]
+    at = start if start in choices else choices[0]
+    typed, drawn = "", []
+    pointer, more = glyph("❯ ", "> "), glyph("  ⋮", "  :")
+    # Columns are sized by the rows that have something to show beside their name.
+    names = max([cells(items[i][0]) for i in choices if items[i][1] or items[i][2]] or [0]) + 2
+    marks = max(cells(items[index][1]) for index in choices)
+    marks += 2 if marks else 0
+
+    def starting(letters):
+        return [index for index in choices if items[index][0].casefold().startswith(letters)]
+
+    def render():
+        width = columns()
+        above = ([""] if gap else []) + ([style(fit(title, width)[0], "title")] if title else [])
+        below = [""] + [style(row, "accent") for row in textwrap.wrap(hint, max(1, width - 1))] if hint else []
+        room = max(3, screen_rows() - 1 - len(above) - len(below))
+        top = 0 if len(items) <= room else min(max(0, at - room // 2), len(items) - room)
+        rows = []
+        for index in range(top, min(len(items), top + room)):
+            if (index == top and top > 0) or (index == top + room - 1 and index < len(items) - 1):
+                rows.append(more)  # The list is taller than the window and continues.
+            elif not items[index]:
+                rows.append("")
+            else:
+                name, mark, about = items[index]
+                row = name.ljust(names) + mark.ljust(marks) + (about if index == at else "")
+                row = fit(row, width - 2)[0].rstrip()
+                if index == at:
+                    row = style(row[:len(name)], "title") + row[len(name):]
+                rows.append((style(pointer, "accent") if index == at else "  ") + row)
+        return above + rows + below
+
+    with _Keyboard() as keyboard:
+        try:
+            sys.stdout.write("\033[?25l")
+            while True:
+                drawn = _draw(render(), drawn)
+                kind, key = keyboard.read()
+                if kind == "text":
+                    letter = key.decode("utf-8", "ignore").casefold()
+                    if not letter:
+                        continue  # Part of a character outside ASCII.
+                    found = starting(typed + letter)
+                    if found:
+                        typed += letter
+                    elif typed and set(typed) == {letter}:
+                        found = starting(letter)  # The same letter again: the next name with it.
+                        found = [index for index in found if index > at] or found
+                    else:
+                        typed, found = letter, starting(letter)
+                    at = found[0] if found else at
+                    continue
+                typed = ""
+                step = {"up": -1, "down": 1, "pageup": -5, "pagedown": 5}.get(key) if kind == "key" else None
+                if step in (-1, 1):
+                    at = choices[(choices.index(at) + step) % len(choices)]  # Wraps around.
+                elif step:
+                    at = choices[min(max(0, choices.index(at) + step), len(choices) - 1)]
+                elif key in ("home", "end"):
+                    at = choices[0 if key == "home" else -1]
+                elif key == "enter":
+                    return at
+                elif key == "esc":
+                    raise Back()
+        finally:
+            _draw([], drawn)

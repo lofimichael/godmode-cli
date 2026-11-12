@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Godmode: choose a key, paste a value, see the edit it makes, save one local .env file."""
+"""Godmode: pick a key with the arrow keys, paste it, see the edit it makes, save one local .env file."""
 import sys
 if sys.version_info < (3, 9):
     sys.exit('Godmode needs Python 3.9 or newer. No files changed.')
@@ -19,11 +19,12 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
 from godmode_store import Store, normalize, valid_key
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask
-from godmode_terminal import read_choice, read_secret, screen_rows, style
+from godmode_terminal import quiet, read_choice, read_menu, read_secret, screen_rows, style
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['╔═╗╔═╗╔╦╗╔╦╗╔═╗╔╦╗╔═╗', '║ ╦║ ║ ║║║║║║ ║ ║║║╣ ', '╚═╝╚═╝═╩╝╩ ╩╚═╝═╩╝╚═╝']
+PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
 
 
 def catalog():
@@ -34,6 +35,12 @@ def catalog():
 
 def line(text='', role=None):
     print(style(text, role) if role else text, flush=True)
+    PRINTED['blank'] = not text
+
+
+def gap():
+    """A screen starts with a blank row unless the line above it is already blank."""
+    return [] if PRINTED['blank'] else ['']
 
 
 def wrap(text, indent=''):
@@ -65,23 +72,24 @@ def banner(store):
     if glyph('art', '') and columns() >= 72:
         for art, text in zip(LOGO, side):
             line('  ' + style(art, 'accent') + '   ' + text)
-        return
-    for art in (LOGO if glyph('art', '') else ['GODMODE']):
-        line('  ' + style(art, 'accent'))
+    else:
+        for art in (LOGO if glyph('art', '') else ['GODMODE']):
+            line('  ' + style(art, 'accent'))
+        line()
+        line(side[1])
+        line(side[2])
     line()
-    line(side[1])
-    line(side[2])
 
 
 def prepare(store, accepted=False):
     if not store.exists():
-        line()
         line('No Godmode setup here yet', 'warning')
         wrapped('These keys let agents act as you. The provider does not give a shit whether a destructive request was a mistake. Check the account and permissions before handing over access.')
         wrapped('Values stay in one plaintext file, readable by programs running as you. Nothing here signs in to providers or proves a key works.')
         line()
         if not accepted:
             read_choice('Type GODMODE to continue', ['GODMODE'])
+            line()
     store.initialize()
 
 
@@ -117,31 +125,9 @@ def open_page(url):
         return True
 
 
-def browse(url):
-    """Prompt action: open a key page, or show its address to open by hand."""
-    try:
-        if open_page(url):
-            return [style('Opened ' + urlsplit(url).netloc + ' in your browser.', 'accent'), '']
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return ['Open this page in your browser:', url, '']
-
-
 def key_page(provider, key):
-    """Where Tab goes for this key: its own page when it has one, else the provider's."""
+    """The page Enter opens for this key: its own when it has one, else the provider's."""
     return key['console'] if 'console' in key else provider['console']
-
-
-def guide(provider, key):
-    """Prompt action: print a key's steps and full links."""
-    rows = []
-    for number, step in enumerate(key.get('steps', []), 1):
-        parts = wrap(step, '     ')
-        rows += [style('%3d.' % number, 'accent') + parts[0][4:]] + parts[1:]
-    rows.append('')
-    links = (('Key page', key_page(provider, key)), ('Sign in', provider.get('login')), ('Docs', provider.get('docs')))
-    rows += ['     ' + style(label.ljust(9), 'accent') + url for label, url in links if url]
-    return rows + ['']
 
 
 def shell_word(text):
@@ -216,37 +202,67 @@ def listed(numbers):
 
 
 class KeyPrompt(Prompt):
-    """The masked prompt, with a live preview of the edit Enter makes and where."""
+    """One key's whole screen: its steps, a live preview of the edit Enter makes, and the masked input."""
 
     def __init__(self, store, key, provider=None, back=False):
-        states = store.states()
-        self.name, self.back = key['name'], back
-        self.state = states.get(self.name)  # None, 'set', 'blank', 'duplicate' or 'malformed'
+        self.name, self.key, self.back = key['name'], key, back
+        self.state = store.states().get(self.name)  # None, 'set', 'blank', 'duplicate' or 'malformed'
         self.saved = self.state == 'set'
-        self.secret = key.get('secret', True)  # false for identifiers such as an email address
-        self.typed = bool(key.get('prompt'))
+        self.secret = key.get('secret', True)  # false shows an address as you type it; pastes stay masked
         self.plan = store.plan(self.name)
         self.path = home_path(store.env_path)
-        self.label = prompt_label(key)
         self.page = key_page(provider, key) if provider else None
-        self.receipt = []
-        self.actions = {}
-        if self.page:
-            self.actions['\t'] = lambda: browse(self.page)
-        if provider:
-            self.actions['?'] = lambda: guide(provider, key)
+        self.opened = None  # None until Enter tries the browser, then whether it opened
+        self.shown_link = False  # whether the page's address has been put on screen
+        self.receipt = ''
+
+    def tidy(self, value):
+        """Apply this key's own paste rules from the provider data.
+
+        drop: characters the value never contains, such as the spaces Google shows in
+        an app password. split: the key is copied as one ID:SECRET pair, and this entry
+        keeps one half of it.
+        """
+        for char in self.key.get('drop', ''):
+            value = value.replace(char, '')
+        separator, index = self.key.get('split', ('', 0))
+        halves = value.strip().split(separator, 1) if separator else []
+        return halves[index] if len(halves) == 2 else value
 
     def check(self, value):
         """Return (the value as it would be saved, or None; why it cannot be saved yet)."""
+        entered, value = value.rstrip('\r\n'), self.tidy(value)
         if not value.rstrip('\r\n'):
-            return None, None  # Nothing, or only a pasted line break: Enter skips.
+            # Nothing, or only a pasted line break; or text that this key's paste rule emptied.
+            return None, 'there is nothing in it to save.' if entered else None
         try:
             return normalize(value, self.name), None
         except ValueError as error:
             return None, str(error)
 
-    def ready(self, value):
-        return self.check(value)[1] is None
+    def enter(self, value):
+        """Save a valid value. With nothing entered, open the key's page instead."""
+        clean, problem = self.check(value)
+        if problem:
+            return False
+        if clean is not None or not self.page:
+            return True
+        try:
+            self.opened = open_page(self.page)
+        except (OSError, subprocess.SubprocessError):
+            self.opened = False
+        if self.shown_link or self.page in PRINTED['pages']:
+            return []
+        # The address had no room on screen: print it once, to copy if the browser is elsewhere.
+        self.shown_link = True
+        PRINTED['pages'].add(self.page)
+        rows = gap() + [self.page]
+        PRINTED['blank'] = False
+        return rows
+
+    def plain(self, reveal):
+        """Whether to show the value as it is: an address typed by hand, with nothing pasted in."""
+        return not self.secret and not reveal and not self.pasted
 
     def shown(self, clean, reveal):
         """The value in the command, quoted the way Store.set quotes the real one.
@@ -254,7 +270,7 @@ class KeyPrompt(Prompt):
         Masked values that were typed are always quoted, so the quotes cannot hint at
         which keystroke added a character that needs them.
         """
-        if not self.secret:
+        if self.plain(reveal):
             return shlex.quote(clean)
         masked = mask(clean, reveal)
         if reveal and shlex.quote(clean) == clean:
@@ -265,7 +281,7 @@ class KeyPrompt(Prompt):
         """What the input line shows after the label."""
         if not value.rstrip('\r\n'):
             return ''
-        if not self.secret:
+        if self.plain(reveal):
             return ''.join(c if c.isprintable() else '?' for c in (clean if clean is not None else value))
         return mask(clean if clean is not None else value, reveal)
 
@@ -281,7 +297,39 @@ class KeyPrompt(Prompt):
             rows.append(row.replace(shown, style(shown, 'secret'), 1))
         return rows, at or 0
 
+    def link(self, width):
+        """The page's address when it fits on one row, so it stays one clickable, copyable piece."""
+        return self.page if self.page and len(self.page) < width else ''
+
+    def guide(self, width):
+        """What to do and where: the goal, the page's address, and the few steps to take there."""
+        goal = self.key.get('goal', self.name) + ('  ' + glyph('✓ ', '') + 'saved' if self.saved else '')
+        link = self.link(width)
+        if link and not self.saved and len(goal) + 2 + len(link) < width:
+            rows = [style(goal + ':', 'title') + ' ' + link]
+        else:
+            rows = [style(row, 'title') for row in fit_words(goal, width)] + ([link] if link else [])
+        for number, step in enumerate(self.key.get('steps', []), 1):
+            plain, spans = '', []
+            for index, piece in enumerate(step.split('**')):
+                if index % 2:  # Names to look for on the page are bold, also where one wraps.
+                    spans.append((len(plain), len(plain) + len(piece)))
+                plain += piece
+            end = 0
+            for index, part in enumerate(textwrap.wrap(plain, max(10, width - 5)) or ['']):
+                start = plain.find(part, end)
+                end = start + len(part)
+                for low, high in reversed(spans if start >= 0 else []):
+                    low, high = max(low, start) - start, min(high, end) - start
+                    if low < high:
+                        part = part[:low] + style(part[low:high], 'title') + part[high:]
+                rows.append((style('%2d' % number, 'accent') if not index else '  ') + '  ' + part)
+        if self.key.get('note'):
+            rows += ['    ' + part for part in textwrap.wrap(self.key['note'], max(10, width - 5))]
+        return rows + ['']
+
     def notes(self, clean, problem, reveal):
+        """Only what the command alone does not say."""
         plan, name, notes = self.plan, self.name, []
         if len(plan['lines']) > 1:
             notes.append(name + ' is on lines ' + listed(plan['lines']) + '. Saving keeps line '
@@ -292,34 +340,25 @@ class KeyPrompt(Prompt):
             notes.append('Line ' + str(plan['lines'][0]) + ' keeps its Windows (CRLF) line ending.')
         if problem:
             return [(text, None) for text in notes] + [("Can't save this yet: " + problem, 'warning')]
+        if self.state == 'malformed' and clean is None:
+            notes.append('The saved ' + name + " line can't be read; paste to replace it.")
         # Only when the ends are on screen anyway; otherwise this would describe hidden characters.
         if (clean and clean[0] == clean[-1] and clean[0] in '\'"' and len(clean) > 1
-                and (not self.secret or (reveal and len(clean) >= 8))):
+                and (self.plain(reveal) or (reveal and len(clean) >= 8))):
             notes.append('This value starts and ends with quote marks; they are saved as part of it.')
         if clean is not None:
-            notes.append('Godmode makes this edit itself: one local file, mode 0600, nothing sent.')
-        elif self.saved:
-            notes.append('Your saved ' + name + ' stays unless you paste a new one.')
-        elif self.state == 'malformed':
-            notes.append('The saved ' + name + " line can't be read; paste to replace it.")
-        elif self.state == 'duplicate':
-            notes.append('Enter on its own leaves these lines as they are.')
-        else:
-            notes.append(('Type or paste' if self.typed else 'Paste') + ' to fill this in.')
+            notes.append('Godmode makes this edit itself. Nothing is sent.')
         return [(text, None) for text in notes]
 
-    def hint(self, value, ready):
-        keys = []
-        if not value.rstrip('\r\n'):
-            keys += ['Tab opens ' + urlsplit(self.page).netloc] if self.page else []
-            keys += ['? shows steps'] if '?' in self.actions else []
-            keys.append('Enter keeps it' if self.saved else
-                        'Enter leaves it' if self.state in ('duplicate', 'malformed') else 'Enter skips')
-        else:
-            keys += ['Enter saves'] if ready else []
-            keys.append('Ctrl-U clears')
-        keys.append('Esc ' + ('goes back' if self.back else 'cancels'))
-        return glyph(' · ', ' | ').join(keys)
+    def hint(self, value, problem):
+        leave = 'Esc ' + ('back' if self.back else 'cancels')
+        if value.rstrip('\r\n'):
+            return glyph(' · ', ' | ').join(['Ctrl-U clears' if problem else 'Enter saves', leave])
+        if not self.page:
+            return glyph(' · ', ' | ').join(['Enter keeps it' if self.saved else 'Enter skips', leave])
+        host = urlsplit(self.page).netloc
+        action = {None: 'Enter opens ' + host, True: 'Opened ' + host, False: 'No browser here: open the link above'}
+        return glyph(' · ', ' | ').join([action[self.opened], leave])
 
     def render(self, value, width, reveal=True):
         clean, problem = self.check(value)
@@ -327,73 +366,108 @@ class KeyPrompt(Prompt):
         bar = style(glyph('│ ', '| '), 'accent')
         command, at = self.command(shown, width - 2)
         command = [bar + row for row in command]
-        label = fit_words(self.label, width)  # Long typed dots may wrap; the redraw counts that.
+        label = fit_words(prompt_label(self.key), width)  # Long typed dots may wrap; the redraw counts that.
         entry = label[:-1] + [label[-1] + ' ' + style(self.entry(value, clean, reveal), 'secret')]
-        rows = [style(row, 'title') for row in fit_words('What will be executed on your machine', width)]
-        rows += command
-        rows += [bar + style(row, role) for text, role in self.notes(clean, problem, reveal)
-                 for row in fit_words(text, width - 2)]
-        rows += [''] + [style(row, 'accent') for row in fit_words(self.hint(value, not problem), width)]
+        preview = [style(row, 'title') for row in fit_words('What will be executed on your machine', width)]
+        preview += command
+        preview += [bar + style(row, role) for text, role in self.notes(clean, problem, reveal)
+                    for row in fit_words(text, width - 2)]
+        preview += [''] + [style(row, 'accent') for row in fit_words(self.hint(value, problem), width)]
         # In a short window, give up the explanations first and keep the command with the value.
         room = screen_rows() - 1
-        for choice in (rows + entry, command + entry, [command[at]] + entry):
+        layouts = (gap() + self.guide(width) + preview + entry, preview + entry, command + entry, [command[at]] + entry)
+        for index, choice in enumerate(layouts):
             if drawn_height(choice, width) <= room:
+                self.shown_link = self.shown_link or (index == 0 and bool(self.link(width)))
                 return choice
         return entry[-1:]
 
     def final(self, value, width, reveal, submitted):
-        """Clear the preview. populate() prints the command as a receipt once the save succeeds."""
+        """Erase the screen. populate() prints a one-line receipt once the save succeeds."""
         clean, _ = self.check(value)
-        self.receipt = []
-        if submitted and clean is not None:
-            bar = style(glyph('│ ', '| '), 'accent')
-            self.receipt = [bar + row for row in self.command(self.shown(clean, reveal), width - 2)[0]]
+        self.receipt = self.name + '=' + self.shown(clean, reveal) if submitted and clean is not None else ''
         return []
 
 
+class NamePrompt(Prompt):
+    """A plain prompt for the name of a key that is not in the list. It is typed, not pasted."""
+    pastes = False
+
+    def __init__(self):
+        Prompt.__init__(self, 'Type a name for the key, like ACME_API_TOKEN. Esc goes back.', hidden=False)
+        self.refused = False
+
+    def enter(self, value):
+        self.refused = not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', value)
+        return not self.refused
+
+    def render(self, value, width, reveal=True):
+        rows = Prompt.render(self, value, width, reveal)
+        why = fit_words('Use letters, digits and _ only, not starting with a digit.', width)
+        return rows[:-1] + ([style(row, 'warning') for row in why] if self.refused else []) + rows[-1:]
+
+    def final(self, value, width, reveal, submitted):
+        return []
+
+
+def menu_hint(leave):
+    return glyph('↑↓ move · Enter open · Esc ', 'Up/Down move | Enter open | Esc ') + leave
+
+
+def named(name):
+    """A key entered by name alone. A bundled key keeps its own input rules, without its steps."""
+    known = next((key for provider in catalog() for key in provider['key'] if key['name'] == name), {})
+    return dict({field: known[field] for field in ('prompt', 'secret', 'drop', 'split') if field in known}, name=name)
+
+
 def populate(store, key, provider=None, back=False):
+    """Ask for one key. True when it was saved."""
     name = key['name']
-    line()
-    line(name, 'heading')
-    if key.get('usage'):
-        wrapped(key['usage'])
-    line()
     while True:
         prompt = KeyPrompt(store, key, provider, back)
-        try:
-            value = read_secret(prompt)
-        except Back:
-            if back:
-                line(('Not changed. Your saved ' + name + ' stays.') if prompt.saved else (name + ' was not saved.'))
-            raise
+        value = read_secret(prompt)
         if not value.rstrip('\r\n'):
             line('Kept your saved ' + name + '.' if prompt.saved else
                  'Left ' + name + ' unchanged.' if prompt.state in ('duplicate', 'malformed') else
                  'Skipped ' + name + '.')
-            return
+            return False
         try:
-            store.set(name, value)
+            store.set(name, prompt.tidy(value))
         except ValueError as error:
             line(str(error), 'error')
             continue
         finally:
             value = None
-        for row in prompt.receipt:
-            line(row)
-        line(glyph('✓ ', '') + 'Saved ' + name, 'success')
-        return
+        line(style(glyph('✓ ', '') + 'Saved ', 'success') + prompt.receipt)
+        return True
 
 
 def provider_setup(store, provider, back=True):
-    line()
-    line(provider['name'], 'title')
-    wrapped(provider['purpose'])
-    try:
-        for key in provider['key']:
-            populate(store, key, provider, back)
-    except Back:
-        if not back:
-            raise  # Started for one provider: there is no list to go back to.
+    """One provider: its only key, or a list of its keys. True when this visit completed it."""
+    keys = provider['key']
+    if len(keys) == 1:
+        return populate(store, keys[0], provider, back)
+    at, saved, advance = None, False, True
+    while True:
+        states = store.states()
+        done = [states.get(key['name']) == 'set' for key in keys]
+        if advance:  # Start on, and after a save move to, the next key that is still missing.
+            missing = [index for index, ok in enumerate(done) if not ok]
+            at = next((index for index in missing if at is None or index > at), (missing or [len(keys) + 1])[0])
+            advance = False
+        items = [(key.get('label', key['name']), glyph('✓ ', '') + 'saved' if ok else '', '') for key, ok in zip(keys, done)]
+        items += [None, ('Back' if back else 'Done', '', '')]
+        try:
+            at = read_menu(items, at, menu_hint('back' if back else 'done'), provider['name'], bool(gap()))
+        except Back:
+            at = len(keys) + 1
+        if at > len(keys):
+            return saved and all(done)
+        try:
+            advance = populate(store, keys[at], provider, back=True)
+            saved = saved or advance
+        except Back:
+            continue
 
 
 def setup(store, provider_id=None):
@@ -403,37 +477,51 @@ def setup(store, provider_id=None):
     selected = next((p for p in providers if p['id'] == provider_id), None)
     if provider_id and selected is None:
         raise ValueError('Unknown provider. Run godmode to see the list.')
-    banner(store)
-    prepare(store)
-    if selected:
-        provider_setup(store, selected, back=False)
-        return
+    with quiet():  # Nothing typed or pasted between two screens is echoed.
+        banner(store)
+        prepare(store)
+        if selected:
+            provider_setup(store, selected, back=False)
+        else:
+            provider_list(store, providers)
+
+
+def provider_list(store, providers):
+    at, advance = None, True
+    other, edit, done = len(providers) + 1, len(providers) + 2, len(providers) + 3
     while True:
         states = store.states()
-        line()
-        for index, provider in enumerate(providers, 1):
-            names = [k['name'] for k in provider['key']]
+        items = []
+        for provider in providers:
+            names = [key['name'] for key in provider['key']]
             saved = sum(states.get(name) == 'set' for name in names)
-            status = ''
-            if saved == len(names):
-                status = style(glyph('✓ ', '') + 'saved', 'success')
-            elif saved:
-                status = '%d of %d saved' % (saved, len(names))
-            line(style('%4d  ' % index, 'accent') + provider['name'].ljust(30) + status)
-        line()
-        line(style('%4s  ' % 'e', 'accent') + 'Edit the file in nano')
-        line('      Custom key: godmode set NAME')
-        line()
-        choices = ['','e'] + [str(i) for i in range(1,len(providers)+1)] + [p['id'] for p in providers]
-        answer = read_choice('Choose a provider by number or name. Enter finishes.', choices)
-        if not answer:
-            line(glyph('✓ ', '') + 'Done. Your keys are in ' + home_path(store.env_path), 'success')
+            mark = glyph('✓ ', '') + 'saved' if saved == len(names) else '%d of %d saved' % (saved, len(names)) if saved else ''
+            items.append((provider['name'], mark, provider.get('about', '')))
+        if advance:  # Start on, and after a save move to, the next provider that still lacks a key.
+            missing = [index for index, item in enumerate(items) if item[1] != glyph('✓ ', '') + 'saved']
+            at = next((index for index in missing if at is None or index > at), (missing or [done])[0])
+            advance = False
+        items += [None, ('Another key', '', 'any NAME=value you want agents to have'),
+                  ('Edit the file in nano', '', ''), ('Done', '', '')]
+        try:
+            at = read_menu(items, at, menu_hint('done'), gap=bool(gap()))
+        except Back:
+            at = done
+        if at == done:
+            line('Done. Your keys are in ' + home_path(store.env_path))
             return
-        if answer == 'e':
-            edit_file(store)
-            continue
-        selected = providers[int(answer)-1] if answer.isdigit() else next(p for p in providers if p['id']==answer)
-        provider_setup(store, selected)
+        try:
+            if at == edit:
+                try:
+                    edit_file(store)
+                except ValueError as error:
+                    line(str(error), 'warning')
+            elif at == other:
+                populate(store, named(read_secret(NamePrompt())), back=True)
+            else:
+                advance = provider_setup(store, providers[at])
+        except Back:
+            pass
 
 
 class Arguments(argparse.ArgumentParser):
@@ -478,7 +566,8 @@ def main():
             line(args.name + ' saved.', 'success')
         else:
             prepare(store)
-            populate(store, {'name': args.name})
+            with quiet():
+                populate(store, named(args.name))
     else:
         parser.error('unknown command')
     return 0

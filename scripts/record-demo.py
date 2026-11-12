@@ -24,7 +24,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tests"))
 from pty_support import Terminal  # noqa: E402
 
-SYNTHETIC = "github_pat_DEMO_ONLY_NOT_A_REAL_CREDENTIAL_6d8f"
+SYNTHETIC = "cf_DEMO_ONLY_NOT_A_REAL_CREDENTIAL_6d8f"
 THEMES = {
     # ANSI colors belong to the terminal. These two representative themes let
     # reviewers inspect the same actual output on both light and dark surfaces.
@@ -209,29 +209,31 @@ def main() -> None:
         subprocess.run([str(binary), "--home", str(config), "init", "--accept-disclaimer"],
                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
         command = [str(binary), "--home", str(config), "setup"]
-        terminal = Terminal(command, env, cols=96, rows=36)
-        recorder = Recorder(terminal, 96, 36, font, args.theme)
+        terminal = Terminal(command, env, cols=84, rows=26)
+        recorder = Recorder(terminal, 84, 26, font, args.theme)
         try:
-            recorder.wait_for("Choose a provider")
-            recorder.capture(1500)
-            terminal.send(b"github")
-            recorder.wait_for("› github")
-            recorder.capture(500)
+            recorder.wait_for("↑↓ move")
+            recorder.wait_for("❯ GitHub")
+            recorder.capture(1300)
+            terminal.send(b"\x1b[B")  # Down arrow
+            recorder.wait_for("❯ Cloudflare")
+            recorder.capture(900)
             terminal.send(b"\r")
-            recorder.wait_for("Paste your token:")
-            recorder.wait_for("$ printf '%s\\n' 'GH_TOKEN=…' >> ~/.godmode/.env.godmode")
-            recorder.capture(1700)
+            recorder.wait_for("Create a Cloudflare API token")
+            recorder.wait_for("$ printf '%s\\n' 'CLOUDFLARE_API_TOKEN=…' >> ~/.godmode/.env.godmode")
+            recorder.capture(2600)
             before = (config / ".env.godmode").read_bytes()
             terminal.paste(SYNTHETIC)
-            recorder.wait_for("$ printf '%s\\n' 'GH_TOKEN=git•••••d8f' >> ~/.godmode/.env.godmode")
-            recorder.wait_for("Paste your token: git•••••d8f")
-            recorder.capture(2400)
+            recorder.wait_for("'CLOUDFLARE_API_TOKEN=cf_•••••d8f'")
+            recorder.wait_for("Paste your token: cf_•••••d8f")
+            recorder.capture(2200)
             assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
             terminal.send(b"\r")
-            recorder.wait_for("Saved GH_TOKEN")
+            recorder.wait_for("Saved CLOUDFLARE_API_TOKEN=cf_•••••d8f")
             recorder.wait_for("✓ saved")
-            recorder.capture(1800)
-            terminal.send(b"\r")
+            recorder.wait_for("❯ Vercel")
+            recorder.capture(1700)
+            terminal.send(b"\x1b")
             recorder.wait_for("Done. Your keys are in")
             terminal.done()
             recorder.capture(800)
