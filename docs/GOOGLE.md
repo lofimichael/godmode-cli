@@ -1,6 +1,6 @@
 # Google credentials
 
-The static credential inventory can hold service-account JSON for Google Ads or Search Console. Godmode accepts raw JSON through masked paste or `godmode set KEY --stdin < file.json`, compacts it and stores it as one quoted value. It does not contact Google, enable APIs, obtain access approval or verify account permissions.
+The static credential inventory can hold service-account JSON for Google Ads or Search Console. Drag the downloaded key file onto the prompt (or paste its contents, or use `godmode set KEY --stdin < file.json`). Godmode checks it has the standard service-account shape, names the service account it found, compacts it and stores it sealed (as plain text while your keys are still in an older plain `~/.config/godmode` file; `godmode migrate` seals them). Use it with `godmode run GOOGLE_ADS_SERVICE_ACCOUNT_JSON -- command`. It does not contact Google, enable APIs, obtain access approval or verify account permissions.
 
 For Ads, enable the API and obtain the appropriate access level in your Cloud project, then grant the service-account email access in the intended Ads account. Follow Google's [service-account setup](https://developers.google.com/google-ads/api/docs/oauth/service-accounts). Keep API use within your approved advertising purpose.
 

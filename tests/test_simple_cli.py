@@ -21,6 +21,10 @@ TITLE = 'What will be executed on your machine'
 APPEND = "$ printf '%s\\n' "
 DOTS = '•••••'
 MENU = '↑↓ move'
+SERVICE_ACCOUNT = {'type':'service_account','project_id':'demo-project','private_key_id':'abc123',
+                   'private_key':'-----BEGIN PRIVATE KEY-----\nSYNTHETICKEYMATERIAL\n-----END PRIVATE KEY-----\n',
+                   'client_email':'agent@demo-project.iam.gserviceaccount.com','client_id':'1',
+                   'token_uri':'https://oauth2.googleapis.com/token','universe_domain':'googleapis.com'}
 
 
 def load_cli():
@@ -69,7 +73,7 @@ class CLI(unittest.TestCase):
         return dict(self.env,PATH=str(stubs)+os.pathsep+self.env['PATH']), record
 
     def seed(self, name, value='seeded_DEMO_ONLY_value_0000'):
-        value='{"seeded":"DEMO_ONLY"}' if name.endswith('_JSON') else value
+        value=json.dumps(dict(SERVICE_ACCOUNT,private_key_id='DEMO_ONLY')) if name.endswith('_JSON') else value
         subprocess.run(self.command+['set',name,'--stdin'],env=self.env,input=value.encode(),capture_output=True,check=True)
 
     def pointed(self, terminal, cols=100):
@@ -93,15 +97,15 @@ class CLI(unittest.TestCase):
         token='github_pat_DEMO_ONLY_f62d34'
         terminal.paste(token)  # A paste into the menu is ignored and never shown.
         terminal.send(b'\r');terminal.expect('Paste your token:')
-        terminal.wait(lambda: APPEND+"'GH_TOKEN=…' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
+        terminal.wait(lambda: APPEND+"'GH_TOKEN=sealed(…)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
         before=self.file.read_bytes()
         terminal.paste(token)
-        terminal.wait(lambda: APPEND+"'GH_TOKEN=git•••••d34' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
+        terminal.wait(lambda: APPEND+"'GH_TOKEN=sealed(git•••••d34)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
         self.assertIn('Paste your token: git•••••d34', plain(terminal.capture))
         self.assert_one_region(terminal)
         self.assertEqual(self.file.read_bytes(),before)
         mark=len(terminal.capture)
-        terminal.send(b'\r');terminal.after(mark,'Saved GH_TOKEN=git•••••d34')
+        terminal.send(b'\r');terminal.after(mark,'Saved GH_TOKEN=sealed(git•••••d34)')
         terminal.after(mark,MENU)
         # Saved: the pointer moves on to the next provider that lacks a key.
         self.assertTrue(self.pointed(terminal).startswith('Cloudflare'))
@@ -110,19 +114,21 @@ class CLI(unittest.TestCase):
         # Every screen erased itself; one receipt line remains.
         screen=Screen(100).feed(terminal.capture)
         self.assertEqual((screen.count(TITLE),screen.count('Cloudflare'),screen.count('Create a GitHub token')),(0,0,0))
-        self.assertEqual(screen.count('✓ Saved GH_TOKEN=git•••••d34'),1)
+        self.assertEqual(screen.count('✓ Saved GH_TOKEN=sealed(git•••••d34)'),1)
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
         self.assertNotIn(token.encode(),terminal.capture)
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
         self.assertEqual(self.file.stat().st_mode & 0o777,0o600)
-        self.assertEqual(sorted(p.name for p in self.home.iterdir()),['.env.godmode'])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()),['.env.godmode','seal.key'])
+        self.assertEqual((self.home/'seal.key').stat().st_mode & 0o777,0o600)
         again=self.terminal(['setup','github']);again.expect('Paste your token:')
-        again.wait(lambda: SED+" 's/^GH_TOKEN=.*/GH_TOKEN=…/' ~/.godmode/.env.godmode" in plain(again.capture))
+        again.wait(lambda: SED+" 's/^GH_TOKEN=.*/GH_TOKEN=sealed(…)/' ~/.godmode/.env.godmode" in plain(again.capture))
         self.assertIn('Create a GitHub token  ✓ saved', plain(again.capture))
         again.send(b'\x1b');again.done(130)
         keep=self.terminal(['set','GH_TOKEN']);keep.expect('Enter keeps it')
         keep.send(b'\r');keep.expect('Kept your saved GH_TOKEN.');keep.done()
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
+        (self.home/'seal.key').unlink()  # A hand-written plain file, as before sealing existed.
         self.file.write_text("# manual comment\nCUSTOM_KEY='manual value'\n")
         update=self.terminal(['set','CUSTOM_KEY']);update.expect('Paste your key:')
         replacement="synthetic ' quotes $literal"
@@ -233,7 +239,7 @@ class CLI(unittest.TestCase):
         self.assertNotIn(b'\x1b[?2004l',terminal.capture[mark:],'Enter left the prompt')
         self.assertEqual(self.file.read_bytes(),before)
         terminal.send(b'\x15');terminal.paste('acme_DEMO_ONLY_value_123456')
-        terminal.after(mark,APPEND+"'ACME_TOKEN=acm•••••456' >>")
+        terminal.after(mark,APPEND+"'ACME_TOKEN=sealed(acm•••••456)' >>")
         terminal.send(b'\r');terminal.expect('Saved ACME_TOKEN');terminal.done()
         self.assertEqual(values(self.file)['ACME_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'SYNTHETIC',terminal.capture)
@@ -254,7 +260,7 @@ class CLI(unittest.TestCase):
         text=plain(terminal.capture)
         # Typed values are always quoted, so the quotes cannot reveal which key needed them.
         self.assertNotIn('ACME_TOKEN=•',text)
-        self.assertIn("ACME_TOKEN='"+'•'*len(typed)+"'",text)
+        self.assertIn("ACME_TOKEN=sealed("+'•'*len(typed)+")",text)
         for leak in (typed[:3]+'•', '•'+typed[-3:], '•'+typed[-1], typed[0]+'•'):
             self.assertNotIn(leak,text)
         terminal.send(b'\r');terminal.expect('Saved ACME_TOKEN');terminal.done()
@@ -379,7 +385,7 @@ class CLI(unittest.TestCase):
         terminal.send(b'\r');terminal.expect('Copy your Stripe test secret key')
         terminal.paste('sk_test_DEMO_ONLY_first_key_0001')
         mark=len(terminal.capture)
-        terminal.send(b'\r');terminal.after(mark,'Saved STRIPE_TEST_SECRET_KEY=sk_•••••001')
+        terminal.send(b'\r');terminal.after(mark,'Saved STRIPE_TEST_SECRET_KEY=sealed(sk_•••••001)')
         terminal.after(mark,'Esc back')
         self.assertEqual(self.pointed(terminal),'Test publishable key')  # The next key still missing.
         self.assertRegex('\n'.join(Screen(100).feed(terminal.capture).lines()),r'\n  Test secret key +✓ saved\n')
@@ -419,7 +425,7 @@ class CLI(unittest.TestCase):
         terminal.send(b'\x15ACME_API_TOKEN\r');terminal.after(mark,'Paste your token:')
         terminal.paste('acme_DEMO_ONLY_value_123456')
         mark=len(terminal.capture)
-        terminal.send(b'\r');terminal.after(mark,'Saved ACME_API_TOKEN=acm•••••456');terminal.after(mark,MENU)
+        terminal.send(b'\r');terminal.after(mark,'Saved ACME_API_TOKEN=sealed(acm•••••456)');terminal.after(mark,MENU)
         terminal.send(b'e')
         self.assertTrue(self.pointed(terminal).startswith('Edit the file in nano'))
         mark=len(terminal.capture)
@@ -433,8 +439,8 @@ class CLI(unittest.TestCase):
         self.assertEqual(values(self.file)['ACME_API_TOKEN'],'acme_DEMO_ONLY_value_123456')
 
     def test_key_states_wording_receipt_after_save_and_short_windows(self):
-        self.init()
-        self.file.write_text('GH_TOKEN=\n')
+        self.home.mkdir(mode=0o700)
+        self.file.write_text('GH_TOKEN=\n');self.file.chmod(0o600)  # A plain file: no header, no seal.key.
         blank=self.terminal(['set','GH_TOKEN']);blank.expect('Paste your token:')
         self.assertIn('Enter skips',plain(blank.capture))
         blank.paste('\n');blank.settle(.2)
@@ -455,7 +461,7 @@ class CLI(unittest.TestCase):
             os.close(lock)
         held.after(mark,'Paste your token:')
         held.paste('acme_DEMO_ONLY_value_123456');mark=len(held.capture);held.send(b'\r')
-        held.after(mark,'Saved ACME_TOKEN=acm•••••456');held.done()
+        held.after(mark,'Saved ACME_TOKEN=acm•••••456')  # This file was written as plain text.;held.done()
         # Six rows: the explanations give way, the command with the value stays.
         short=self.terminal(['set','SHORT_TOKEN'],cols=80,rows=6);short.expect('Paste your token:')
         short.paste('short_DEMO_ONLY_value_987654')
@@ -494,9 +500,9 @@ class CLI(unittest.TestCase):
         for char in 'demo@example.com':
             gmail.send(char.encode())
         gmail.after(0,'Type the address: demo@example.com')
-        gmail.after(0,APPEND+"'GMAIL_USER=demo@example.com' >>")
+        gmail.after(0,APPEND+"'GMAIL_USER=sealed(demo@example.com)' >>")
         mark=len(gmail.capture)
-        gmail.send(b'\r');gmail.after(mark,'Saved GMAIL_USER=demo@example.com');gmail.after(mark,'Esc done')
+        gmail.send(b'\r');gmail.after(mark,'Saved GMAIL_USER=sealed(demo@example.com)');gmail.after(mark,'Esc done')
         self.assertEqual(self.pointed(gmail),'App password')
         # Google shows app passwords in groups of four; the spaces are not part of it.
         gmail.send(b'\r');gmail.expect('Create a Gmail app password')
@@ -506,16 +512,16 @@ class CLI(unittest.TestCase):
         gmail.send(b'\r');gmail.wait(lambda: b'\a' in gmail.capture[mark:])
         self.assertFalse(record.exists(),'Enter must not open the page while the field holds text')
         gmail.paste('abcd efgh\xa0ijkl mnop')
-        gmail.after(mark,APPEND+"'GMAIL_APP_PASSWORD=ab•••••op' >>")
+        gmail.after(mark,APPEND+"'GMAIL_APP_PASSWORD=sealed(ab•••••op)' >>")
         mark=len(gmail.capture)
-        gmail.send(b'\r');gmail.after(mark,'Saved GMAIL_APP_PASSWORD=ab•••••op');gmail.after(mark,'Esc done')
+        gmail.send(b'\r');gmail.after(mark,'Saved GMAIL_APP_PASSWORD=sealed(ab•••••op)');gmail.after(mark,'Esc done')
         self.assertEqual(self.pointed(gmail),'Done')
         gmail.send(b'\r');gmail.done()
         self.assertEqual(values(self.file)['GMAIL_APP_PASSWORD'],'abcdefghijklmnop')
         # One copy from Higgsfield holds ID:SECRET; each entry keeps its own half.
         pair='11111111-2222-3333-4444-555555555555:hfsecret_DEMO_ONLY:abcdefghij0123456789'
         both=self.terminal(['setup','higgsfield'],env);both.expect('Esc done')
-        for name, shown in (('HIGGSFIELD_API_KEY_ID','111•••••555'),('HIGGSFIELD_API_KEY_SECRET','hfs•••••789')):
+        for name, shown in (('HIGGSFIELD_API_KEY_ID','sealed(111•••••555)'),('HIGGSFIELD_API_KEY_SECRET','sealed(hfs•••••789)')):
             mark=len(both.capture)
             both.send(b'\r');both.after(mark,'Paste your')
             both.paste(pair);both.after(mark,name+'='+shown)
@@ -528,7 +534,7 @@ class CLI(unittest.TestCase):
         # The same rules follow a bundled key entered by name.
         byname=self.terminal(['set','HIGGSFIELD_API_KEY_ID']);byname.expect('Paste your key ID:')
         byname.paste('99999999-2222-3333-4444-555555555000:other_DEMO_ONLY_secret')
-        byname.after(0,"HIGGSFIELD_API_KEY_ID=999•••••000")
+        byname.after(0,"HIGGSFIELD_API_KEY_ID=sealed(999•••••000)")
         byname.send(b'\r');byname.expect('Saved HIGGSFIELD_API_KEY_ID');byname.done()
         self.assertEqual(values(self.file)['HIGGSFIELD_API_KEY_ID'],'99999999-2222-3333-4444-555555555000')
 
@@ -573,7 +579,7 @@ class CLI(unittest.TestCase):
         terminal.send(b'GMAIL_APP_PASSWORD\r');terminal.expect('Paste your password:')
         terminal.paste('wxyz efgh ijkl mnop')
         mark=len(terminal.capture)
-        terminal.send(b'\r');terminal.after(mark,'Saved GMAIL_APP_PASSWORD=wx•••••op');terminal.after(mark,MENU)
+        terminal.send(b'\r');terminal.after(mark,'Saved GMAIL_APP_PASSWORD=sealed(wx•••••op)');terminal.after(mark,MENU)
         self.assertEqual(values(self.file)['GMAIL_APP_PASSWORD'],'wxyzefghijklmnop')
         terminal.send(b'\x03');terminal.done(130)
         # With every key saved the pointer rests on Done, and Enter there ends setup.
@@ -624,6 +630,189 @@ class CLI(unittest.TestCase):
                             else:  # A label may wrap onto the next row; each part stays bold.
                                 self.assertEqual(''.join(bold).replace(' ',''),''.join(labels).replace(' ',''))
 
+    def legacy(self, text):
+        """A plain-text file in the old ~/.config/godmode home, as hand-written setups have it."""
+        old=self.root/'.config'/'godmode';old.mkdir(parents=True,exist_ok=True,mode=0o700);(self.root/'.config').chmod(0o700)
+        (old/'.env.godmode').write_text(text);(old/'.env.godmode').chmod(0o600)
+        return old/'.env.godmode'
+
+    def godmode(self, *args, **options):
+        """The installed script with this test's HOME and no explicit home."""
+        return subprocess.run([sys.executable,str(REPO/'target/godmode'),*args],env=self.env,capture_output=True,text=True,**options)
+
+    def test_list_run_help_and_migrate_never_print_values(self):
+        old=self.legacy('GH_TOKEN=ghp_SYNTHETIC_value_000000000001 \nGMAIL_USER=demo@example.com\nEMPTY=\n')
+        self.assertEqual(self.godmode('list').stdout.split(),['GH_TOKEN','GMAIL_USER'])
+        self.assertIn('Its values are plain text. Run godmode migrate',self.godmode('help').stdout)
+        moved=self.godmode('migrate')
+        self.assertEqual(moved.returncode,0)
+        self.assertIn('Moved 2 keys to ~/.godmode and sealed them.',moved.stdout)
+        for text in (self.file.read_text(),old.read_text()):
+            self.assertNotIn('SYNTHETIC',text);self.assertNotIn('demo@example.com',text)
+        self.assertIn('godmode run NAME -- command',old.read_text())  # The old file says where the keys went.
+        self.assertEqual(self.godmode('list').stdout.split(),['GH_TOKEN','GMAIL_USER'])
+        guide=self.godmode('help').stdout
+        self.assertIn('one sealed file',guide);self.assertIn('godmode run GH_TOKEN -- gh repo list',guide)
+        # run hands the keys to the command, and only the ones named; the stray space is gone.
+        shown=self.godmode('run','GH_TOKEN','--','/bin/sh','-c','printf "%s|%s|%s" "${#GH_TOKEN}" "$GH_TOKEN" "${GMAIL_USER-unset}" | shasum -a 256')
+        token='ghp_SYNTHETIC_value_000000000001'
+        expected=subprocess.run(['shasum','-a','256'],input='%d|%s|unset' % (len(token),token),capture_output=True,text=True).stdout
+        self.assertEqual(shown.stdout,expected)
+        self.assertEqual(self.godmode('run','GH_TOKEN','--','/bin/sh','-c','exit 7').returncode,7)
+        self.assertEqual(self.godmode('run','GH_TOKEN','GMAIL_USER','--','/bin/sh','-c','echo "$GODMODE_KEYS"').stdout,'GH_TOKEN,GMAIL_USER\n')
+        for args, message in ((('run','GH_TOKEN','MISSING','--','true'),'MISSING is not saved'),
+                              (('run','EMPTY','--','true'),'EMPTY is not saved'),
+                              (('run','GH_TOKEN','--','no-such-program-SYNTHETIC'),'Cannot run'),
+                              (('run','GH_TOKEN'),'Use: godmode run NAME... -- command'),
+                              (('run','--','true'),'Use: godmode run')):
+            with self.subTest(args=args):
+                result=self.godmode(*args)
+                self.assertEqual(result.returncode,2)
+                self.assertIn(message,result.stderr)
+                self.assertNotIn('SYNTHETIC_value',result.stdout+result.stderr)
+        # --home and --config-dir work before run in every spelling.
+        for prefix in (['--home',str(self.home)],['--config-dir',str(self.home)],['--home='+str(self.home)],['--config-dir='+str(self.home)]):
+            spelled=self.godmode(*prefix,'run','GH_TOKEN','--','/bin/sh','-c','echo "$GODMODE_KEYS"')
+            self.assertEqual((spelled.returncode,spelled.stdout),(0,'GH_TOKEN\n'),spelled.stderr)
+        nothing=self.godmode('migrate')
+        self.assertEqual((nothing.returncode,nothing.stdout),(0,'Nothing to seal: no plain-text keys in ~/.godmode/.env.godmode.\n'))
+        # A damaged seal is refused by name, without guessing.
+        (self.home/'seal.key').write_text('00'*32+'\n')
+        self.assertIn("does not match this computer's seal.key",self.godmode('run','GH_TOKEN','--','true').stderr)
+
+    def test_setup_offers_to_move_plain_text_keys_and_seal_them(self):
+        old=self.legacy('GH_TOKEN=ghp_SYNTHETIC_value_000000000002\nCLOUDFLARE_API_TOKEN=cf_SYNTHETIC_value_00000000\n')
+        command=[sys.executable,str(REPO/'target/godmode')]
+        keep=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(keep)
+        keep.expect('Found 2 keys stored as plain text in ~/.config/godmode/.env.godmode.')
+        self.assertEqual(self.pointed(keep),'Move them to ~/.godmode and seal them')
+        mark=len(keep.capture)
+        keep.send(b'\x1b');keep.after(mark,MENU)  # Esc keeps them; setup goes on as before.
+        self.assertRegex('\n'.join(Screen(100).feed(keep.capture).lines()),r'GitHub +✓ saved')
+        keep.send(b'\x03');keep.done(130)
+        self.assertIn('SYNTHETIC',old.read_text())
+        self.assertFalse(self.file.exists())
+        move=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(move)
+        move.expect('stored as plain text');mark=len(move.capture)
+        move.send(b'\r');move.after(mark,'Moved 2 keys to ~/.godmode and sealed them.')
+        move.after(mark,MENU)
+        self.assertTrue(self.pointed(move).startswith('Vercel'))  # The moved keys count as saved.
+        move.send(b'\x1b');move.expect('Done. Your keys are in ~/.godmode/.env.godmode');move.done()
+        self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text())
+        self.assertNotIn(b'SYNTHETIC',move.capture+keep.capture)
+        self.assertEqual(values(self.file)['GH_TOKEN'],'ghp_SYNTHETIC_value_000000000002')
+        # Sealed now, so the offer does not come back.
+        again=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(again)
+        again.expect(MENU);self.assertNotIn('plain text',plain(again.capture))
+        again.send(b'\x03');again.done(130)
+
+    def test_migrate_finishes_an_interrupted_move_and_reports_kept_comments(self):
+        old=self.legacy('# rotated: see vault\nGH_TOKEN=ghp_SYNTHETIC_value_000000000003\nNOTION_API_KEY=ntn_SYNTHETIC_value_0003\n')
+        self.seed('NOTION_API_KEY','ntn_SYNTHETIC_value_0003')  # ~/.godmode already holds one of them.
+        moved=self.godmode('migrate')
+        self.assertEqual(moved.returncode,0,moved.stderr)
+        self.assertIn('Moved 2 keys to ~/.godmode and sealed them.',moved.stdout)
+        self.assertIn('1 comment line in ~/.config/godmode/.env.godmode is still plain text.',moved.stdout)
+        self.assertTrue(old.read_text().endswith('# rotated: see vault\n'))
+        self.assertEqual(self.godmode('list').stdout.split(),['GH_TOKEN','NOTION_API_KEY'])
+        self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text()+moved.stdout+moved.stderr)
+        # A file that cannot be carried exactly is refused by line number, and nothing changes.
+        old=self.legacy('GMAIL_USER=me@example.comGMAIL_APP_PASSWORD=SYNTHETICpass\n')
+        refused=self.godmode('migrate')
+        self.assertEqual(refused.returncode,2)
+        self.assertIn('line 1 (GMAIL_USER) also holds GMAIL_APP_PASSWORD=',refused.stderr)
+        self.assertNotIn('SYNTHETIC',refused.stdout+refused.stderr)
+        self.assertIn('SYNTHETICpass',old.read_text())
+        # A file whose every key line has a problem is still found, and the problem is named.
+        old=self.legacy('GMAIL_USER=me@example.com # app password: SYNTHETIC\n')
+        refused=self.godmode('migrate')
+        self.assertEqual(refused.returncode,2)
+        self.assertIn('line 1 (GMAIL_USER) has a comment after its value',refused.stderr)
+        # Moving out of a rules checkout whose scripts still read this file is refused until they are updated.
+        self.legacy('LATE_TOKEN=late_SYNTHETIC_value_0004\n')
+        scripts=old.parent/'scripts';scripts.mkdir();(scripts/'git_credential.py').write_text('# reads the file\n')
+        stale=self.godmode('migrate')
+        self.assertEqual(stale.returncode,2)
+        self.assertIn('Update the Godmode rules in ~/.config/godmode before moving keys',stale.stderr)
+        (scripts/'godmode_keys.py').write_text('# reads keys through godmode\n')
+        one=self.godmode('migrate')
+        self.assertIn('Moved 1 key to ~/.godmode and sealed it.',one.stdout)
+
+    def test_help_always_prints_the_guide(self):
+        fresh=self.godmode('help')
+        self.assertEqual(fresh.returncode,0)
+        self.assertIn('Reading the file shows names, never keys.',fresh.stdout)  # The first file will be sealed.
+        self.seed('GH_TOKEN')
+        with open(self.file,'a') as extra:
+            extra.write("BROKEN='SYNTHETIC unterminated\n")
+        broken=self.godmode('help')
+        self.assertEqual(broken.returncode,0)
+        self.assertIn('The file cannot be read as it is; fix it with godmode edit.',broken.stdout)
+        self.assertIn('never print one',broken.stdout)
+        self.file.write_text(self.file.read_text().replace("BROKEN='SYNTHETIC unterminated\n","EXTRA=plain_SYNTHETIC # note\n"))
+        loose=self.godmode('help')
+        self.assertIn('1 line in it is still plain text; godmode migrate seals them or names what to delete.',loose.stdout)
+        named=self.godmode('migrate')
+        self.assertEqual(named.returncode,2)
+        self.assertIn('(EXTRA) has a comment after its value',named.stderr)
+        # list names a broken key on stderr and fails, so a check that relies on it cannot pass silently.
+        self.file.write_text(self.file.read_text().replace('EXTRA=plain_SYNTHETIC # note\n','GH_TOKEN=rotated_SYNTHETIC\n'))
+        listed=self.godmode('list')
+        self.assertEqual((listed.returncode,listed.stdout),(1,''))
+        self.assertIn('GH_TOKEN is saved more than once or unreadable; godmode migrate names the lines.',listed.stderr)
+        self.assertNotIn('SYNTHETIC',loose.stdout+named.stdout+named.stderr)
+
+    def test_google_key_check_also_applies_to_stdin(self):
+        for value, message in ((json.dumps({'installed':{'client_id':'x'}}),'Not saved: this is an OAuth client file.'),
+                               ('{"seeded":"DEMO_ONLY"}','Not saved: a service account key file says')):
+            result=subprocess.run(self.command+['set','GOOGLE_ADS_SERVICE_ACCOUNT_JSON','--stdin'],env=self.env,input=value,capture_output=True,text=True)
+            self.assertEqual(result.returncode,2)
+            self.assertIn(message,result.stderr)
+        self.assertFalse(self.file.exists())
+        saved=subprocess.run(self.command+['set','GOOGLE_ADS_SERVICE_ACCOUNT_JSON','--stdin'],env=self.env,input=json.dumps(SERVICE_ACCOUNT),capture_output=True,text=True)
+        self.assertEqual(saved.returncode,0,saved.stderr)
+        self.assertIn('saved. Service account agent@demo-project.iam.gserviceaccount.com in project demo-project.',saved.stdout)
+        self.assertNotIn('SYNTHETICKEYMATERIAL',saved.stdout+saved.stderr)
+        self.assertEqual(json.loads(values(self.file)['GOOGLE_ADS_SERVICE_ACCOUNT_JSON']),SERVICE_ACCOUNT)
+        # Other keys ending in _JSON keep accepting any JSON object.
+        other=subprocess.run(self.command+['set','CUSTOM_JSON','--stdin'],env=self.env,input='{"a":1}',capture_output=True,text=True)
+        self.assertEqual(other.returncode,0,other.stderr)
+
+    def test_google_key_files_are_checked_and_can_be_dragged_in(self):
+        self.init()
+        good=SERVICE_ACCOUNT
+        folder=self.root/'Down loads';folder.mkdir()
+        dropped=folder/'demo key.json';dropped.write_text(json.dumps(good,indent=2))
+        cases=[({'installed':{'client_id':'x'}},'this is an OAuth client file. Create a service account key instead.'),
+               ({'type':'authorized_user','client_id':'x'},'this is a personal sign-in file, not a service account key.'),
+               (dict(good,type='other'),'a service account key file says "type": "service_account".'),
+               ({k:v for k,v in good.items() if k!='client_email'},'the key file has no client_email.'),
+               (dict(good,private_key='SYNTHETIC not pem'),'its private_key is not a PEM private key.'),
+               (dict(good,client_email='me@gmail.com'),'its client_email is not a service account address.')]
+        terminal=self.terminal(['setup','google']);terminal.expect('Esc done')
+        terminal.send(b'\r');terminal.expect('Drag or paste the key file:')
+        for bad, message in cases:
+            with self.subTest(message=message):
+                mark=len(terminal.capture)
+                terminal.send(b'\x15');terminal.paste(json.dumps(bad));terminal.after(mark,"Can't save this yet: "+message)
+        for path in ('/no/such/file.json','~zz_no_such_user_SYNTHETIC/key.json'):  # ~user that does not exist.
+            mark=len(terminal.capture)
+            terminal.send(b'\x15');terminal.paste(path)
+            terminal.after(mark,"Can't save this yet: drag the key file here, or paste what is in it.")
+        # Terminals type a dropped file's path with its spaces escaped.
+        mark=len(terminal.capture)
+        terminal.send(b'\x15');terminal.paste(str(dropped).replace(' ','\\ ')+' ')
+        terminal.after(mark,"Read from ~/'Down loads/demo key.json'.")
+        terminal.after(mark,'Service account agent@demo-project.iam.gserviceaccount.com in project demo-project.')
+        mark=len(terminal.capture)
+        terminal.send(b'\r');terminal.after(mark,'Saved GOOGLE_ADS_SERVICE_ACCOUNT_JSON=sealed(')
+        terminal.after(mark,'when you are done: it holds the private key.')
+        terminal.after(mark,'Esc done')  # Back in Google's list of keys.
+        terminal.send(b'\x03');terminal.done(130)
+        self.assertEqual(json.loads(values(self.file)['GOOGLE_ADS_SERVICE_ACCOUNT_JSON']),good)
+        self.assertNotIn(b'SYNTHETICKEYMATERIAL',terminal.capture)
+        self.assertTrue(dropped.exists())  # Godmode reads the file; deleting it is left to you.
+
     def test_ascii_terminal_uses_plain_glyphs(self):
         self.init()
         env=dict(self.env,PYTHONIOENCODING='ascii',LC_ALL='C')
@@ -634,7 +823,7 @@ class CLI(unittest.TestCase):
         terminal=self.terminal(['setup','github'],env)
         terminal.expect('GODMODE');terminal.expect('Paste your token:')
         terminal.paste('github_pat_DEMO_ONLY_ascii_0042')
-        terminal.wait(lambda: "| "+APPEND+"'GH_TOKEN=git*****042' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
+        terminal.wait(lambda: "| "+APPEND+"'GH_TOKEN=sealed(git*****042)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
         self.assertIn('Enter saves | Esc cancels',plain(terminal.capture))
         terminal.send(b'\r');terminal.expect('Saved GH_TOKEN');terminal.done()
         self.assertNotIn(b'codec',terminal.capture)
@@ -643,7 +832,11 @@ class CLI(unittest.TestCase):
     def test_preview_command_has_the_same_effect_as_saving(self):
         """Run each preview with the real value under /bin/sh and compare it with Store.set."""
         cli=load_cli()
-        fixtures=['', 'A=1\n', 'A=1', '# note\nA=1\r\nB=2\r\n', 'KEY=old\n', 'A=1\nKEY=old', 'A=1\nKEY=old\r\nB=2\n',
+        sys.path.insert(0,str(REPO/'lib'))
+        from godmode_store import STORE_HEADER as sealed
+        # '' is left out: an empty file is a new one, and setup writes its sealed header before any prompt.
+        fixtures=[sealed, sealed+'A=1\n', sealed+'KEY=sealed:v1:AAAA\n', sealed+'A=1\nexport KEY=x\nKEY=y\n',
+                  'A=1\n', 'A=1', '# note\nA=1\r\nB=2\r\n', 'KEY=old\n', 'A=1\nKEY=old', 'A=1\nKEY=old\r\nB=2\n',
                   '# KEY=commented\nKEYX=1\nXKEY=2\n\texport  KEY =tab\n',
                   'export KEY=old\nB=2\n', '  KEY = old  # comment\n', 'KEY=a\nB=2\nexport KEY=b\nKEY=c\n',
                   "KEY=\nOTHER='x # y'\n"]
@@ -652,24 +845,32 @@ class CLI(unittest.TestCase):
         self.home.mkdir(mode=0o700)
         store=cli.Store(str(self.home))
         copy=self.root/'copy.env'
-        checked=0
+        checked=plain_runs=0
         for fixture in fixtures:
             for value in values_:
                 with self.subTest(fixture=fixture, value=value):
                     self.file.write_text(fixture);self.file.chmod(0o600)
+                    if not fixture.startswith(sealed) and (self.home/'seal.key').exists():
+                        (self.home/'seal.key').unlink()  # A plain file stays plain only without a seal.key.
                     plan=store.plan('KEY')
                     if plan['kept_cr']:
                         continue  # Disclosed in a note: sed would not keep the CR.
                     copy.write_bytes(self.file.read_bytes())
-                    words=cli.save_command('KEY',shlex.quote(cli.normalize(value,'KEY')),plan,shlex.quote(str(copy)))
+                    store.set('KEY',value)
+                    written=shlex.quote(cli.normalize(value,'KEY'))
+                    if plan['sealed']:  # The preview's sealed(…) stands for the token Godmode writes.
+                        written=[line for line in self.file.read_text().splitlines() if line.startswith('KEY=')][0][4:]
+                        self.assertEqual(store.values(['KEY'])['KEY'],cli.normalize(value,'KEY'))
+                    words=cli.save_command('KEY',written,plan,shlex.quote(str(copy)))
                     # The kind of command never depends on the value, so it reveals nothing hidden.
                     masked=cli.save_command('KEY',"'•••••'",plan,shlex.quote(str(copy)))
                     self.assertEqual([w for w in words if 'KEY=' not in w],[w for w in masked if 'KEY=' not in w])
                     subprocess.run(['/bin/sh','-c',' '.join(words)],check=True,env={'PATH':'/usr/bin:/bin','LC_ALL':'C'})
-                    store.set('KEY',value)
                     self.assertEqual(copy.read_bytes(),self.file.read_bytes(),' '.join(words))
                     checked+=1
+                    plain_runs+=not plan['sealed']
         self.assertGreater(checked,50)
+        self.assertGreater(plain_runs,40)  # Plain fixtures were saved as plain text, byte for byte.
 
     def test_preview_helpers(self):
         cli=load_cli()

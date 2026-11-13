@@ -95,8 +95,11 @@ class Recorder:
         self.theme = THEMES[theme]
 
     def sync(self) -> None:
-        chunk = self.terminal.capture[self.read_at:]
-        self.read_at = len(self.terminal.capture)
+        # After godmode exits, the test wrapper reports the terminal flags; that line is not Godmode's.
+        end = self.terminal.capture.find(b"__PTY_FLAGS=")
+        end = len(self.terminal.capture) if end < 0 else end
+        chunk = self.terminal.capture[self.read_at:end]
+        self.read_at = max(self.read_at, end)
         self.stream.feed(self.decoder.decode(chunk))
 
     def wait_for(self, text: str, timeout: float = 8) -> None:
@@ -220,16 +223,16 @@ def main() -> None:
             recorder.capture(900)
             terminal.send(b"\r")
             recorder.wait_for("Create a Cloudflare API token")
-            recorder.wait_for("$ printf '%s\\n' 'CLOUDFLARE_API_TOKEN=…' >> ~/.godmode/.env.godmode")
+            recorder.wait_for("$ printf '%s\\n' 'CLOUDFLARE_API_TOKEN=sealed(…)' >> ~/.godmode/.env.godmode")
             recorder.capture(2600)
             before = (config / ".env.godmode").read_bytes()
             terminal.paste(SYNTHETIC)
-            recorder.wait_for("'CLOUDFLARE_API_TOKEN=cf_•••••d8f'")
+            recorder.wait_for("'CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)'")
             recorder.wait_for("Paste your token: cf_•••••d8f")
             recorder.capture(2200)
             assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
             terminal.send(b"\r")
-            recorder.wait_for("Saved CLOUDFLARE_API_TOKEN=cf_•••••d8f")
+            recorder.wait_for("Saved CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)")
             recorder.wait_for("✓ saved")
             recorder.wait_for("❯ Vercel")
             recorder.capture(1700)
@@ -239,7 +242,11 @@ def main() -> None:
             recorder.capture(800)
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"
             # Prove this was an actual save in a temporary store, not an animated mockup.
-            assert SYNTHETIC in (config / ".env.godmode").read_text()
+            sys.path.insert(0, str(REPO / "lib"))
+            from godmode_store import Store  # noqa: E402
+            saved = (config / ".env.godmode").read_text()
+            assert SYNTHETIC not in saved and "sealed:v1:" in saved, "the saved value is not sealed"
+            assert Store(str(config)).values(["CLOUDFLARE_API_TOKEN"]) == {"CLOUDFLARE_API_TOKEN": SYNTHETIC}
             recorder.write(args.output.resolve())
             if args.frames_dir:
                 args.frames_dir.mkdir(parents=True, exist_ok=True)

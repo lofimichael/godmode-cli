@@ -28,13 +28,14 @@ godmode
   bin/godmode             readable Python script
   bin/godmodeup           readable shell updater
   env                     shell PATH setup
-  .env.godmode             your credentials
+  .env.godmode            your credentials, sealed
+  seal.key                the key that unseals them (mode 0600)
   state/picard/           optional media cache and playback socket
 ```
 
 The installer also keeps its small hash receipt and previous-executable backup under `bin`. Setup itself creates no acknowledgement, registry or lock files.
 
-An existing `~/.config/godmode` is preserved and selected when the new home contains no credential file, operating rules or legacy catalog marker. Nothing is copied or migrated. `godmode path` prints the selected file; `--home DIR` or `GODMODE_HOME` chooses another home. Existing `AGENTS.md` and OAuth state remain untouched. Old `providers.toml` overlays are no longer loaded; their keys can still be edited with `godmode set KEY` or nano.
+An existing `~/.config/godmode/.env.godmode` that still assigns a value is preserved and selected while `~/.godmode` contains no credential file, operating rules or legacy catalog marker. Otherwise, including a rules checkout with no such file or one holding only blank `NAME=` lines, new keys go to `~/.godmode`. Nothing is copied unless you accept setup's offer to move plain-text keys, or run `godmode migrate`. `godmode path` prints the selected file; `--home DIR` or `GODMODE_HOME` chooses another home. Existing `AGENTS.md` and OAuth state remain untouched. Old `providers.toml` overlays are no longer loaded; their keys can still be edited with `godmode set KEY` or nano.
 
 ## Inspect or run the source
 
@@ -57,4 +58,4 @@ The installer also accepts a release `--archive` with its `--checksum` file. The
 
 ## Remove
 
-Remove the installed `godmode`, `godmodeup`, their receipt and optional previous-executable backup. If enabled, remove the Godmode source line from your shell profile and the generated `env` file. The `.env.godmode` file remains usable by nano and your agents. Removing a key locally does not revoke it at the provider.
+Remove the installed `godmode`, `godmodeup`, their receipt and optional previous-executable backup. If enabled, remove the Godmode source line from your shell profile and the generated `env` file. The key file and `seal.key` stay, but sealed values can be read only through `godmode`: keep the executable, or save the keys elsewhere first. Removing a key locally does not revoke it at the provider.

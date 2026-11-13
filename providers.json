@@ -190,22 +190,28 @@
         "name": "GOOGLE_ADS_SERVICE_ACCOUNT_JSON",
         "label": "Ads service account key",
         "goal": "Create a service account key for Google Ads",
+        "prompt": "Drag or paste the key file",
+        "file": true,
+        "format": "google-service-account",
         "note": "Then add its email in Google Ads under Admin > Access and security.",
         "steps": [
           "Pick your Ads API project, name the service account, select **Done**.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
-          "Open the downloaded file and copy its contents."
+          "Drag the downloaded .json file here, or paste what is in it."
         ]
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
         "label": "Search Console key",
         "goal": "Create a service account key for Search Console",
+        "prompt": "Drag or paste the key file",
+        "file": true,
+        "format": "google-service-account",
         "note": "Then add its email to each property: Settings > Users and permissions.",
         "steps": [
           "Pick your project, name the service account, select **Done**.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
-          "Open the downloaded file and copy its contents."
+          "Drag the downloaded .json file here, or paste what is in it."
         ]
       }
     ]

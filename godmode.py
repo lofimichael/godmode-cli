@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Godmode: pick a key with the arrow keys, paste it, see the edit it makes, save one local .env file."""
+"""Godmode: pick a key with the arrow keys, paste it, see the edit it makes, and keep it sealed in one file."""
 import sys
 if sys.version_info < (3, 9):
     sys.exit('Godmode needs Python 3.9 or newer. No files changed.')
@@ -17,11 +17,11 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
-from godmode_store import Store, normalize, valid_key
+from godmode_store import Store, move_and_seal, normalize, plain_source, valid_key
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask
 from godmode_terminal import quiet, read_choice, read_menu, read_secret, screen_rows, style
 
-VERSION = '0.9.0'
+VERSION = '0.10.0'
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['╔═╗╔═╗╔╦╗╔╦╗╔═╗╔╦╗╔═╗', '║ ╦║ ║ ║║║║║║ ║ ║║║╣ ', '╚═╝╚═╝═╩╝╩ ╩╚═╝═╩╝╚═╝']
 PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
@@ -67,7 +67,7 @@ def home_path(path):
 
 
 def banner(store):
-    side = ['', 'Keys for your agents, in one local file.', home_path(store.env_path)]
+    side = ['', 'Keys for your agents, ' + ('sealed in one file.' if store.sealed() else 'in one local file.'), home_path(store.env_path)]
     line()
     if glyph('art', '') and columns() >= 72:
         for art, text in zip(LOGO, side):
@@ -85,7 +85,7 @@ def prepare(store, accepted=False):
     if not store.exists():
         line('No Godmode setup here yet', 'warning')
         wrapped('These keys let agents act as you. The provider does not give a shit whether a destructive request was a mistake. Check the account and permissions before handing over access.')
-        wrapped('Values stay in one plaintext file, readable by programs running as you. Nothing here signs in to providers or proves a key works.')
+        wrapped('Values are sealed in one file: reading it shows names, never keys. Agents use them through godmode run, and anything running as you can still ask for them. Nothing here signs in to providers or proves a key works.')
         line()
         if not accepted:
             read_choice('Type GODMODE to continue', ['GODMODE'])
@@ -100,7 +100,10 @@ def edit_file(store):
     if not editor:
         raise ValueError('nano was not found. Open the path printed by godmode path in your editor.')
     prepare(store)
-    line('Opening nano; values are visible inside the editor.', 'warning')
+    if store.sealed():
+        line('Opening nano. Values are sealed: rename or delete lines here, save values with godmode set NAME.', 'warning')
+    else:
+        line('Opening nano; values are visible inside the editor.', 'warning')
     context = {k: v for k, v in os.environ.items()
                if k in ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TERM',
                         'COLORTERM', 'LANG', 'TMPDIR') or k.startswith('LC_')}
@@ -186,6 +189,52 @@ def command_rows(words, width):
     return laid
 
 
+def dropped_file(value):
+    """A file dragged into the terminal arrives as its path. Return (path, contents) when it is one."""
+    text = value.strip()
+    if not text or '\n' in text or len(text) > 4096:
+        return None
+    try:
+        words = shlex.split(text)  # Terminals escape spaces in a dropped path, or quote it.
+    except ValueError:
+        return None
+    try:
+        path = Path(words[0]).expanduser() if len(words) == 1 else None  # ~nobody raises RuntimeError.
+        if path is None or not path.is_absolute() or not path.is_file() or path.stat().st_size > 1024 * 1024:
+            return None
+        return path, path.read_text(encoding='utf-8')
+    except (OSError, RuntimeError, UnicodeError):
+        return None
+
+
+def service_account_problem(text):
+    """Why text is not a Google service account key file, or None: the standard shape Google issues."""
+    try:
+        info = json.loads(text)
+    except ValueError:
+        info = None
+    if not isinstance(info, dict):
+        return 'this is not a JSON key file.'
+    if 'installed' in info or 'web' in info:
+        return 'this is an OAuth client file. Create a service account key instead.'
+    kind = info.get('type')
+    if kind in ('authorized_user', 'external_account'):
+        return 'this is a ' + ('personal sign-in' if kind == 'authorized_user' else 'workload identity') + ' file, not a service account key.'
+    if kind != 'service_account':
+        return 'a service account key file says "type": "service_account".'
+    fields = ('project_id', 'private_key_id', 'private_key', 'client_email', 'token_uri')
+    missing = [field for field in fields if not isinstance(info.get(field), str) or not info[field]]
+    if missing:
+        return 'the key file has no ' + ', '.join(missing) + '.'
+    if '-----BEGIN PRIVATE KEY-----' not in info['private_key'] or '-----END PRIVATE KEY-----' not in info['private_key']:
+        return 'its private_key is not a PEM private key.'
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.gserviceaccount\.com', info['client_email']):
+        return 'its client_email is not a service account address.'
+    if info['token_uri'] not in ('https://oauth2.googleapis.com/token', 'https://accounts.google.com/o/oauth2/token'):
+        return "its token_uri is not Google's."
+    return None
+
+
 def prompt_label(key):
     if key.get('prompt'):
         return key['prompt'] + ':'
@@ -203,6 +252,7 @@ def listed(numbers):
 
 class KeyPrompt(Prompt):
     """One key's whole screen: its steps, a live preview of the edit Enter makes, and the masked input."""
+    sealed = False
 
     def __init__(self, store, key, provider=None, back=False):
         self.name, self.key, self.back = key['name'], key, back
@@ -210,6 +260,8 @@ class KeyPrompt(Prompt):
         self.saved = self.state == 'set'
         self.secret = key.get('secret', True)  # false shows an address as you type it; pastes stay masked
         self.plan = store.plan(self.name)
+        self.sealed = self.plan['sealed']
+        self.dropped = None  # (path, contents) when a key file was dragged in
         self.path = home_path(store.env_path)
         self.page = key_page(provider, key) if provider else None
         self.opened = None  # None until Enter tries the browser, then whether it opened
@@ -223,6 +275,9 @@ class KeyPrompt(Prompt):
         an app password. split: the key is copied as one ID:SECRET pair, and this entry
         keeps one half of it.
         """
+        found = dropped_file(value) if self.key.get('file') else None
+        self.dropped = found[0] if found else None
+        value = found[1] if found else value
         for char in self.key.get('drop', ''):
             value = value.replace(char, '')
         separator, index = self.key.get('split', ('', 0))
@@ -236,9 +291,13 @@ class KeyPrompt(Prompt):
             # Nothing, or only a pasted line break; or text that this key's paste rule emptied.
             return None, 'there is nothing in it to save.' if entered else None
         try:
-            return normalize(value, self.name), None
+            clean = normalize(value, self.name)
         except ValueError as error:
+            if self.key.get('file'):
+                return None, 'drag the key file here, or paste what is in it.'
             return None, str(error)
+        problem = service_account_problem(clean) if self.key.get('format') == 'google-service-account' else None
+        return (None, problem) if problem else (clean, None)
 
     def enter(self, value):
         """Save a valid value. With nothing entered, open the key's page instead."""
@@ -270,6 +329,8 @@ class KeyPrompt(Prompt):
         Masked values that were typed are always quoted, so the quotes cannot hint at
         which keystroke added a character that needs them.
         """
+        if self.sealed:  # The file holds the value encrypted; the command shows what goes in.
+            return 'sealed(' + (clean if self.plain(reveal) else mask(clean, reveal)) + ')'
         if self.plain(reveal):
             return shlex.quote(clean)
         masked = mask(clean, reveal)
@@ -346,8 +407,14 @@ class KeyPrompt(Prompt):
         if (clean and clean[0] == clean[-1] and clean[0] in '\'"' and len(clean) > 1
                 and (self.plain(reveal) or (reveal and len(clean) >= 8))):
             notes.append('This value starts and ends with quote marks; they are saved as part of it.')
+        if clean is not None and self.dropped:
+            notes.append('Read from ' + home_path(self.dropped) + '.')
+        if clean is not None and self.key.get('format') == 'google-service-account':
+            info = json.loads(clean)
+            notes.append('Service account ' + info['client_email'] + ' in project ' + info['project_id'] + '.')
         if clean is not None:
-            notes.append('Godmode makes this edit itself. Nothing is sent.')
+            notes.append('sealed(…) is the value encrypted with this computer\'s key. Nothing is sent.' if self.sealed
+                         else 'Godmode makes this edit itself. Nothing is sent.')
         return [(text, None) for text in notes]
 
     def hint(self, value, problem):
@@ -362,7 +429,8 @@ class KeyPrompt(Prompt):
 
     def render(self, value, width, reveal=True):
         clean, problem = self.check(value)
-        shown = self.shown(clean, reveal) if clean is not None else glyph('…', '...')
+        shown = self.shown(clean, reveal) if clean is not None else (
+            'sealed(' + glyph('…', '...') + ')' if self.sealed else glyph('…', '...'))
         bar = style(glyph('│ ', '| '), 'accent')
         command, at = self.command(shown, width - 2)
         command = [bar + row for row in command]
@@ -417,7 +485,7 @@ def menu_hint(leave):
 def named(name):
     """A key entered by name alone. A bundled key keeps its own input rules, without its steps."""
     known = next((key for provider in catalog() for key in provider['key'] if key['name'] == name), {})
-    return dict({field: known[field] for field in ('prompt', 'secret', 'drop', 'split') if field in known}, name=name)
+    return dict({field: known[field] for field in ('prompt', 'secret', 'drop', 'split', 'file', 'format') if field in known}, name=name)
 
 
 def populate(store, key, provider=None, back=False):
@@ -439,6 +507,8 @@ def populate(store, key, provider=None, back=False):
         finally:
             value = None
         line(style(glyph('✓ ', '') + 'Saved ', 'success') + prompt.receipt)
+        if prompt.dropped:
+            line('Delete ' + home_path(prompt.dropped) + ' when you are done: it holds the private key.', 'warning')
         return True
 
 
@@ -470,7 +540,65 @@ def provider_setup(store, provider, back=True):
             continue
 
 
-def setup(store, provider_id=None):
+def known_names():
+    return [key['name'] for provider in catalog() for key in provider['key']]
+
+
+def plural(count, word):
+    return '%d %s%s' % (count, word, '' if count == 1 else 's')
+
+
+def seal_keys(source, target):
+    """Seal source's plain-text keys, moving them to target when it differs. Prints the outcome."""
+    scripts = source.config_dir / 'scripts'
+    if target.env_path != source.env_path and (scripts / 'git_credential.py').exists() and not (scripts / 'godmode_keys.py').exists():
+        # Older Godmode rules read this file directly; moving the keys first would stop them syncing.
+        raise ValueError('Update the Godmode rules in ' + home_path(source.config_dir) + ' before moving keys: '
+                         'python3 -B ~/.config/godmode/scripts/sync_config.py')
+    moved, notes = move_and_seal(source, target, known_names())
+    line(style(glyph('✓ ', ''), 'success') + sealed_message(moved, source, target))
+    if notes:
+        line('%s in %s %s still plain text. Delete any old key written there.'
+             % (plural(notes, 'comment line'), home_path(source.env_path), 'is' if notes == 1 else 'are'), 'warning')
+
+
+def offer_seal(store, explicit):
+    """Keys found as plain text: offer to seal them, moving ~/.config/godmode's to ~/.godmode."""
+    try:
+        found = plain_source(store, explicit)
+        count = len(found[0].plain_names()) if found else 0
+    except ValueError as error:
+        line(str(error), 'warning')
+        return store
+    if not count:  # Only stray text to clean up; godmode migrate names its lines.
+        return store
+    source, target = found
+    moving = target.env_path != source.env_path
+    title = 'Found %s stored as plain text in %s.' % (plural(count, 'key'), home_path(source.env_path))
+    items = [(('Move them to ' + home_path(target.config_dir) + ' and seal them') if moving else 'Seal them', '', ''),
+             ('Keep them as they are', '', '')]
+    hint = glyph('↑↓ move · Enter choose · Esc keeps them', 'Up/Down move | Enter choose | Esc keeps them')
+    try:
+        keep = read_menu(items, 0, hint, title, bool(gap()))
+    except Back:
+        keep = 1
+    if keep:
+        return store
+    try:
+        seal_keys(source, target)
+    except ValueError as error:
+        line(str(error), 'warning')
+        return store
+    return target if moving else store
+
+
+def sealed_message(moved, source, target):
+    if target.env_path == source.env_path:
+        return 'Sealed %s in %s.' % (plural(moved, 'key'), home_path(target.config_dir))
+    return 'Moved %s to %s and sealed %s.' % (plural(moved, 'key'), home_path(target.config_dir), 'it' if moved == 1 else 'them')
+
+
+def setup(store, provider_id=None, explicit=False):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise ValueError('Setup needs a terminal. Use set KEY --stdin for redirected input.')
     providers = catalog()
@@ -479,6 +607,7 @@ def setup(store, provider_id=None):
         raise ValueError('Unknown provider. Run godmode to see the list.')
     with quiet():  # Nothing typed or pasted between two screens is echoed.
         banner(store)
+        store = offer_seal(store, explicit)
         prepare(store)
         if selected:
             provider_setup(store, selected, back=False)
@@ -524,14 +653,70 @@ def provider_list(store, providers):
             pass
 
 
+GUIDE = """Godmode keeps API keys for your agents in one {kind} file:
+  {path}
+{state}
+
+  godmode list                     names of the saved keys
+  godmode run NAME... -- command   run a command with those keys in its environment
+  godmode set NAME                 save or replace a key behind a mask
+  godmode                          choose providers and keys with the arrow keys
+
+  godmode run GH_TOKEN -- gh repo list
+  godmode run CLOUDFLARE_API_TOKEN -- npx wrangler whoami
+  godmode run GMAIL_USER GMAIL_APP_PASSWORD -- python3 send_mail.py
+
+Programs read keys from their environment. Pass only the keys a command needs,
+and never print one: no echo, printenv, env or set -x around it."""
+
+
+def guide(store):
+    """The agent guide. It always prints; only the line about the file's state depends on the file."""
+    try:
+        sealed = not store.exists() or store.sealed()
+        loose = store.loose() if store.exists() and sealed else 0
+        state = ('Its values are plain text. Run godmode migrate to seal them; until then, use them through godmode:' if not sealed else
+                 'Reading the file shows names, never keys. Use them through godmode:' if not loose else
+                 '%s in it %s still plain text; godmode migrate seals them or names what to delete. Use keys through godmode:'
+                 % (plural(loose, 'line'), 'is' if loose == 1 else 'are'))
+    except ValueError:
+        sealed, state = True, 'The file cannot be read as it is; fix it with godmode edit. Use keys through godmode:'
+    return GUIDE.format(kind='sealed' if sealed else 'local', path=store.env_path, state=state)
+
+
+def run_with_keys(store, argv):
+    """godmode run NAME... -- command: the command starts with those keys added to its environment."""
+    if '--' not in argv or argv.index('--') == 0 or argv.index('--') == len(argv) - 1:
+        raise ValueError('Use: godmode run NAME... -- command. See godmode help.')
+    names, command = argv[:argv.index('--')], argv[argv.index('--') + 1:]
+    for name in names:
+        valid_key(name)
+    environment = dict(os.environ)
+    environment.update(store.values(names))
+    environment['GODMODE_KEYS'] = ','.join(names)  # Tells helpers which keys came through godmode.
+    try:
+        os.execvpe(command[0], command, environment)  # Replaces godmode; the keys never pass through it again.
+    except OSError:
+        raise ValueError('Cannot run ' + command[0] + '.') from None
+
+
 class Arguments(argparse.ArgumentParser):
     def error(self, message):
         self.exit(2, 'godmode: invalid arguments; use --help. Paste values at the prompt, never in a command.\n')
 
 
 def main():
-    parser = Arguments(description='Masked key entry for one ordinary .env.godmode file.')
-    parser.add_argument('command', nargs='?', default='setup', help='setup, set KEY, edit, path, or picard')
+    argv, home = sys.argv[1:], None
+    if argv[:1] in (['--home'], ['--config-dir']) and len(argv) > 2:
+        home, argv = argv[1], argv[2:]
+    elif argv and argv[0].startswith(('--home=', '--config-dir=')):
+        home, argv = argv[0].split('=', 1)[1], argv[1:]
+    if argv[:1] == ['run']:  # Parsed by hand: everything after -- belongs to the command.
+        return run_with_keys(Store(home), argv[1:])
+    argv = sys.argv[1:]
+    parser = Arguments(description='Sealed API keys for your agents. Run godmode help for how to use them.')
+    parser.add_argument('command', nargs='?', default='setup',
+                        help='setup, list, run NAME... -- command, set NAME, help, migrate, edit, path, or picard')
     parser.add_argument('name', nargs='?', help='provider, key name, or Picard action')
     parser.add_argument('--home', '--config-dir', dest='home', help='Godmode home; existing legacy home is detected')
     parser.add_argument('--stdin', action='store_true', help='read one value from a pipe instead of the masked prompt')
@@ -548,22 +733,48 @@ def main():
         media_state = args.state_dir or (str(Path(args.home) / 'state') if args.home else None)
         return picard(args.name or 'link', media_state)
     store = Store(args.home)
+    explicit = bool(args.home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'))
     if args.command == 'path' and not args.name:
         line(str(store.env_path))
+    elif args.command == 'list' and not args.name:
+        for name in store.names() if store.exists() else []:
+            print(name)
+        broken = sorted(name for name, state in (store.states() if store.exists() else {}).items()
+                        if state in ('duplicate', 'malformed'))
+        if broken:  # Not listed, and not usable until fixed: say so, and fail, so checks do not pass silently.
+            print('godmode: ' + ', '.join(broken) + (' is' if len(broken) == 1 else ' are')
+                  + ' saved more than once or unreadable; godmode migrate names the lines.', file=sys.stderr)
+            return 1
+    elif args.command == 'help' and not args.name:
+        print(guide(store))
+    elif args.command == 'migrate' and not args.name:
+        found = plain_source(store, explicit)
+        if found:
+            seal_keys(*found)
+        else:
+            line('Nothing to seal: no plain-text keys in ' + home_path(store.env_path) + '.')
     elif args.command == 'edit' and not args.name:
         return edit_file(store)
     elif args.command in ('setup','onboard'):
-        setup(store, args.name)
+        setup(store, args.name, explicit)
     elif args.command == 'init' and not args.name:
-        prepare(store, accepted=True) if args.accept_disclaimer else setup(store)
+        prepare(store, accepted=True) if args.accept_disclaimer else setup(store, explicit=explicit)
     elif args.command == 'set' and args.name:
         valid_key(args.name)
         if args.stdin:
             if sys.stdin.isatty():
                 raise ValueError('--stdin requires a pipe. Omit it for masked entry.')
             value = sys.stdin.read(1_048_577)
+            account = None
+            if named(args.name).get('format') == 'google-service-account':
+                clean = normalize(value, args.name)
+                problem = service_account_problem(clean)
+                if problem:
+                    raise ValueError('Not saved: ' + problem)
+                account = json.loads(clean)
             store.set(args.name, value)
-            line(args.name + ' saved.', 'success')
+            line(args.name + ' saved.' + (' Service account ' + account['client_email'] + ' in project '
+                                          + account['project_id'] + '.' if account else ''), 'success')
         else:
             prepare(store)
             with quiet():

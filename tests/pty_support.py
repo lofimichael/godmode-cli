@@ -110,7 +110,10 @@ class Terminal:
 
     def close(self):
         if self.process.poll() is None:
-            os.killpg(self.process.pid, signal.SIGKILL)
+            try:
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass  # The session ended between the check and the kill.
             # A dying session leader waits for unread terminal output to drain; keep reading.
             deadline = time.monotonic() + 5
             while self.process.poll() is None and time.monotonic() < deadline:
@@ -126,14 +129,11 @@ def plain(capture):
 
 
 def values(path):
-    result = {}
-    for line in path.read_text().splitlines():
-        if '=' in line and not line.startswith('#'):
-            key, raw = line.split('=', 1)
-            parsed = shlex.split(raw, comments=True)
-            if len(parsed) == 1:
-                result[key] = parsed[0]
-    return result
+    """Saved values, read the way godmode reads them: sealed values are unsealed."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+    from godmode_store import Store
+    store = Store(str(Path(path).parent))
+    return store.values([name for name, state in store.states().items() if state == 'set'])
 
 
 class Screen:

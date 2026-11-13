@@ -55,6 +55,7 @@ Each provider in [providers.json](../providers.json) has an `id` (the word used 
 - `goal`: the first line of its screen. `steps`: at most three one-line steps, with page labels between `**` shown bold. `note`: one optional line under them.
 - `console`: its own page when it differs from the provider's; `null` when it has none.
 - `prompt`: a different input label. `"secret": false`: show the value as it is typed, for an address (a paste is still masked).
+- `file`: a key file dragged onto the prompt is read from its path. `format`: `google-service-account` checks the standard Google key shape.
 - `drop`: characters removed from a paste. `split`: `[":", 0]` keeps the part before the first colon, `[":", 1]` the part after. These rules apply wherever the key is entered at a prompt, including `godmode set NAME`; `godmode set NAME --stdin` saves its input as given.
 
 ## Sign-in and documentation links

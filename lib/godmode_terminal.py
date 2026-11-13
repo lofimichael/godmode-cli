@@ -446,7 +446,7 @@ def read_menu(items, start=0, hint="", title="", gap=False):
 
     def render():
         width = columns()
-        above = ([""] if gap else []) + ([style(fit(title, width)[0], "title")] if title else [])
+        above = ([""] if gap else []) + [style(row, "title") for row in (textwrap.wrap(title, max(1, width - 1)) if title else [])]
         below = [""] + [style(row, "accent") for row in textwrap.wrap(hint, max(1, width - 1))] if hint else []
         room = max(3, screen_rows() - 1 - len(above) - len(below))
         top = 0 if len(items) <= room else min(max(0, at - room // 2), len(items) - room)

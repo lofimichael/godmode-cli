@@ -1,6 +1,6 @@
 # Develop and release
 
-Keep the core to masked entry, a menu, and one readable file writer. Agents must never need this CLI to use `.env.godmode`. Provider guidance and Picard remain optional. Source and installed distributions use only Python's standard library; demo recording has separate development dependencies.
+Keep the core to masked entry, a menu, one readable file writer and `godmode run`. Agents reach keys only through the CLI; the file stays sealed and explains itself. Provider guidance and Picard remain optional. Source and installed distributions use only Python's standard library; demo recording has separate development dependencies.
 
 ## Check
 
