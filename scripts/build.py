@@ -17,7 +17,7 @@ def main():
     version = (ROOT / 'VERSION').read_text().strip()
     sections = ['#!/usr/bin/env python3\n# Godmode ' + version + ': readable source, no bundled interpreter or dependencies.\n'
                 'import sys\nif sys.version_info < (3, 9):\n    sys.exit("Godmode needs Python 3.9 or newer. No files changed.")\n']
-    for name in ['godmode_store.py', 'godmode_terminal.py', 'godmode_picard.py']:
+    for name in ['godmode_store.py', 'godmode_profile.py', 'godmode_terminal.py', 'godmode_picard.py']:
         path = ROOT / 'lib' / name
         sections.append('\n# --- ' + name + ' ---\n' + path.read_text())
     source = (ROOT / 'godmode.py').read_text()

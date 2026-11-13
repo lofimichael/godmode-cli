@@ -13,7 +13,25 @@
           "On the pre-filled form, check the **Resource owner**.",
           "Under **Repository access**, select **All repositories**.",
           "Select **Generate token** (again if asked), then copy the token."
-        ]
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "A fine-grained personal access token acts as its owner within one selected user or organization. The setup requests broad repository write access, including administration, across all repositories for that owner. Organization approval, token lifetime policy and your own role still apply; other accounts or API operations can require different permissions or a GitHub App.",
+    "verify": [
+      "Use the official GitHub CLI or API to identify the token owner and read an intended repository. Check the endpoint's required permissions before creating repositories, configuring Actions, managing secrets or opening pull requests. A successful identity check alone does not prove repository write access."
+    ],
+    "recover": [
+      "For permission failures, check the resource owner, repository selection and organization approval first. For an expired or revoked token, create a replacement through GitHub and save it with godmode set GH_TOKEN. Verify the intended operation before retiring a still-valid old token."
+    ],
+    "docs": [
+      {
+        "title": "Personal access tokens and permissions",
+        "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+      },
+      {
+        "title": "GitHub CLI authentication environment",
+        "url": "https://cli.github.com/manual/gh_help_environment"
       }
     ]
   },
@@ -31,7 +49,29 @@
           "Select **Create Token**, then the **Read All Resources** template.",
           "Change its permissions from **Read** to **Edit** where available.",
           "Select **Continue to summary** > **Create Token**, then copy the token."
-        ]
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. R2 S3 credentials are a separate credential type.",
+    "verify": [
+      "Check the user token with GET /client/v4/user/tokens/verify, then list the intended account or zone resources using Cloudflare's API or Wrangler. An active token does not prove every service permission. Select the exact account and zone before provisioning or deploying."
+    ],
+    "recover": [
+      "Fix missing permissions or resource policies without replacing a valid secret. For a lost, expired or revoked secret, use the dashboard to create a replacement or roll the token, then godmode set CLOUDFLARE_API_TOKEN. Rolling invalidates the old value; creating a separate token allows a staged replacement."
+    ],
+    "docs": [
+      {
+        "title": "Create API tokens",
+        "url": "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/"
+      },
+      {
+        "title": "Roll tokens",
+        "url": "https://developers.cloudflare.com/fundamentals/api/how-to/roll-token/"
+      },
+      {
+        "title": "Wrangler commands",
+        "url": "https://developers.cloudflare.com/workers/wrangler/commands/"
       }
     ]
   },
@@ -49,7 +89,25 @@
           "Type a token name.",
           "Under **Scope**, select **Full Account**.",
           "Choose an expiration, select **Create**, then copy the token."
-        ]
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "A Full Account token reaches your personal account and teams, subject to your role. Team and project scopes are alternatives when desired. Full-account requests need the intended team ID or slug when targeting team resources; a valid token can otherwise select a different default team.",
+    "verify": [
+      "Use Vercel's CLI or REST API to list projects or deployments in the intended team. Confirm the project before configuring its environment, deploying or changing domains. The CLI accepts VERCEL_TOKEN; direct API clients must read that variable and send Bearer authentication."
+    ],
+    "recover": [
+      "Read the error: missingToken means the credential was not supplied; invalidToken can mean wrong, expired or deleted. Fix team/project targeting for scope failures. Replace an invalid token from Account Tokens and save it with godmode set VERCEL_TOKEN."
+    ],
+    "docs": [
+      {
+        "title": "Access token scope, use and recovery",
+        "url": "https://vercel.com/docs/accounts/access-tokens"
+      },
+      {
+        "title": "CLI token option",
+        "url": "https://vercel.com/docs/cli/global-options#token"
       }
     ]
   },
@@ -67,7 +125,29 @@
           "Select **Generate new token** > **Create legacy token**.",
           "Type a name and set **Expires in** to **Never**.",
           "Select **Generate token**, then copy the token."
-        ]
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "The legacy full-access personal token reaches all organizations and projects your account can access, including future ones. Scoped tokens are also available. This credential authenticates the Management API, CLI and compatible tools; it is not a database password, project publishable key or runtime secret key.",
+    "verify": [
+      "List accessible organizations and projects through the Management API or official CLI, then confirm the intended project and account role. Use the relevant management permissions for project configuration, database work and deployments. Check the installed CLI help: hosted and local targeting can differ by version."
+    ],
+    "recover": [
+      "Check account role and token scope on permission errors. Replace an expired or revoked token in account settings and save it with godmode set SUPABASE_ACCESS_TOKEN. The CLI reads this environment variable before a saved login token; Godmode does not update the CLI cache."
+    ],
+    "docs": [
+      {
+        "title": "Personal access tokens",
+        "url": "https://supabase.com/docs/guides/platform/personal-access-tokens"
+      },
+      {
+        "title": "Management API",
+        "url": "https://supabase.com/docs/reference/api/introduction"
+      },
+      {
+        "title": "CLI reference",
+        "url": "https://supabase.com/docs/reference/cli/introduction"
       }
     ]
   },
@@ -84,16 +164,18 @@
         "note": "No sk_test_ key there? Open the account picker and switch to a sandbox.",
         "steps": [
           "Under **Standard keys**, find **Secret key** and reveal it if hidden.",
-          "Select the key (sk_test_…) to copy it."
-        ]
+          "Select the key (sk_test_\u2026) to copy it."
+        ],
+        "kind": "static-key"
       },
       {
         "name": "STRIPE_TEST_PUBLISHABLE_KEY",
         "label": "Test publishable key",
         "goal": "Copy your Stripe test publishable key",
         "steps": [
-          "Under **Standard keys**, copy the **Publishable key** (pk_test_…)."
-        ]
+          "Under **Standard keys**, copy the **Publishable key** (pk_test_\u2026)."
+        ],
+        "kind": "public-key"
       },
       {
         "name": "STRIPE_LIVE_SECRET_KEY",
@@ -103,8 +185,9 @@
         "steps": [
           "Select **Create secret key** and type the verification code.",
           "Type a **Key name**, then select **Create**.",
-          "Select the key (sk_live_…) to copy it."
-        ]
+          "Select the key (sk_live_\u2026) to copy it."
+        ],
+        "kind": "static-key"
       },
       {
         "name": "STRIPE_LIVE_PUBLISHABLE_KEY",
@@ -113,8 +196,26 @@
         "console": "https://dashboard.stripe.com/apikeys",
         "note": "Shows pk_test_? Switch from sandbox mode to live mode first.",
         "steps": [
-          "Under **Standard keys**, copy the **Publishable key** (pk_live_…)."
-        ]
+          "Under **Standard keys**, copy the **Publishable key** (pk_live_\u2026)."
+        ],
+        "kind": "public-key"
+      }
+    ],
+    "access": "Standard secret keys have broad API access in one account or sandbox. Test and live credentials are separate; publishable keys are for client applications and cannot perform secret-key operations. Restricted keys are an alternative. Webhook signing secrets are separate values. Saving a live key does not authorize charges, refunds or payouts.",
+    "verify": [
+      "Use the Stripe SDK or API to read the intended account and inspect a resource in the selected sandbox or live mode. Supply the selected secret key explicitly: these Godmode key names are not an automatic Stripe SDK configuration. Build and test payment flows in a sandbox before an authorized live operation."
+    ],
+    "recover": [
+      "For an invalid or expired key, use the account's API keys page to create or rotate it and overwrite the matching Godmode entry. Stripe offers an expiration grace period for the old key. Check mode, restrictions and account status before assuming every denied operation needs rotation."
+    ],
+    "docs": [
+      {
+        "title": "API key types, environments and rotation",
+        "url": "https://docs.stripe.com/keys"
+      },
+      {
+        "title": "Stripe API",
+        "url": "https://docs.stripe.com/api"
       }
     ]
   },
@@ -130,8 +231,30 @@
         "goal": "Create a PostHog API key",
         "steps": [
           "Select **Create key**; the form is already filled in.",
-          "Copy the key (phx_…) from the dialog."
-        ]
+          "Copy the key (phx_\u2026) from the dialog."
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "A personal API key accesses private analytics, insights, flags and other APIs using your account permissions and the key's scopes. The MCP preset is convenient for broad agent use; confirm its organization/project selection. Use the matching US, EU or self-hosted instance. A project ingestion key is a different credential.",
+    "verify": [
+      "Use PostHog's API to read the intended project and run a small query or list the intended resource. Check the endpoint's required scope before managing flags, dashboards or experiments. Keep the personal key server-side; it is not a browser analytics key."
+    ],
+    "recover": [
+      "Check the instance, project and scopes first. Create a replacement for an invalid key and save it with godmode set POSTHOG_PERSONAL_API_KEY. If rolling a legacy key, the old value is invalidated; update every consumer that used it."
+    ],
+    "docs": [
+      {
+        "title": "Personal API keys",
+        "url": "https://posthog.com/docs/api/personal-api-keys"
+      },
+      {
+        "title": "API scopes",
+        "url": "https://posthog.com/docs/api/scopes"
+      },
+      {
+        "title": "API overview",
+        "url": "https://posthog.com/docs/api"
       }
     ]
   },
@@ -150,7 +273,25 @@
           "Select **New token** and name it.",
           "Choose the workspace, **Notion API**, and an expiration.",
           "Select **Create token**, then copy the token."
-        ]
+        ],
+        "kind": "static-token"
+      }
+    ],
+    "access": "The personal access token acts as its creator in one workspace, with the selected Notion API capability and that user's content permissions. The workspace can restrict who creates or uses PATs. An internal connection token is an alternative identity with capabilities and explicitly shared pages, independent of one user's membership.",
+    "verify": [
+      "Use the Notion SDK or API to retrieve the token identity and an intended page or data source. Confirm the workspace and content access before creating or updating pages, databases or comments. The SDK must read NOTION_API_KEY explicitly."
+    ],
+    "recover": [
+      "PATs expire within one year. Create a replacement through the Developer portal and save it with godmode set NOTION_API_KEY. An unauthorized response can also come from workspace PAT policy; missing content can reflect lost user access or a page not shared with an internal connection. Repair that access instead of repeatedly replacing tokens."
+    ],
+    "docs": [
+      {
+        "title": "Personal access tokens",
+        "url": "https://developers.notion.com/guides/connections-and-tokens/personal-access-tokens"
+      },
+      {
+        "title": "Internal connections",
+        "url": "https://developers.notion.com/guides/connections-and-tokens/internal-connections"
       }
     ]
   },
@@ -167,7 +308,8 @@
         "console": null,
         "prompt": "Type the address",
         "secret": false,
-        "steps": []
+        "steps": [],
+        "kind": "address"
       },
       {
         "name": "GMAIL_APP_PASSWORD",
@@ -178,7 +320,25 @@
         "steps": [
           "Type a name under **App name**, then select **Create**.",
           "Copy the 16-character password."
-        ]
+        ],
+        "kind": "app-password"
+      }
+    ],
+    "access": "The mailbox address and app password support IMAP/SMTP clients where Google Account policy allows them. App passwords require 2-Step Verification and can be unavailable for some organization accounts, security-key-only setups or Advanced Protection. They do not grant Gmail API, Google SSO or Workspace administration access.",
+    "verify": [
+      "Configure the mail client with GMAIL_USER and GMAIL_APP_PASSWORD and establish an authenticated TLS IMAP or SMTP session without sending a message. Confirm the mailbox before reading mail or carrying out an authorized send. Use the Gmail API's separate OAuth flow if the task requires that API."
+    ],
+    "recover": [
+      "Google revokes app passwords after an account password change. Create a replacement and save it with godmode set GMAIL_APP_PASSWORD. If app passwords are unavailable, use a supported Google sign-in/OAuth client; repeating app-password setup cannot override account policy."
+    ],
+    "docs": [
+      {
+        "title": "App passwords and recovery",
+        "url": "https://support.google.com/accounts/answer/185833"
+      },
+      {
+        "title": "Gmail IMAP and SMTP",
+        "url": "https://developers.google.com/workspace/gmail/imap/imap-smtp"
       }
     ]
   },
@@ -200,7 +360,8 @@
           "Pick your Ads project; open its service account, or create one.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
           "Drag the downloaded .json file here, or paste what is in it."
-        ]
+        ],
+        "kind": "service-account-json"
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
@@ -214,7 +375,43 @@
           "Pick your Search project; open its service account, or create one.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
           "Drag the downloaded .json file here, or paste what is in it."
-        ]
+        ],
+        "kind": "service-account-json"
+      }
+    ],
+    "access": "The bundled JSON entries are service-account private keys, not OAuth clients or user grants. For Ads, enable the API and obtain the required API access level in that Cloud project, then add the service-account email to the intended Ads account or manager. For Search Console, enable its API and grant the identity access to each property. Cloud IAM roles alone do not grant Ads or Search Console access.",
+    "verify": [
+      "The consumer must parse the JSON variable and use an official Google auth/client library with the API's scopes; these variable names are Godmode conventions, not automatic Google SDK settings. Ads uses the adwords scope; Search Console uses webmasters or webmasters.readonly.",
+      "List directly accessible Ads customers, then check the intended client/manager path. For Search Console, list sites and confirm the exact property and permission level. Only then run reporting, keyword planning or authorized management operations."
+    ],
+    "recover": [
+      "Let the consuming Google library obtain and renew access tokens from the service-account key; ordinary access-token expiry needs no new key or browser consent. For a disabled, deleted or invalid private key, create a replacement on the same service account, save the matching Godmode entry, verify it, then retire the old key.",
+      "User OAuth is a separate supported consumer choice: store its refresh grant under a separate name such as GOOGLE_SEARCH_CONSOLE_OAUTH_JSON. Reauthorize only when refresh fails because the grant is revoked, expired or policy requires sign-in. Save any replacement grant with godmode set NAME; Godmode does not write back refreshed credentials."
+    ],
+    "docs": [
+      {
+        "title": "Ads service accounts and account access",
+        "url": "https://developers.google.com/google-ads/api/docs/oauth/service-accounts"
+      },
+      {
+        "title": "List accessible Ads accounts",
+        "url": "https://developers.google.com/google-ads/api/docs/account-management/listing-accounts"
+      },
+      {
+        "title": "Search Console authorization",
+        "url": "https://developers.google.com/webmaster-tools/v1/how-tos/authorizing"
+      },
+      {
+        "title": "List Search Console sites",
+        "url": "https://developers.google.com/webmaster-tools/v1/sites/list"
+      },
+      {
+        "title": "OAuth refresh and grant expiry",
+        "url": "https://developers.google.com/identity/protocols/oauth2"
+      },
+      {
+        "title": "Service account key rotation",
+        "url": "https://docs.cloud.google.com/iam/docs/key-rotation"
       }
     ]
   },
@@ -236,7 +433,8 @@
         "steps": [
           "Select **Create API key**, name it, then select **Create key**.",
           "Select **Copy API key** and keep the dialog open."
-        ]
+        ],
+        "kind": "static-key"
       },
       {
         "name": "HIGGSFIELD_API_KEY_SECRET",
@@ -248,7 +446,29 @@
           1
         ],
         "note": "Keeps the part after the colon. Dialog closed? New key, then redo the ID.",
-        "steps": []
+        "steps": [],
+        "kind": "static-key"
+      }
+    ],
+    "access": "The key ID and secret are one credential pair for a personal or organization account. Both are needed for server-side authentication. The selected account owns generated work and charges; individual models and environments can have separate access requirements.",
+    "verify": [
+      "Use the selected model's official API documentation and the Higgsfield client or API. Supply both stored values explicitly; official examples may use HF_API_KEY_ID and HF_API_KEY_SECRET instead of these Godmode names. Read an existing request's status when available. Creating a generation can incur charges and is not a free authentication probe."
+    ],
+    "recover": [
+      "For invalid, expired or disabled credentials, use API keys in Higgsfield Console and replace both Godmode entries from the same new pair. Verify before deleting a still-valid old pair. A model availability error is not proof that the credential is invalid."
+    ],
+    "docs": [
+      {
+        "title": "Authentication",
+        "url": "https://docs.higgsfield.ai/docs/authentication"
+      },
+      {
+        "title": "Key lifecycle and account controls",
+        "url": "https://docs.higgsfield.ai/docs/enterprise/access-control"
+      },
+      {
+        "title": "Model documentation index",
+        "url": "https://docs.higgsfield.ai/docs/llms.txt"
       }
     ]
   },
@@ -265,7 +485,29 @@
         "steps": [
           "Open **API Keys**, then select **Create API key**.",
           "Name the key, select **Create key**, then copy it."
-        ]
+        ],
+        "kind": "static-key"
+      }
+    ],
+    "access": "The API key accesses Zernio profiles and resources within its permissions. Broad read/write access is useful for an operator; narrower profile, resource and read-only scopes are available. Social accounts must also be connected with their own platform permissions. Saving a Zernio key does not connect those accounts or authorize public posts.",
+    "verify": [
+      "Use Zernio's SDK or API to list profiles and connected accounts, then confirm the intended account ID and connection health. Check platform support before scheduling posts, reading analytics or managing an inbox. SDKs read ZERNIO_API_KEY."
+    ],
+    "recover": [
+      "Replace an expired or revoked Zernio API key through its API keys settings and save it with godmode set ZERNIO_API_KEY. If only a connected social account needs authorization again, use Zernio's official reconnect flow for that account; replacing the Zernio key will not repair the platform grant."
+    ],
+    "docs": [
+      {
+        "title": "API setup and connected accounts",
+        "url": "https://docs.zernio.com/quickstart"
+      },
+      {
+        "title": "API keys and authentication errors",
+        "url": "https://docs.zernio.com/api-keys/list-api-keys"
+      },
+      {
+        "title": "Connection troubleshooting",
+        "url": "https://docs.zernio.com/for-you/troubleshooting"
       }
     ]
   },
@@ -283,7 +525,8 @@
         "note": "pwinty.com is Prodigi's sandbox; sign in with your Prodigi account.",
         "steps": [
           "Under **API authentication**, select **Show key** and copy it."
-        ]
+        ],
+        "kind": "static-key"
       },
       {
         "name": "PRODIGI_API_KEY",
@@ -292,7 +535,25 @@
         "note": "Orders placed with this key are printed, shipped and billed.",
         "steps": [
           "Under **API authentication**, select **Show key** and copy it."
-        ]
+        ],
+        "kind": "static-key"
+      }
+    ],
+    "access": "Sandbox and live API keys belong to separate environments. Sandbox orders are not fulfilled or charged. Live orders enter production and shipping. Select the matching endpoint and account key; possession of the live key does not authorize placing a billable order.",
+    "verify": [
+      "Use the Print API's documented authentication header with the matching environment. Read existing orders or product details to check the intended access, or request a quote for the intended specification. Use sandbox orders for fulfillment integration tests; a sandbox result does not prove a live print was produced."
+    ],
+    "recover": [
+      "Check that the key matches the sandbox or live API first. Retrieve or replace the environment's key through the Prodigi dashboard and official support if required, then save the matching Godmode entry. Confirm the provider's replacement behavior before retiring a key used by other consumers."
+    ],
+    "docs": [
+      {
+        "title": "Print API documentation",
+        "url": "https://www.prodigi.com/print-api/docs/"
+      },
+      {
+        "title": "v4 environments, authentication and operations",
+        "url": "https://www.prodigi.com/print-api/docs/v4/"
       }
     ]
   }

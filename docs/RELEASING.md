@@ -1,6 +1,6 @@
 # Develop and release
 
-Keep the core to masked entry, a menu, one readable file writer and `godmode run`. Agents reach keys only through the CLI; the file stays sealed and explains itself. Provider guidance and Picard remain optional. Source and installed distributions use only Python's standard library; demo recording has separate development dependencies.
+Keep the core to optional profile facts, masked credential entry, the arrow-key menu and `godmode run`. Agents reach keys only through the CLI; the file stays sealed and explains itself. Profile JSON and provider guidance are data, not another policy engine. Agent setup prints a hint without installing hooks or replacing user instructions. Picard remains optional. Source and installed distributions use only Python's standard library; demo recording has separate development dependencies.
 
 ## Check
 
@@ -15,7 +15,7 @@ shellcheck -s sh install.sh tests/install.sh tests/install-update.sh
 
 Tests use synthetic credentials and isolated homes, including real PTY entry, masking, pasted JSON, cancellation, terminal restoration, file preservation and updater behavior. Never test against a real credential inventory.
 
-`scripts/build.py` concatenates the storage helper, terminal helper, optional Picard helper, static provider guidance and menu into ordinary Python source. It does not compile, compress, encrypt, download or execute the generated script. `VERSION` identifies the release. Inspect `target/godmode` directly.
+`scripts/build.py` concatenates the credential and profile writers, terminal helper, optional Picard helper, static provider guidance and menu into ordinary Python source. It does not compile, compress, encrypt, download or execute the generated script. `VERSION` identifies the release. Inspect `target/godmode` directly.
 
 ## Package
 

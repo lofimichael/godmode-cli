@@ -55,7 +55,7 @@ class CLI(unittest.TestCase):
         self.temp.cleanup()
 
     def terminal(self, args=None, env=None, cols=100, rows=36):
-        session = Terminal(self.command+(args or []), env or self.env, cols=cols, rows=rows)
+        session = Terminal(self.command+(['setup'] if args is None else args), env or self.env, cols=cols, rows=rows)
         self.sessions.append(session)
         return session
 
@@ -691,7 +691,7 @@ class CLI(unittest.TestCase):
 
     def test_setup_offers_to_move_plain_text_keys_and_seal_them(self):
         old=self.legacy('GH_TOKEN=ghp_SYNTHETIC_value_000000000002\nCLOUDFLARE_API_TOKEN=cf_SYNTHETIC_value_00000000\n')
-        command=[sys.executable,str(REPO/'target/godmode')]
+        command=[sys.executable,str(REPO/'target/godmode'),'setup']
         keep=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(keep)
         keep.expect('Found 2 keys stored as plain text in ~/.config/godmode/.env.godmode.')
         keep.expect('Before sealing, update programs that read this file to use godmode run NAME -- command.')

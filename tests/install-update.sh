@@ -29,6 +29,8 @@ cmp "$scratch/expected" "$scratch/resolved"
 [ ! -e "$scratch/SHOULD_NOT_EXIST" ] && [ ! -e "$scratch/ALSO_NOT_EXIST" ]
 printf '%s\n' 'SYNTHETIC_KEY=fixture-only' > "$custom/.env.godmode"
 cp "$custom/.env.godmode" "$scratch/keys-before"
+printf '%s\n' '{"business_name":"Example Studio","future":{"keep":true}}' > "$custom/profile.json"
+cp "$custom/profile.json" "$scratch/facts-before"
 cp "$HOME/.zshrc" "$scratch/profile-after"
 cp "$custom/env" "$scratch/env-before"
 # The installed updater targets its own directory, even with an unrelated HOME.
@@ -37,6 +39,7 @@ HOME="$scratch/another-account" "$custom/bin/godmodeup" --binary "$scratch/artif
 cmp "$scratch/artifacts/two" "$custom/bin/godmode"
 cmp "$scratch/artifacts/one" "$custom/bin/godmode.previous"
 cmp "$scratch/keys-before" "$custom/.env.godmode"
+cmp "$scratch/facts-before" "$custom/profile.json"
 [ ! -e "$scratch/another-account/.godmode" ]
 if grep -q 'Starting interactive setup' "$scratch/update-output"; then
     echo 'update started setup without request' >&2; exit 1
@@ -47,6 +50,7 @@ cmp "$scratch/artifacts/one" "$custom/bin/godmode.previous"
 cmp "$scratch/profile-after" "$HOME/.zshrc"
 cmp "$scratch/env-before" "$custom/env"
 cmp "$scratch/keys-before" "$custom/.env.godmode"
+cmp "$scratch/facts-before" "$custom/profile.json"
 # A bad download or manually changed executable is never replaced.
 if "$custom/bin/godmodeup" --binary "$scratch/artifacts/one" --sha256 "$two" >/dev/null 2>&1; then
     echo 'bad update checksum accepted' >&2; exit 1

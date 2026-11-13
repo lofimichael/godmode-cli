@@ -1,5 +1,12 @@
 # What happens to a pasted value
 
+Profile fields are separate: their input is visible and saved as private plain
+JSON. They are for ordinary operator/business facts, not credentials. Terminal
+control characters are escaped while entering text and rejected in saved known
+fields (mailing addresses allow line breaks). The profile writer preserves manual
+extensions and refuses unsafe or concurrent edits. See [profile details](PROFILE.md).
+`godmode agents` prints a discovery hint and does not edit agent configuration.
+
 Menus are chosen with the arrow keys and never take a value: a paste into a menu is ignored and not shown. The terminal does not echo for the whole setup session, so text that arrives between two screens is dropped unseen. A paste that is too large or holds a NUL byte is read to its end before it is refused, so none of it can reach your shell.
 
 1. The terminal reads it with echo disabled. A value pasted into an empty field is shown as its first and last three characters around five dots (`sk_•••••123`); values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Pasting again replaces the value rather than appending to it. Typed or edited values show one dot per character and no ends, because otherwise each character would pass through the visible end while you type. A bracketed paste does not save until you press Enter.

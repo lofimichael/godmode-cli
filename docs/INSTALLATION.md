@@ -28,6 +28,7 @@ godmode
   bin/godmode             readable Python script
   bin/godmodeup           readable shell updater
   env                     shell PATH setup
+  profile.json            optional operator facts, private plain JSON (mode 0600)
   .env.godmode            your credentials, sealed
   seal.key                the key that unseals them (mode 0600)
   STOP_AND_READ_ME_FOR_KEYS.md  how agents use keys without opening the file
@@ -35,6 +36,10 @@ godmode
 ```
 
 The installer also keeps its small hash receipt and previous-executable backup under `bin`. Setup itself creates no acknowledgement, registry or lock files.
+
+Run `godmode` to choose details, credentials or agent instructions. Skipping a section creates nothing for that section. `godmode profile` reopens the details form; `godmode setup` opens the credential catalog directly. The profile defaults to `~/.godmode/profile.json` even while legacy keys remain in `~/.config/godmode`; adding a profile does not move or hide them. An explicit `--home`, `GODMODE_HOME`, or legacy `GODMODE_CONFIG_DIR` selects the profile's home too. Use `godmode profile path` to check it.
+
+`godmode agents` prints a discovery hint for your existing agent instructions. Neither installation nor setup edits those instructions. Copy the hint once using [the agent setup guide](AGENT_SETUP.md); ordinary updates then change the help the agent reads, not your global rules. No new `AGENTS.md` is created inside either Godmode home.
 
 An existing `~/.config/godmode/.env.godmode` that still assigns a value is preserved and selected while `~/.godmode` contains no credential file, operating rules or legacy catalog marker. Otherwise, including a rules checkout with no such file or one holding only blank `NAME=` lines, new keys go to `~/.godmode`. Nothing is copied unless you accept setup's offer to move plain-text keys, or run `godmode migrate`. `godmode path` prints the selected file; `--home DIR` or `GODMODE_HOME` chooses another home. Existing `AGENTS.md` and OAuth state remain untouched. Old `providers.toml` overlays are no longer loaded; their keys can still be edited with `godmode set KEY` or nano.
 

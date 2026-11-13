@@ -1,9 +1,10 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.10.3                                                     |
+| version .. 0.11.0                                                     |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
-  Godmode onboards provider keys and credential JSON. Agents save them
+  Godmode onboards optional profile facts, provider keys and credential JSON.
+  Run godmode for details, credentials and a one-time agent hint. Agents save keys
   with godmode set and use them through godmode run. New files are sealed;
   older plain files stay plain until migrated. See godmode help.
 

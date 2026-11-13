@@ -1,38 +1,46 @@
 # Google credentials
 
-Google uses several JSON files. Choose the one your program expects:
+Run `godmode provider google` for the bundled Ads and Search Console setup pages, account prerequisites, verification steps and recovery references. Google credentials have different jobs; choose the format your consuming program supports.
 
-| File | What it does | How to recognize it |
+| File or value | Purpose | Recognizable fields |
 | --- | --- | --- |
-| Service account key | Lets a program act as that service account. | `"type": "service_account"`, `client_email`, `private_key` |
-| Desktop OAuth client | Identifies the app that asks you to sign in; it is not a saved login. | An `installed` object containing `client_id` |
-| User OAuth grant | Lets a program obtain access tokens for the user who consented. | Usually `"type": "authorized_user"`, with `refresh_token` and client details |
-| IAM policy | Describes who has permission on a Cloud resource; it is not a credential. | `bindings` containing roles and members |
+| Service-account key JSON | Lets a program authenticate as that service account and obtain access tokens. | `"type": "service_account"`, `client_email`, `private_key` |
+| Desktop OAuth client JSON | Identifies the app during user sign-in. It is not a saved login. | An `installed` object with `client_id` and client configuration |
+| User OAuth refresh grant | Lets the authorized client obtain access tokens for the consenting user. | Often `"type": "authorized_user"`, `refresh_token` and client details; formats vary by tool |
+| Access token | Authorizes API requests for a limited time. | A bearer token; it is not the durable refresh credential |
+| IAM policy JSON | Assigns roles to identities on a Cloud resource. It cannot authenticate. | `bindings` containing roles and members |
 
-Other Google credential formats exist. A valid JSON object alone does not establish what it can access. See Google's [credential types](https://docs.cloud.google.com/docs/authentication), [Desktop OAuth flow](https://developers.google.com/identity/protocols/oauth2/native-app), and [IAM policy format](https://docs.cloud.google.com/iam/docs/policies).
+Other Google credential formats exist. A JSON object by itself does not prove that it is a credential or can access a particular account. The file's role follows Google's [service-account model](https://docs.cloud.google.com/iam/docs/service-account-creds), [Desktop OAuth flow](https://developers.google.com/identity/protocols/oauth2/native-app), and [IAM policy format](https://docs.cloud.google.com/iam/docs/allow-policies).
 
-## Save and use a credential
+## Save the credential your consumer needs
 
-Use Google's setup or sign-in flow first. Save the resulting credential under the name your program reads:
+Complete Google's setup or sign-in flow, then save its resulting credential under the name your consumer reads:
 
 ```sh
-godmode set GOOGLE_ADS_SERVICE_ACCOUNT_JSON --stdin < /path/to/key.json
+godmode set GOOGLE_ADS_SERVICE_ACCOUNT_JSON --stdin < /private/path/key.json
 godmode run GOOGLE_ADS_SERVICE_ACCOUNT_JSON -- python3 your_ads_script.py
 ```
 
-The bundled Ads and Search Console key entries accept service account keys only. For a user grant, use a separate name such as `GOOGLE_SEARCH_CONSOLE_OAUTH_JSON`; your program must support that format and read that variable. You can import it with the same `set NAME --stdin < file.json` command. Do not put a Desktop client or IAM policy into a service account key entry.
+`your_ads_script.py` represents your own consumer. The bundled Ads and Search Console entries accept service-account keys only. A Desktop client, user grant or IAM policy is not interchangeable with that key. For a user grant, choose a separate name such as `GOOGLE_SEARCH_CONSOLE_OAUTH_JSON` and import it with `godmode set NAME --stdin < /private/path/grant.json`.
 
-Godmode stores and supplies the value. It does not sign in, enable APIs, grant permissions, refresh tokens, or update Google's own login cache. Sealed storage prevents casual text reads; existing plain files remain plain until migrated. Keep credential downloads and provider-owned caches private and out of Git.
+These JSON variable names are Godmode conventions. A Google SDK does not automatically discover them. Your consumer must parse the variable and configure the official library, or provide the credential using that tool's supported private-file mechanism. `GOOGLE_APPLICATION_CREDENTIALS`, for example, expects a **file path**, not the JSON contents. The Python auth library supports loading a parsed service-account object with `Credentials.from_service_account_info`; use the library's API-specific scopes and authenticated transport rather than printing access tokens. [Python service-account credentials](https://google-auth.readthedocs.io/en/latest/reference/google.oauth2.service_account.html), [Application Default Credentials](https://docs.cloud.google.com/docs/authentication/application-default-credentials).
 
-## Replace only what stopped working
+Godmode stores and supplies values. It does not sign in, enable APIs, grant roles, refresh credentials or update a provider's own login cache. Keep credential downloads and caches private and out of Git. Preserve a working provider-owned credential store unless the task calls for migrating it.
 
-- **Service account key:** create a new key on the same service account, save it under the same Godmode name, and verify the consumer before retiring the old key. Its short-lived access tokens are obtained by Google's auth library; the private key itself is not refreshed. Keys do not expire by default, but an organization policy can set expiry. [Key lifecycle](https://docs.cloud.google.com/iam/docs/service-account-creds), [rotation](https://docs.cloud.google.com/iam/docs/key-rotation).
-- **User OAuth grant:** let the consuming Google library refresh access tokens. If Google requires consent again, repeat the provider's sign-in flow and import the new grant. A grant supplied through an environment variable cannot write an updated refresh token back to Godmode; if the consumer saves a replacement, import that replacement explicitly. [OAuth lifecycle](https://developers.google.com/identity/protocols/oauth2).
-- **Desktop client:** reuse the existing client for sign-in unless Google or your app configuration requires a replacement. Changing the client is not a token refresh.
-- **Gmail app password:** generate another in Google Account settings and replace `GMAIL_APP_PASSWORD`. Google revokes app passwords after an account password change. This password provides IMAP/SMTP access, not Gmail API or Google SSO. [App passwords](https://support.google.com/accounts/answer/185833).
+## Refresh is usually routine
 
-## Account access is separate
+A service-account key and an OAuth refresh grant can both support unattended API calls. The consuming library obtains new access tokens when needed. An expired access token alone does not require a new private key, new OAuth client or user consent. Service-account private keys are long-lived unless an organization sets an expiry or the key is disabled or deleted. [Service-account credential lifecycle](https://docs.cloud.google.com/iam/docs/service-account-creds).
 
-For Ads, enable the API and obtain the appropriate API access level in the selected Cloud project, then grant the service-account email access in the intended Ads account. For Search Console, enable its API and give the selected identity access to each property. Keep existing Ads and Search identities/projects separate when replacing their credentials. [Ads setup](https://developers.google.com/google-ads/api/docs/oauth/service-accounts), [Search Console authorization](https://developers.google.com/webmaster-tools/v1/how-tos/authorizing).
+For user OAuth, request the access your workflow needs through the client's documented flow and retain the refresh grant. A valid refresh grant normally avoids repeated browser sign-in. Google can invalidate it after revocation, long inactivity, some password changes, token limits or policy changes. External OAuth apps in **Testing** normally receive refresh tokens that expire after seven days, with an exception for basic identity-only scopes. Use the appropriate consent-screen publishing configuration for ongoing use and complete any required verification. A production setting does not guarantee permanent access. [Google OAuth lifecycle](https://developers.google.com/identity/protocols/oauth2), [Desktop authorization and offline access](https://developers.google.com/identity/protocols/oauth2/native-app).
 
-A Google CLI login is not automatically the identity used by another program. Select the intended credential explicitly. A permission error may need account, scope, API or property access fixed; replacing a key does not grant those permissions.
+If refresh fails, inspect the error and subtype. Fix a scope, client or account-policy issue when that is the cause. If the underlying grant is invalid or Google requires renewed sign-in, run the consuming tool's official authorization flow, complete the human step, and import the replacement grant. If a library rotates or otherwise saves a replacement refresh credential, import that value explicitly; `godmode run` does not write it back.
+
+For a failed service-account private key, replace the key on the **same service account**, verify the consumer, and retire the old key. This preserves the identity's existing account/property grants. Rotating the key is separate from routine access-token renewal. [Service-account key rotation](https://docs.cloud.google.com/iam/docs/key-rotation).
+
+## Verify the intended identity and account
+
+Account access is separate from authentication. Use `godmode provider google` for the current Ads project/API and Search Console property requirements. The consumer must select the intended credential and requested scope; a Google CLI login does not automatically become another program's identity.
+
+For Ads, listing accessible customers shows direct access and may omit client accounts reached through a manager. Confirm the intended manager/client relationship before a report or mutation. For Search Console, list sites and check the exact URL-prefix or domain property and permission level. A successful token exchange does not establish those rights. [Ads account listing](https://developers.google.com/google-ads/api/docs/account-management/listing-accounts), [Search Console sites listing](https://developers.google.com/webmaster-tools/v1/sites/list).
+
+For Gmail app-password use, read `godmode provider gmail`. That password is for supported mail clients and does not provide Gmail API access, Google SSO or Workspace administration. OAuth-based Gmail clients use their own provider authorization and refresh flow.
