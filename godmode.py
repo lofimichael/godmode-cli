@@ -21,7 +21,7 @@ from godmode_store import Store, move_and_seal, normalize, plain_source, valid_k
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask
 from godmode_terminal import quiet, read_choice, read_menu, read_secret, screen_rows, style
 
-VERSION = '0.10.0'
+VERSION = '0.10.2'
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['╔═╗╔═╗╔╦╗╔╦╗╔═╗╔╦╗╔═╗', '║ ╦║ ║ ║║║║║║ ║ ║║║╣ ', '╚═╝╚═╝═╩╝╩ ╩╚═╝═╩╝╚═╝']
 PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
@@ -101,7 +101,7 @@ def edit_file(store):
         raise ValueError('nano was not found. Open the path printed by godmode path in your editor.')
     prepare(store)
     if store.sealed():
-        line('Opening nano. Values are sealed: rename or delete lines here, save values with godmode set NAME.', 'warning')
+        line('Opening nano. Values are sealed: delete lines here; save or replace values with godmode set NAME. Do not rename sealed keys.', 'warning')
     else:
         line('Opening nano; values are visible inside the editor.', 'warning')
     context = {k: v for k, v in os.environ.items()
@@ -216,7 +216,9 @@ def service_account_problem(text):
     if not isinstance(info, dict):
         return 'this is not a JSON key file.'
     if 'installed' in info or 'web' in info:
-        return 'this is an OAuth client file. Create a service account key instead.'
+        return 'this is an OAuth client file, not a service account key.'
+    if 'bindings' in info and 'private_key' not in info:
+        return 'this is a permissions policy, not a credential.'
     kind = info.get('type')
     if kind in ('authorized_user', 'external_account'):
         return 'this is a ' + ('personal sign-in' if kind == 'authorized_user' else 'workload identity') + ' file, not a service account key.'
@@ -226,6 +228,8 @@ def service_account_problem(text):
     missing = [field for field in fields if not isinstance(info.get(field), str) or not info[field]]
     if missing:
         return 'the key file has no ' + ', '.join(missing) + '.'
+    if any(not char.isprintable() for field in ('project_id', 'client_email') for char in info[field]):
+        return 'its project_id or client_email contains control characters.'
     if '-----BEGIN PRIVATE KEY-----' not in info['private_key'] or '-----END PRIVATE KEY-----' not in info['private_key']:
         return 'its private_key is not a PEM private key.'
     if not re.fullmatch(r'[^@\s]+@[^@\s]+\.gserviceaccount\.com', info['client_email']):
@@ -262,8 +266,10 @@ class KeyPrompt(Prompt):
         self.plan = store.plan(self.name)
         self.sealed = self.plan['sealed']
         self.dropped = None  # (path, contents) when a key file was dragged in
+        self.imported = None  # One file snapshot per entered path, shared by preview and save.
+        self.accepted = None  # The exact normalized value accepted by Enter.
         self.path = home_path(store.env_path)
-        self.page = key_page(provider, key) if provider else None
+        self.page = key_page(provider, key) if provider else key.get('console')
         self.opened = None  # None until Enter tries the browser, then whether it opened
         self.shown_link = False  # whether the page's address has been put on screen
         self.receipt = ''
@@ -275,7 +281,9 @@ class KeyPrompt(Prompt):
         an app password. split: the key is copied as one ID:SECRET pair, and this entry
         keeps one half of it.
         """
-        found = dropped_file(value) if self.key.get('file') else None
+        if self.key.get('file') and (self.imported is None or self.imported[0] != value):
+            self.imported = (value, dropped_file(value))
+        found = self.imported[1] if self.key.get('file') else None
         self.dropped = found[0] if found else None
         value = found[1] if found else value
         for char in self.key.get('drop', ''):
@@ -305,6 +313,7 @@ class KeyPrompt(Prompt):
         if problem:
             return False
         if clean is not None or not self.page:
+            self.accepted = clean
             return True
         try:
             self.opened = open_page(self.page)
@@ -452,7 +461,7 @@ class KeyPrompt(Prompt):
 
     def final(self, value, width, reveal, submitted):
         """Erase the screen. populate() prints a one-line receipt once the save succeeds."""
-        clean, _ = self.check(value)
+        clean = self.accepted
         self.receipt = self.name + '=' + self.shown(clean, reveal) if submitted and clean is not None else ''
         return []
 
@@ -483,9 +492,12 @@ def menu_hint(leave):
 
 
 def named(name):
-    """A key entered by name alone. A bundled key keeps its own input rules, without its steps."""
-    known = next((key for provider in catalog() for key in provider['key'] if key['name'] == name), {})
-    return dict({field: known[field] for field in ('prompt', 'secret', 'drop', 'split', 'file', 'format') if field in known}, name=name)
+    """Keep onboarding guidance when replacing a known key; any *_JSON can import a file."""
+    for provider in catalog():
+        for key in provider['key']:
+            if key['name'] == name:
+                return dict(key, console=key_page(provider, key))
+    return dict(name=name, file=True, prompt='Drag or paste the JSON file') if name.endswith('_JSON') else {'name': name}
 
 
 def populate(store, key, provider=None, back=False):
@@ -500,15 +512,16 @@ def populate(store, key, provider=None, back=False):
                  'Skipped ' + name + '.')
             return False
         try:
-            store.set(name, prompt.tidy(value))
+            store.set(name, prompt.accepted)
         except ValueError as error:
             line(str(error), 'error')
             continue
         finally:
             value = None
+            prompt.accepted = prompt.imported = None
         line(style(glyph('✓ ', '') + 'Saved ', 'success') + prompt.receipt)
         if prompt.dropped:
-            line('Delete ' + home_path(prompt.dropped) + ' when you are done: it holds the private key.', 'warning')
+            line('Remove the imported file when no tool needs it: it may contain credentials.', 'warning')
         return True
 
 
@@ -653,21 +666,33 @@ def provider_list(store, providers):
             pass
 
 
-GUIDE = """Godmode keeps API keys for your agents in one {kind} file:
+GUIDE = """Godmode onboards keys and credential JSON for your agents in one {kind} file:
   {path}
 {state}
 
   godmode list                     names of the saved keys
   godmode run NAME... -- command   run a command with those keys in its environment
   godmode set NAME                 save or replace a key behind a mask
+  godmode set NAME --stdin         save a value piped from an official provider tool
   godmode                          choose providers and keys with the arrow keys
 
   godmode run GH_TOKEN -- gh repo list
   godmode run CLOUDFLARE_API_TOKEN -- npx wrangler whoami
   godmode run GMAIL_USER GMAIL_APP_PASSWORD -- python3 send_mail.py
 
+For a credential file: godmode set ACME_AUTH_JSON --stdin < credential.json
+Any name ending in _JSON accepts a JSON object or a file dragged into its prompt.
+Use the credential type your tool expects; a permissions policy is not a login.
+
+Saved means stored, not verified. The consuming provider tool handles normal refresh.
+If the credential is rejected, distinguish expiry/revocation from outages or missing
+permissions. Guide the owner's official OAuth or key replacement, save the new
+credential with godmode set, then verify the intended operation. Returned replacement
+refresh credentials also need saving: godmode run does not write changes back.
+
 Programs read keys from their environment. Pass only the keys a command needs,
-and never print one: no echo, printenv, env or set -x around it."""
+and never print one: no echo, printenv, env or set -x around it.
+Godmode does not sign in, refresh credentials, or run a background service."""
 
 
 def guide(store):

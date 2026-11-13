@@ -125,8 +125,13 @@ class CLI(unittest.TestCase):
         again.wait(lambda: SED+" 's/^GH_TOKEN=.*/GH_TOKEN=sealed(…)/' ~/.godmode/.env.godmode" in plain(again.capture))
         self.assertIn('Create a GitHub token  ✓ saved', plain(again.capture))
         again.send(b'\x1b');again.done(130)
-        keep=self.terminal(['set','GH_TOKEN']);keep.expect('Enter keeps it')
-        keep.send(b'\r');keep.expect('Kept your saved GH_TOKEN.');keep.done()
+        env,record=self.opener()
+        keep=self.terminal(['set','GH_TOKEN'],env);keep.expect('Enter opens github.com')
+        self.assertIn('Create a GitHub token',plain(keep.capture))
+        self.assertIn('Resource owner',plain(keep.capture))
+        keep.send(b'\r');keep.expect('Opened github.com')
+        keep.send(b'\x1b');keep.done(130)
+        self.assertEqual(record.read_text(),self.providers['github']['console']+'\n')
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
         (self.home/'seal.key').unlink()  # A hand-written plain file, as before sealing existed.
         self.file.write_text("# manual comment\nCUSTOM_KEY='manual value'\n")
@@ -144,7 +149,7 @@ class CLI(unittest.TestCase):
         key='CUSTOM_SERVICE_JSON'
         self.init()
         before=self.file.read_bytes()
-        terminal=self.terminal(['set',key]);terminal.expect('Paste your JSON key:')
+        terminal=self.terminal(['set',key]);terminal.expect('Drag or paste the JSON file:')
         value=json.dumps({'private_key':'DEMO_ONLY_'+('x'*14000)},indent=2)
         terminal.paste(value);terminal.settle(.3)
         self.assertEqual(self.file.read_bytes(),before)
@@ -152,7 +157,7 @@ class CLI(unittest.TestCase):
         self.assertEqual(json.loads(values(self.file)[key]),json.loads(value))
         self.assertNotIn(b'DEMO_ONLY_',terminal.capture)
         original=self.file.read_bytes()
-        cancel=self.terminal(['set',key]);cancel.expect('Paste your JSON key:')
+        cancel=self.terminal(['set',key]);cancel.expect('Drag or paste the JSON file:')
         cancel.paste('cancelled_DEMO_ONLY');cancel.send(b'\x03');cancel.done(130)
         self.assertEqual(self.file.read_bytes(),original)
         # Started for one provider there is no list, so Esc cancels like Ctrl-C.
@@ -244,9 +249,9 @@ class CLI(unittest.TestCase):
         self.assertEqual(values(self.file)['ACME_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'SYNTHETIC',terminal.capture)
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
-        single=self.terminal(['set','ACME_SERVICE_JSON']);single.expect('Paste your JSON key:')
+        single=self.terminal(['set','ACME_SERVICE_JSON']);single.expect('Drag or paste the JSON file:')
         single.paste('/Users/someone/Downloads/key.json')
-        single.expect("Can't save this yet: This key needs the JSON key file's contents, starting with {.")
+        single.expect("Can't save this yet: drag the key file here, or paste what is in it.")
         single.send(b'\x03');single.done(130)
 
     def test_typed_values_show_one_dot_per_character_and_no_ends(self):
@@ -441,14 +446,18 @@ class CLI(unittest.TestCase):
     def test_key_states_wording_receipt_after_save_and_short_windows(self):
         self.home.mkdir(mode=0o700)
         self.file.write_text('GH_TOKEN=\n');self.file.chmod(0o600)  # A plain file: no header, no seal.key.
-        blank=self.terminal(['set','GH_TOKEN']);blank.expect('Paste your token:')
-        self.assertIn('Enter skips',plain(blank.capture))
+        env,record=self.opener()
+        blank=self.terminal(['set','GH_TOKEN'],env);blank.expect('Paste your token:')
+        self.assertIn('Enter opens github.com',plain(blank.capture))
         blank.paste('\n');blank.settle(.2)
-        blank.send(b'\r');blank.expect('Skipped GH_TOKEN.');blank.done()
+        blank.send(b'\r');blank.expect('Opened github.com')
+        blank.send(b'\x1b');blank.done(130)
+        self.assertEqual(self.file.read_text(),'GH_TOKEN=\n')
         self.file.write_text('GH_TOKEN=two words\n')
-        broken=self.terminal(['set','GH_TOKEN']);broken.expect('Paste your token:')
+        broken=self.terminal(['set','GH_TOKEN'],env);broken.expect('Paste your token:')
         broken.expect("The saved GH_TOKEN line can't be read; paste to replace it.")
-        broken.send(b'\r');broken.expect('Left GH_TOKEN unchanged.');broken.done()
+        broken.send(b'\x1b');broken.done(130)
+        self.assertEqual(self.file.read_text(),'GH_TOKEN=two words\n')
         # A failed save shows the error and no receipt; the retry then leaves one.
         held=self.terminal(['set','ACME_TOKEN']);held.expect('Paste your token:')
         lock=os.open(self.home,os.O_RDONLY)
@@ -763,7 +772,7 @@ class CLI(unittest.TestCase):
         self.assertNotIn('SYNTHETIC',loose.stdout+named.stdout+named.stderr)
 
     def test_google_key_check_also_applies_to_stdin(self):
-        for value, message in ((json.dumps({'installed':{'client_id':'x'}}),'Not saved: this is an OAuth client file.'),
+        for value, message in ((json.dumps({'installed':{'client_id':'x'}}),'Not saved: this is an OAuth client file,'),
                                ('{"seeded":"DEMO_ONLY"}','Not saved: a service account key file says')):
             result=subprocess.run(self.command+['set','GOOGLE_ADS_SERVICE_ACCOUNT_JSON','--stdin'],env=self.env,input=value,capture_output=True,text=True)
             self.assertEqual(result.returncode,2)
@@ -783,7 +792,8 @@ class CLI(unittest.TestCase):
         good=SERVICE_ACCOUNT
         folder=self.root/'Down loads';folder.mkdir()
         dropped=folder/'demo key.json';dropped.write_text(json.dumps(good,indent=2))
-        cases=[({'installed':{'client_id':'x'}},'this is an OAuth client file. Create a service account key instead.'),
+        cases=[({'installed':{'client_id':'x'}},'this is an OAuth client file, not a service account key.'),
+               ({'bindings':[{'role':'roles/viewer','members':[]}]},'this is a permissions policy, not a credential.'),
                ({'type':'authorized_user','client_id':'x'},'this is a personal sign-in file, not a service account key.'),
                (dict(good,type='other'),'a service account key file says "type": "service_account".'),
                ({k:v for k,v in good.items() if k!='client_email'},'the key file has no client_email.'),
@@ -806,12 +816,71 @@ class CLI(unittest.TestCase):
         terminal.after(mark,'Service account agent@demo-project.iam.gserviceaccount.com in project demo-project.')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved GOOGLE_ADS_SERVICE_ACCOUNT_JSON=sealed(')
-        terminal.after(mark,'when you are done: it holds the private key.')
+        terminal.after(mark,'Remove the imported file when no tool needs it: it may contain credentials.')
         terminal.after(mark,'Esc done')  # Back in Google's list of keys.
         terminal.send(b'\x03');terminal.done(130)
         self.assertEqual(json.loads(values(self.file)['GOOGLE_ADS_SERVICE_ACCOUNT_JSON']),good)
         self.assertNotIn(b'SYNTHETICKEYMATERIAL',terminal.capture)
         self.assertTrue(dropped.exists())  # Godmode reads the file; deleting it is left to you.
+
+    def test_generic_oauth_json_import_replacement_and_delivery(self):
+        self.init()
+        name='EXAMPLE_OAUTH_JSON'
+        grant={'type':'authorized_user','refresh_token':'SYNTHETIC_OLD_GRANT',
+               'client_id':'demo.apps.googleusercontent.com','client_secret':'SYNTHETIC_CLIENT'}
+        source=self.root/'OAuth grant.json';source.write_text(json.dumps(grant,indent=2))
+        terminal=self.terminal(['set',name]);terminal.expect('Drag or paste the JSON file:')
+        terminal.paste(shlex.quote(str(source)))
+        terminal.expect('Read from ')
+        terminal.send(b'\r');terminal.expect('Saved '+name);terminal.done()
+        self.assertEqual(json.loads(values(self.file)[name]),grant)
+        for secret in ('SYNTHETIC_OLD_GRANT','SYNTHETIC_CLIENT'):
+            self.assertNotIn(secret.encode(),terminal.capture)
+        replacement=dict(grant,refresh_token='SYNTHETIC_NEW_GRANT')
+        saved=subprocess.run(self.command+['set',name,'--stdin'],env=self.env,
+                             input=json.dumps(replacement,indent=2),capture_output=True,text=True)
+        self.assertEqual(saved.returncode,0,saved.stderr)
+        self.assertNotIn('SYNTHETIC_',saved.stdout+saved.stderr)
+        verify='import json,os; assert json.loads(os.environ["EXAMPLE_OAUTH_JSON"])["refresh_token"] == "SYNTHETIC_NEW_GRANT"; print("verified")'
+        used=subprocess.run(self.command+['run',name,'--',sys.executable,'-c',verify],
+                            env=self.env,capture_output=True,text=True)
+        self.assertEqual((used.returncode,used.stdout),(0,'verified\n'),used.stderr)
+        self.assertTrue(source.exists())
+
+    def test_import_saves_the_validated_snapshot_even_if_source_changes(self):
+        cli=load_cli()
+        self.init()
+        source=self.root/'changing-key.json';source.write_text(json.dumps(SERVICE_ACCOUNT))
+        def submit(prompt):
+            text=shlex.quote(str(source))
+            prompt.render(text,100)
+            source.write_text('{"installed":{"client_id":"SYNTHETIC_WRONG_TYPE"}}')
+            self.assertTrue(prompt.enter(text))
+            source.write_text('{"type":"authorized_user","refresh_token":"SYNTHETIC_WRONG_GRANT"}')
+            prompt.final(text,100,True,True)
+            return text
+        with patch.object(cli,'read_secret',submit), patch.object(cli,'line'):
+            self.assertTrue(cli.populate(cli.Store(self.home),cli.named('GOOGLE_ADS_SERVICE_ACCOUNT_JSON')))
+        self.assertEqual(json.loads(values(self.file)['GOOGLE_ADS_SERVICE_ACCOUNT_JSON']),SERVICE_ACCOUNT)
+
+    def test_service_account_display_metadata_cannot_inject_terminal_controls(self):
+        cli=load_cli()
+        self.init()
+        before=self.file.read_bytes()
+        for field in ('project_id','client_email'):
+            bad=dict(SERVICE_ACCOUNT,**{field:'\x1b[2JSYNTHETIC_CONTROL\n'+SERVICE_ACCOUNT[field]})
+            raw=json.dumps(bad)
+            prompt=cli.KeyPrompt(cli.Store(self.home),cli.named('GOOGLE_ADS_SERVICE_ACCOUNT_JSON'))
+            self.assertFalse(prompt.enter(raw))
+            rendered='\n'.join(prompt.render(raw,100))
+            self.assertIn('contains control characters',rendered)
+            self.assertNotIn('SYNTHETIC_CONTROL',rendered)
+            result=subprocess.run(self.command+['set','GOOGLE_ADS_SERVICE_ACCOUNT_JSON','--stdin'],
+                                  env=self.env,input=raw,capture_output=True,text=True)
+            self.assertEqual(result.returncode,2)
+            self.assertIn('contains control characters',result.stderr)
+            self.assertNotIn('SYNTHETIC_CONTROL',result.stdout+result.stderr)
+            self.assertEqual(self.file.read_bytes(),before)
 
     def test_ascii_terminal_uses_plain_glyphs(self):
         self.init()

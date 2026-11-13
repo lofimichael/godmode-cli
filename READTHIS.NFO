@@ -1,11 +1,11 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.10.1                                                     |
+| version .. 0.10.2                                                     |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
-  Godmode keeps the provider keys in .env.godmode and includes some notes
-  on getting them. Your local agents use the keys through godmode run;
-  reading the file itself shows names, never keys. See godmode help.
+  Godmode onboards provider keys and credential JSON. Agents save them
+  with godmode set and use them through godmode run. New files are sealed;
+  older plain files stay plain until migrated. See godmode help.
 
 [ installation ]
 
@@ -55,6 +55,12 @@
   authorize charges or public actions.
 
   Agents run commands with keys via godmode run NAME -- command.
+  Saved means stored, not verified. Official provider tools handle refresh.
+  If a credential expires or is revoked, the agent guides official sign-in
+  or replacement and saves the result with godmode set NAME. For JSON:
+    godmode set ACME_AUTH_JSON --stdin < credential.json
+  A permissions policy is not a login. Use the type your tool expects.
+  Godmode has no provider login, refresh manager or background service.
   Keep the file out of Git, shell history and bug reports.
   Revoke exposed keys at the provider; deleting the file won't revoke them.
 

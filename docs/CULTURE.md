@@ -2,6 +2,8 @@
 
 Research reference for **Godmode 0.3.0**, revised on **2026-11-04**. This is the reference for the CLI's prose and presentation, including its help, diagnostics, onboarding, provider instructions, installer and documentation. It supersedes the previous direction built around repeated warnings and slogans. Version 0.4.0 adds a harsher, explicitly requested first-run notice for an unconfigured home; routine messages retain the quieter register described here.
 
+This is historical language research, not a current command reference. Some command names below describe older versions; use `godmode help` and the [README](../README.md) for today's interface.
+
 The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html) that Michael supplied. Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
 
 ## What the supplied reference actually is

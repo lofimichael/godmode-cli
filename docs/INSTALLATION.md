@@ -45,7 +45,7 @@ less ~/.godmode/bin/godmode
 python3 godmode.py --home /absolute/path/to/a/test-home
 ```
 
-The installed file is ordinary Python source, assembled without compression or obfuscation from the small files under `lib/`, the menu in `godmode.py`, and static provider guidance. It has no dependencies outside Python's standard library. `godmode edit` opens the credential file in nano; its contents are visible in that editor.
+The installed file is ordinary Python source, assembled without compression or obfuscation from the small files under `lib/`, the menu in `godmode.py`, and static provider guidance. It has no dependencies outside Python's standard library. `godmode edit` opens the file in nano: sealed files show ciphertext, while older plain files expose their values. Do not rename sealed assignments; use `godmode set NAME` to save values.
 
 For an offline install, build the script and pass its SHA-256:
 

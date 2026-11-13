@@ -10,7 +10,8 @@
         "label": "Access token",
         "goal": "Create a GitHub token",
         "steps": [
-          "On the pre-filled form, under **Repository access**, select **All repositories**.",
+          "On the pre-filled form, check the **Resource owner**.",
+          "Under **Repository access**, select **All repositories**.",
           "Select **Generate token** (again if asked), then copy the token."
         ]
       }
@@ -28,7 +29,7 @@
         "goal": "Create a Cloudflare API token",
         "steps": [
           "Select **Create Token**, then the **Read All Resources** template.",
-          "Change its permissions from **Read** to **Edit**.",
+          "Change its permissions from **Read** to **Edit** where available.",
           "Select **Continue to summary** > **Create Token**, then copy the token."
         ]
       }
@@ -146,7 +147,8 @@
         "goal": "Create a Notion access token",
         "prompt": "Paste your token",
         "steps": [
-          "Select **New token**, name it and make sure **Notion API** is checked.",
+          "Select **New token** and name it.",
+          "Choose the workspace, **Notion API**, and an expiration.",
           "Select **Create token**, then copy the token."
         ]
       }
@@ -184,32 +186,32 @@
     "id": "google",
     "name": "Google",
     "about": "Ads keyword research and Search Console",
-    "console": "https://console.cloud.google.com/projectselector/iam-admin/serviceaccounts/create",
+    "console": "https://console.cloud.google.com/projectselector/iam-admin/serviceaccounts",
     "key": [
       {
         "name": "GOOGLE_ADS_SERVICE_ACCOUNT_JSON",
         "label": "Ads service account key",
-        "goal": "Create a service account key for Google Ads",
+        "goal": "Save a Google Ads service account key",
         "prompt": "Drag or paste the key file",
         "file": true,
         "format": "google-service-account",
-        "note": "Then add its email in Google Ads under Admin > Access and security.",
+        "note": "Its email needs access in Google Ads: Admin > Access and security.",
         "steps": [
-          "Pick your Ads API project, name the service account, select **Done**.",
+          "Pick your Ads project; open its service account, or create one.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
           "Drag the downloaded .json file here, or paste what is in it."
         ]
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
-        "label": "Search Console key",
-        "goal": "Create a service account key for Search Console",
+        "label": "Search service account",
+        "goal": "Save a Search Console service account key",
         "prompt": "Drag or paste the key file",
         "file": true,
         "format": "google-service-account",
-        "note": "Then add its email to each property: Settings > Users and permissions.",
+        "note": "Its email needs property access: Settings > Users and permissions.",
         "steps": [
-          "Pick your project, name the service account, select **Done**.",
+          "Pick your Search project; open its service account, or create one.",
           "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
           "Drag the downloaded .json file here, or paste what is in it."
         ]

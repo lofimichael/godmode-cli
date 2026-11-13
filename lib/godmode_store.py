@@ -23,7 +23,7 @@ STORE_HEADER = (STORE_SEALED + "\n"
                 "#   godmode help                    how to use keys without exposing them\n")
 SEAL_PREFIX = "sealed:v1:"
 STORE_GUIDE_NAME = "STOP_AND_READ_ME_FOR_KEYS.md"
-STORE_GUIDE = """# Looking for an API key? Stop here.
+STORE_GUIDE = """# Looking for a credential? Stop here.
 
 The keys in this folder are sealed. Do not open, cat, grep or copy .env.godmode or
 seal.key: the file shows names and ciphertext, and seal.key is what unseals it.
@@ -33,12 +33,22 @@ Use the godmode command instead:
     godmode list                                   names of the saved keys
     godmode run GH_TOKEN -- gh repo list           a command with that key in its environment
     godmode run GMAIL_USER GMAIL_APP_PASSWORD -- python3 check_inbox.py
+    godmode set NAME                              save or replace a credential
+    godmode set ACME_AUTH_JSON --stdin < credential.json
     godmode help                                   the whole guide
 
 The program reads each key from its environment, for example os.environ["GH_TOKEN"].
 Pass only the keys it needs, and never print one: no echo, printenv, env or set -x.
-A name missing from godmode list is not saved; ask the owner to add it with
-godmode set NAME.
+A name missing from godmode list is not saved. Saved means stored, not verified.
+Keys, passwords and provider credential JSON use the same set/run commands.
+Choose the JSON type the consuming tool expects; a permissions policy is not a login.
+
+The official provider tool handles normal token refresh. When the underlying
+credential fails, distinguish revocation/expiry from outages or missing permissions.
+Guide the owner through official OAuth or key replacement, save the replacement
+with godmode set (use --stdin for a secure pipe/file), then verify the intended work.
+Save any returned replacement refresh credential the same way; run has no writeback.
+Godmode does not sign in, refresh credentials or run background services.
 """
 
 

@@ -1,6 +1,6 @@
 # Provider help
 
-Run `godmode` and pick a provider with the arrow keys (typing a name jumps to it). Each key has one screen: what to create, the page to create it on, and at most three steps to take there. Enter opens the page while the field is empty; paste the key and Enter saves it. Esc goes back. A provider with several keys shows them as a second list. `godmode setup stripe` starts at one provider.
+Run `godmode` and pick a provider with the arrow keys (typing a name jumps to it). Each key has one screen: what to create, the page to create it on, and at most three steps to take there. Enter opens the page while the field is empty; paste the key and Enter saves it. Esc goes back. A provider with several keys shows them as a second list. `godmode setup stripe` starts at one provider. Save only the keys you need; a saved count records storage, not working access or required setup.
 
 Any other key works without registration, from `Another key` in the list or directly:
 
@@ -12,27 +12,44 @@ godmode set ACME_ACCOUNT_ADMIN_TOKEN
 
 The bundled provider list is static help in [providers.json](../providers.json). It does not authenticate, validate account permissions, enroll OAuth, or impose token-prefix rules. Never put credentials in this help file.
 
+## When a key stops working
+
+Check the provider's error first: missing permission, a wrong account, and expiry are different problems. For an expired or revoked credential, use the provider's replacement or sign-in flow, then overwrite the same Godmode entry:
+
+```sh
+godmode setup github                   # opens the provider's setup guidance
+godmode set GH_TOKEN                   # paste a replacement behind a mask
+godmode set EXAMPLE_OAUTH_JSON --stdin < /path/to/new-grant.json
+godmode run GH_TOKEN -- gh repo list   # the consuming tool checks access
+```
+
+For GitHub, Vercel, Supabase, Notion, PostHog and Zernio, create a replacement token in the linked provider page. Cloudflare and Stripe also offer token/key rotation; follow the provider's instructions about when the old value stops working. Verify the new value in its consumer before retiring the old one when the provider allows overlap. Updating Godmode does not update other machines, deployments or provider-owned credential caches.
+
+Gmail needs a new app password; Higgsfield needs both halves of the new key; Prodigi uses separate sandbox and live keys. Google JSON files have different roles: follow [Google credentials](GOOGLE.md) for service account keys, OAuth clients and saved grants. Godmode does not refresh any of them itself.
+
+Replacement references: [Cloudflare rotation](https://developers.cloudflare.com/fundamentals/api/how-to/roll-token/), [Stripe rotation](https://docs.stripe.com/keys#rolling-keys), [Notion expiry](https://developers.notion.com/guides/connections-and-tokens/personal-access-tokens). Other provider links are below.
+
 ## What the on-screen steps give you
 
-The steps on screen are the shortest route to a key that lets agents do the work described, so they favor a provider's broad preset over hand-picked permissions. Routes and labels were checked against each provider's public documentation, and in several cases its open-source dashboard code, on **2026-11-12**. Nothing was checked from a signed-in dashboard, so a label can differ from what you see; dashboards also change. This table records what each route grants and the narrower choice when you want one.
+The steps favor broad provider presets for this private operator toolkit. Routes and labels were checked against public documentation, and in several cases open-source dashboard code, on **2026-11-12**; credential-type and replacement guidance was reviewed on **2026-11-13**. Nothing was checked from a signed-in dashboard, so labels and available choices can differ. These are requested permissions: the provider still applies your account's roles, plan, resource access and policies. Saving a value proves none of those.
 
-| Key | On-screen route grants | Narrower choice |
+| Key | On-screen route | Narrower choice |
 | --- | --- | --- |
-| `GH_TOKEN` | Fine-grained token from a pre-filled link: write on Administration, Contents, Workflows, Actions, Secrets, Variables, Environments, Issues and Pull requests, for all repositories, 366 days. | Choose **Only select repositories**. To drop repository deletion and settings rights, remove `administration=write` from the link and add the **Repository creation** permission. |
-| `CLOUDFLARE_API_TOKEN` | User token built from the **Read All Resources** template with its permissions changed to Edit: every account and zone. | Cloudflare documents a pre-filled link that needs three clicks and grants Edit only on Workers scripts and routes, KV, R2, D1, Queues, DNS and zone settings: see below. Limit a policy to one account or zone with its pencil icon, and set a token expiration. |
+| `GH_TOKEN` | Fine-grained token from a pre-filled link: write on Administration, Contents, Workflows, Actions, Secrets, Variables, Environments, Issues and Pull requests, for the selected resource owner's repositories. The link requests 366 days; organization policy can restrict it. | Choose **Only select repositories**. To drop repository deletion and settings rights, remove `administration=write` from the link and add the **Repository creation** permission. |
+| `CLOUDFLARE_API_TOKEN` | User token built from **Read All Resources**, changing permissions to Edit where available. Confirm the account/zone resources and required services in the summary. | The documented pre-filled link below selects Workers scripts and routes, KV, R2, D1, Queues, DNS and zone settings. Limit the accounts/zones and set a token expiration in the provider form. |
 | `VERCEL_TOKEN` | **Full Account**: your personal account and every team you belong to. | Under **Scope** choose one team, then **All Projects**. |
-| `SUPABASE_ACCESS_TOKEN` | Legacy token: every permission on every organization and project, no expiry. | A scoped token: **Generate new token**, pick the organization and the **Full access** preset, or set permissions one by one. |
+| `SUPABASE_ACCESS_TOKEN` | Legacy token: your account's full access across organizations and projects, with **Never** selected for expiry. This is a management token, not a database password or project runtime key. | A scoped token: **Generate new token**, pick the organization and the **Full access** preset, or set permissions one by one. |
 | `STRIPE_TEST_SECRET_KEY` | The sandbox's standard secret key: full access to test data. | **Create restricted key** and set Write only on what agents use. |
 | `STRIPE_TEST_PUBLISHABLE_KEY` | The sandbox's publishable key. It is safe in browser code. | None. |
 | `STRIPE_LIVE_SECRET_KEY` | A new standard secret key: full access to live data and money movement. Add it only when live charges are authorized. | **Create restricted key**; choosing the agent-access use adds Stripe's approval rules for refunds, cancellations and payouts. |
 | `STRIPE_LIVE_PUBLISHABLE_KEY` | The live publishable key. | None. |
-| `POSTHOG_PERSONAL_API_KEY` | PostHog's pre-filled **MCP Server** preset: all organizations and projects, write on nearly every scope, no expiry. | Open the page without `?preset=mcp_server`, choose one organization and only the scopes agents use. |
+| `POSTHOG_PERSONAL_API_KEY` | PostHog's pre-filled **MCP Server** preset requests broad private API access. Review its organization/project selection and scopes; use the key on the matching US, EU or self-hosted instance. | Open the page without `?preset=mcp_server`, choose one organization and only the scopes agents use. |
 | `NOTION_API_KEY` | Personal access token: acts as you across the workspace, expires within a year. | An internal connection at `app.notion.com/developers/connections`: it sees only pages you share with it and does not expire. |
 | `GMAIL_USER` | The address agents sign in with. Not a secret. | Use a dedicated mailbox. |
-| `GMAIL_APP_PASSWORD` | Full IMAP and SMTP access to that mailbox. Needs 2-Step Verification. Godmode removes the spaces Google shows. | App passwords have no scopes; a dedicated mailbox is the only way to limit them. |
+| `GMAIL_APP_PASSWORD` | IMAP and SMTP access to that mailbox where allowed by its account settings. Needs 2-Step Verification. Interactive entry removes the spaces Google shows. | Use a dedicated mailbox, or a separate OAuth implementation with the needed Gmail API scopes. |
 | `GOOGLE_ADS_SERVICE_ACCOUNT_JSON` | A service account key with no Cloud roles. It can do nothing in Ads until its email is added under Admin > Access and security. Enable the Google Ads API in the project first. | Add the email with Read only access, or to one client account instead of a manager account. |
-| `GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON` | The same kind of key; the Ads key can be reused once the Search Console API is enabled in its project. Add its email to each property. | Add it as a Restricted user and to only the properties agents report on. |
-| `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` | One key with full account access. Higgsfield copies it as `ID:SECRET`; paste the same copy into both entries and each keeps its half. | Turn on **Set expiration date** when creating it. |
+| `GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON` | A Search service account key, with the Search Console API enabled in its project and its email granted property access. Replacing a key does not require a new service account. User OAuth is a separate supported consumer choice; see [Google credentials](GOOGLE.md). | Grant access only to the properties and operations needed; Restricted user access is suitable only for operations that allow it. |
+| `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` | One credential pair for your account. Model availability is checked separately by Higgsfield. Its `ID:SECRET` copy can be pasted into both interactive entries; each keeps its half. | Turn on **Set expiration date** when available. Replace both halves together. |
 | `ZERNIO_API_KEY` | Default key: read and write, all profiles. | In the same panel choose **Read Only**, pick profiles, or restrict resource groups. |
 | `PRODIGI_SANDBOX_API_KEY` | The account's one sandbox key. Sandbox orders are not printed or charged. | None; there is one key per environment. |
 | `PRODIGI_API_KEY` | The account's one live key. Orders placed with it are printed, shipped and billed. | None. |
@@ -79,4 +96,4 @@ Public sign-in and documentation entry points for the bundled providers, checked
 
 PostHog's link, `app.posthog.com`, sends you to the US or EU cloud you last signed in to. The Higgsfield API console lives at `open.higgsfield.ai`. Opening a page leads to the provider's normal browser sign-in; it does not enroll an OAuth grant, supply a password, or verify the saved key.
 
-Search Console user OAuth grants belong in a separate state store; see [Google setup](GOOGLE.md). A Gmail app password does not provide Google SSO, Gmail API or Workspace administration access.
+Search Console user OAuth grants use a separate key name and a consumer that understands them; see [Google credentials](GOOGLE.md). A Gmail app password does not provide Google SSO, Gmail API or Workspace administration access.
