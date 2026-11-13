@@ -423,6 +423,24 @@ def read_choice(label, choices):
             sys.stdout.write("\r\n")
 
 
+def read_page(render):
+    """An Enter-paced page. Text and pastes are ignored; Esc goes back."""
+    drawn = []
+    with _Keyboard() as keyboard:
+        try:
+            sys.stdout.write("\033[?25l")
+            while True:
+                rows, ready = render(columns(), screen_rows())
+                drawn = _draw(rows, drawn)
+                kind, key = keyboard.read()
+                if kind == "key" and key == "esc":
+                    raise Back()
+                if kind == "key" and key == "enter" and ready:
+                    return
+        finally:
+            _draw([], drawn)
+
+
 def read_menu(items, start=0, hint="", title="", gap=False):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 

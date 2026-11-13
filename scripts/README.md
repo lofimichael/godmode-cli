@@ -15,6 +15,11 @@ target/demo-venv/bin/python -m pip install -r scripts/demo-requirements.txt
 target/demo-venv/bin/python scripts/record-demo.py
 ```
 
+Add `--intro` to record the six-screen first-run welcome and the setup menu into
+`docs/images/intro.gif`. This uses a separate empty temporary home, writes only
+`intro.seen`, and checks that no profile or credentials were created. Its seven
+frames last 9.4 seconds; the actual CLI advances only when Enter is pressed.
+
 The default output is `docs/images/setup.gif`. `--binary`, `--output` and `--font`
 can override the inputs/destination. On macOS the script uses the installed Menlo
 font; on Linux it tries DejaVu Sans Mono or Liberation Mono. Fonts are not bundled.

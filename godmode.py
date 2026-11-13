@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import textwrap
 import unicodedata
@@ -19,11 +20,11 @@ from urllib.parse import urlsplit
 # These imports become ordinary, readable source sections in the installed script.
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
 from godmode_store import Store, move_and_seal, normalize, plain_source, valid_key
-from godmode_profile import Profile, PROFILE_FIELDS
+from godmode_profile import Profile, PROFILE_FIELDS, _profile_directories
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask
-from godmode_terminal import quiet, read_choice, read_menu, read_secret, screen_rows, style
+from godmode_terminal import quiet, read_choice, read_menu, read_page, read_secret, screen_rows, style
 
-VERSION = '0.11.0'
+VERSION = '0.12.0'
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['╔═╗╔═╗╔╦╗╔╦╗╔═╗╔╦╗╔═╗', '║ ╦║ ║ ║║║║║║ ║ ║║║╣ ', '╚═╝╚═╝═╩╝╩ ╩╚═╝═╩╝╚═╝']
 PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
@@ -84,7 +85,7 @@ def banner(store):
 
 
 def prepare(store, accepted=False):
-    if not store.exists():
+    if not store.exists() and not accepted:
         line('No Godmode setup here yet', 'warning')
         wrapped('These keys let agents act as you. The provider does not give a shit whether a destructive request was a mistake. Check the account and permissions before handing over access.')
         wrapped('Values are sealed in one file: reading it shows names, never keys. Agents use them through godmode run, and anything running as you can still ask for them. Nothing here signs in to providers or proves a key works.')
@@ -746,11 +747,122 @@ def provider_guide(provider_id=None):
             line('  ' + source['title'] + ': ' + source['url'])
 
 
+INTRO_PAGES = (
+    ('Welcome to Godmode.',
+     'Your agents. Fully equipped.', ''),
+    ('Maximize agent power.',
+     'Product-relevant business information and API access, in one place.',
+     'With configured accounts and your authorization, your agent can register a domain, deploy a Cloudflare Workers app, and integrate Stripe payments.'),
+    ('Powerful. Dangerous.',
+     'Your agents can spend money, change live systems, and delete data. They can also make mistakes.',
+     'The access is real. So are the consequences.'),
+    ('Commit to GODMODE.',
+     'I understand the risks. Let\'s do this.',
+     'Your instructions still decide what agents may do.'),
+    ('Set it once. Use it again.',
+     'Fill out your profile. Tell your agent to use the Godmode CLI.',
+     'It can read your details, discover saved credentials, and load provider instructions when needed.'),
+    ('Your profile is stored locally.',
+     'Profile: {profile}',
+     'Working remotely? Install Godmode there and copy the files you choose over SSH with scp. Sealed credentials need their matching seal.key.\nRemote setup: godmode help'),
+)
+INTRO_MARKER = 'intro.seen'
+
+
+def intro_seen(home=None):
+    """This empty file is only a UI preference, never provider authorization."""
+    directory = profile_home(home)
+    _profile_directories(directory)
+    marker = directory / INTRO_MARKER
+    if not os.path.lexists(marker):
+        return False
+    info = marker.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size != 0):
+        raise ValueError('intro.seen must be an empty, regular file owned by you with mode 0600. No files changed.')
+    return True
+
+
+def mark_intro_seen(home=None):
+    if intro_seen(home):
+        return
+    directory = profile_home(home)
+    _profile_directories(directory, create=True)
+    Store(str(directory))._git_guard(INTRO_MARKER)
+    try:
+        fd = os.open(directory / INTRO_MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        intro_seen(home)  # Another completed intro is fine; never overwrite a different file.
+    else:
+        try:
+            os.fchmod(fd, 0o600)
+        finally:
+            os.close(fd)
+
+
+def intro_rows(index, home, width, height, setup_next=False):
+    """Compact terminal cards. Required copy never disappears off a short screen."""
+    title, body, detail = INTRO_PAGES[index]
+    body = body.format(profile=visible_fact(home_path(profile_home(home) / 'profile.json')))
+    available = min(68, max(1, width - 5))
+    def prose(text):
+        result = []
+        for paragraph in text.split('\n'):
+            for row in textwrap.wrap(paragraph, available) or ['']:
+                result.extend(fit(row, available + 1))
+        return result
+    role = 'warning' if index in (2, 3) else 'accent'
+    counter = '%02d / %02d' % (index + 1, len(INTRO_PAGES))
+    mast = 'GODMODE  /  ' + counter
+    action = 'Enter to continue'
+    if index == 3:
+        action = 'Enter to commit'
+    elif index == 5:
+        action = 'Enter to set up' if setup_next else 'Enter to finish'
+    navigation = action + glyph('  ·  ', '  |  ') + ('Esc back' if index else 'Esc exit')
+    rows = [style(mast, role), ''] + [style(row, 'title') for row in prose(title)] + [''] + prose(body)
+    if detail:
+        rows += [''] + prose(detail)
+    rows += [''] + [style(row, role) for row in prose(navigation)]
+    # Logo, spacing and rule are decoration: collapse them before touching the copy.
+    if width >= 44 and height >= len(rows) + 7:
+        if index == 0 and glyph('art', ''):
+            rows[1:1] = [''] + [style(art, role) for art in LOGO]
+        else:
+            rows.insert(1, style(glyph('─', '-') * min(available, 48), role))
+    if drawn_height(['  ' + row for row in rows], width) > height - 1:
+        rows = [row for row in rows if row]
+    if drawn_height(['  ' + row for row in rows], width) > height - 1 or width < 24:
+        notice = fit('Enlarge the terminal to read this page. Esc goes back.', max(2, width))
+        return notice, False
+    return ['  ' + row if row else '' for row in rows], True
+
+
+def intro(home=None, setup_next=False):
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise ValueError('The intro needs a terminal. Run godmode help for the text guide.')
+    if os.environ.get('TERM', 'dumb') in ('', 'dumb'):
+        raise ValueError('This terminal cannot redraw the intro. Run godmode help for the text guide.')
+    at = 0
+    with quiet():
+        while at < len(INTRO_PAGES):
+            try:
+                read_page(lambda width, height: intro_rows(at, home, width, height, setup_next))
+                at += 1
+            except Back:
+                if at == 0:
+                    raise
+                at -= 1
+        mark_intro_seen(home)
+
+
 def onboard(home=None):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise ValueError('Onboarding needs a terminal. Run godmode help for agent commands.')
     at = 0
     with quiet():
+        if not intro_seen(home):
+            intro(home, setup_next=True)
         line()
         if glyph('art', ''):
             for art in LOGO:
@@ -774,7 +886,7 @@ def onboard(home=None):
                 if at == 0:
                     edit_profile(Profile(profile_home(home)))
                 elif at == 1:
-                    setup(Store(home), explicit=bool(home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR')))
+                    setup(Store(home), explicit=bool(home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR')), accepted=True)
                 else:
                     agents(home)
             except Back:
@@ -831,7 +943,7 @@ def sealed_message(moved, source, target):
     return 'Moved %s to %s and sealed %s.' % (plural(moved, 'key'), home_path(target.config_dir), 'it' if moved == 1 else 'them')
 
 
-def setup(store, provider_id=None, explicit=False):
+def setup(store, provider_id=None, explicit=False, accepted=False):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise ValueError('Setup needs a terminal. Use set KEY --stdin for redirected input.')
     providers = catalog()
@@ -841,7 +953,7 @@ def setup(store, provider_id=None, explicit=False):
     with quiet():  # Nothing typed or pasted between two screens is echoed.
         banner(store)
         store = offer_seal(store, explicit)
-        prepare(store)
+        prepare(store, accepted=accepted)
         if selected:
             provider_setup(store, selected, back=False)
         else:
@@ -912,6 +1024,7 @@ Credentials live in one {kind} file:
   godmode provider SLUG            read that provider's setup, use and recovery guide
   godmode setup SLUG               onboard that provider with the arrow keys
   godmode agents                  one-time pointer for your agent's normal instructions
+  godmode intro                   replay the six-screen welcome
   godmode                         onboard optional details and credentials
 
   godmode run GH_TOKEN -- gh repo list
@@ -939,7 +1052,11 @@ Programs read keys from their environment. Pass only the keys a command needs,
 and never print one: no echo, printenv, env or set -x around it.
 Never open .env.godmode, seal.key or imported credential files to inspect their values.
 Godmode does not sign in, refresh credentials, or run a background service.
-Local files belong to this host; a cloud agent does not automatically have access."""
+Local files belong to this host; a cloud agent does not automatically have access.
+For remote development, install Godmode there and copy only the files you intend
+to share over SSH. Sealed credentials need both .env.godmode and their seal.key.
+Check paths with godmode profile path and godmode path; legacy homes can differ.
+Remote setup: https://github.com/lofimichael/godmode-cli/blob/main/docs/REMOTE.md"""
 
 
 def guide(store, home=None):
@@ -989,7 +1106,7 @@ def main():
     argv = sys.argv[1:]
     parser = Arguments(description='Reusable details and credentials for your agents. Run godmode help for the guide.')
     parser.add_argument('command', nargs='?', default='onboard',
-                        help='onboard, profile, provider, agents, setup, list, run NAME... -- command, set NAME, help, migrate, edit, path, or picard')
+                        help='onboard, intro, profile, provider, agents, setup, list, run NAME... -- command, set NAME, help, migrate, edit, path, or picard')
     parser.add_argument('name', nargs='?', help='provider, key name, or Picard action')
     parser.add_argument('field', nargs='?', help='profile field for get, set, or unset')
     parser.add_argument('--home', '--config-dir', dest='home', help='Godmode home; existing legacy home is detected')
@@ -1010,6 +1127,10 @@ def main():
         return 0
     if args.command == 'agents' and not args.name and not args.stdin:
         agents(args.home)
+        return 0
+    if args.command == 'intro' and not args.name and not args.stdin:
+        intro(args.home)
+        line('Run godmode to add your details and credentials.')
         return 0
     if args.command == 'onboard' and not args.name and not args.stdin:
         onboard(args.home)

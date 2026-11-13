@@ -53,7 +53,7 @@
         "kind": "static-token"
       }
     ],
-    "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. R2 S3 credentials are a separate credential type.",
+    "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. For domain registration, verify Registrar write permission for the intended account; changing Read to Edit does not establish Registrar access. The Registrar API beta registers supported available domains and requires a valid default payment method, a default registrant contact and acceptance of the Domain Registration Agreement. The account owner must configure billing in the dashboard. Check the domain's current availability and price and the user's purchase authorization before registering. R2 S3 credentials are a separate credential type.",
     "verify": [
       "Check the user token with GET /client/v4/user/tokens/verify, then list the intended account or zone resources using Cloudflare's API or Wrangler. An active token does not prove every service permission. Select the exact account and zone before provisioning or deploying."
     ],
@@ -72,6 +72,14 @@
       {
         "title": "Wrangler commands",
         "url": "https://developers.cloudflare.com/workers/wrangler/commands/"
+      },
+      {
+        "title": "Registrar API beta prerequisites and workflow",
+        "url": "https://developers.cloudflare.com/registrar/registrar-api/"
+      },
+      {
+        "title": "Registrar API support and billing requirements",
+        "url": "https://developers.cloudflare.com/api/resources/registrar/"
       }
     ]
   },

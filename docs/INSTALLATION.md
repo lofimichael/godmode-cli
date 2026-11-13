@@ -29,15 +29,18 @@ godmode
   bin/godmodeup           readable shell updater
   env                     shell PATH setup
   profile.json            optional operator facts, private plain JSON (mode 0600)
+  intro.seen              empty first-run completion marker; not authorization
   .env.godmode            your credentials, sealed
   seal.key                the key that unseals them (mode 0600)
   STOP_AND_READ_ME_FOR_KEYS.md  how agents use keys without opening the file
   state/picard/           optional media cache and playback socket
 ```
 
-The installer also keeps its small hash receipt and previous-executable backup under `bin`. Setup itself creates no acknowledgement, registry or lock files.
+The installer also keeps its small hash receipt and previous-executable backup under `bin`. Finishing all six intro screens creates only an empty `intro.seen` (mode 0600) beside the profile. This skips the welcome on future visits; it is a UI preference, not permission to act or proof that credentials work. No account registry or background process is created.
 
 Run `godmode` to choose details, credentials or agent instructions. Skipping a section creates nothing for that section. `godmode profile` reopens the details form; `godmode setup` opens the credential catalog directly. The profile defaults to `~/.godmode/profile.json` even while legacy keys remain in `~/.config/godmode`; adding a profile does not move or hide them. An explicit `--home`, `GODMODE_HOME`, or legacy `GODMODE_CONFIG_DIR` selects the profile's home too. Use `godmode profile path` to check it.
+
+On the first visit, `godmode` and the installer's `godmode init` show the welcome before that menu. Enter continues and Esc returns to the previous screen; Esc on the first screen or Ctrl-C exits without recording completion. An undersized terminal asks you to enlarge it instead of hiding the text. `godmode intro` replays the welcome. Direct commands such as `profile`, `setup`, `set`, `list` and `run` keep their existing behavior and never acquire this intro step. See [intro behavior](INTRO.md).
 
 `godmode agents` prints a discovery hint for your existing agent instructions. Neither installation nor setup edits those instructions. Copy the hint once using [the agent setup guide](AGENT_SETUP.md); ordinary updates then change the help the agent reads, not your global rules. No new `AGENTS.md` is created inside either Godmode home.
 

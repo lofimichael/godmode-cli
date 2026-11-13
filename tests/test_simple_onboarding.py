@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from pty_support import Screen, Terminal
+from test_simple_intro import complete_intro
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -108,23 +109,24 @@ class ModularOnboardingTests(unittest.TestCase):
 
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
+        complete_intro(session)
         self.choice(session, "Your details")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
         for label in ("Your details", "Credentials", "Agent instructions", "Done"):
             self.assertIn(label, screen)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
         for label in LABELS:
             self.open_choice(session, label)
             session.send(b"\r")
         # Finishing the sixth field must select Done, not a separator or the first field.
         self.choice(session, "Done")
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
         self.choice(session, "Your details")
         session.send(b"\x1b")
         session.done()
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
 
     def test_visible_profile_entry_rejects_controls_and_accepts_multiline_address(self):
         session = self.terminal("profile")
@@ -158,10 +160,11 @@ class ModularOnboardingTests(unittest.TestCase):
 
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
+        complete_intro(session)
         self.choice(session, "Your details")
         session.send(b"\x1b")
         session.done()
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
 
     def test_profile_read_commands_and_unsetting_missing_facts_create_nothing(self):
         self.assertEqual(self.okay("profile", "path").strip(), str(self.profile))

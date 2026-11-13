@@ -4,6 +4,10 @@ Research reference for **Godmode 0.3.0**, revised on **2026-11-04**. This is the
 
 This is historical language research, not a current command reference. Some command names below describe older versions; use `godmode help` and the [README](../README.md) for today's interface.
 
+Version 0.12 adds an explicitly requested six-page first-run introduction. Its
+current copy, behavior and Claude/Executor design references are described in
+[INTRO.md](INTRO.md). The quiet treatment still applies to routine commands.
+
 The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html) that Michael supplied. Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
 
 ## What the supplied reference actually is

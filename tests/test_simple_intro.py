@@ -1,0 +1,347 @@
+"""First-run introduction behavior, exercised in real isolated terminals."""
+import fcntl
+import os
+from pathlib import Path
+import re
+import signal
+import stat
+import struct
+import subprocess
+import sys
+import tempfile
+import termios
+import unittest
+
+from pty_support import Terminal, plain
+
+
+REPO = Path(__file__).resolve().parents[1]
+WELCOME = "Welcome to Godmode."
+MENU = "Details and credentials for your agents."
+
+
+def complete_intro(session):
+    """Advance only after each page is visible, just like six separate keypresses."""
+    for page in range(1, 7):
+        session.expect("%02d / 06" % page)
+        session.send(b"\r")
+
+
+class ModularIntroTests(unittest.TestCase):
+    bundled = False
+
+    @classmethod
+    def setUpClass(cls):
+        cls.script = REPO / "godmode.py"
+        if cls.bundled:
+            build = tempfile.TemporaryDirectory(prefix="godmode-intro-build-")
+            cls.addClassCleanup(build.cleanup)
+            cls.script = Path(build.name) / "godmode"
+            subprocess.run([sys.executable, str(REPO / "scripts/build.py"),
+                            "--output", str(cls.script)], check=True,
+                           stdout=subprocess.DEVNULL)
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="godmode-intro-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.home = self.root / ".godmode"
+        self.marker = self.home / "intro.seen"
+        self.env = {"HOME": str(self.root), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                    "TERM": "xterm-256color", "SHELL": "/bin/sh", "NO_COLOR": "1",
+                    "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+
+    def terminal(self, *args, env=None, cols=110, rows=36):
+        session = Terminal([sys.executable, str(self.script), *args],
+                           self.env if env is None else env, cols=cols, rows=rows)
+        self.addCleanup(session.close)
+        return session
+
+    def cli(self, *args, input=None, env=None):
+        return subprocess.run([sys.executable, str(self.script), *args],
+                              input=input, text=True, capture_output=True,
+                              env=self.env if env is None else env,
+                              cwd=self.root, timeout=10)
+
+    def okay(self, *args, **kwargs):
+        result = self.cli(*args, **kwargs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def assert_only_marker(self, home=None):
+        home = self.home if home is None else home
+        marker = home / "intro.seen"
+        self.assertEqual(sorted(p.name for p in home.iterdir()), ["intro.seen"])
+        self.assertEqual(marker.read_bytes(), b"")
+        self.assertEqual(stat.S_IMODE(marker.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(home.stat().st_mode), 0o700)
+        self.assertEqual(marker.stat().st_nlink, 1)
+
+    def assert_no_intro(self, session):
+        self.assertNotIn(WELCOME, plain(session.capture))
+        self.assertNotIn("01 / 06", plain(session.capture))
+
+    def leave_menu(self, session):
+        session.expect("Your details")
+        session.send(b"\x1b")
+        session.done()
+
+    def test_default_and_init_finish_once_without_creating_optional_files(self):
+        for route in ((), ("init",), ("onboard",)):
+            with self.subTest(route=route):
+                home = self.root / (route[0] if route else "default")
+                prefix = ("--home", str(home))
+                session = self.terminal(*prefix, *route)
+                for page in range(1, 7):
+                    session.expect("%02d / 06" % page)
+                    self.assertFalse(home.exists())
+                    session.send(b"\r")
+                session.expect(MENU)
+                self.assertIn('Enter to set up', plain(session.capture))
+                self.assert_only_marker(home)
+                self.leave_menu(session)
+                repeated = self.terminal(*prefix, *route)
+                repeated.expect(MENU)
+                self.assert_no_intro(repeated)
+                self.leave_menu(repeated)
+                self.assert_only_marker(home)
+
+    def test_explicit_intro_completes_and_replays_without_rewriting_marker(self):
+        first = self.terminal("intro")
+        complete_intro(first)
+        first.done()
+        self.assertIn('Enter to finish', plain(first.capture))
+        self.assertNotIn('Enter to set up', plain(first.capture))
+        self.assert_only_marker()
+        before = self.marker.stat()
+        replay = self.terminal("intro")
+        complete_intro(replay)
+        replay.done()
+        self.assertNotIn(MENU, plain(replay.capture))
+        after = self.marker.stat()
+        self.assertEqual((after.st_ino, after.st_mtime_ns),
+                         (before.st_ino, before.st_mtime_ns))
+        cancelled = self.terminal("intro")
+        cancelled.expect(WELCOME)
+        cancelled.send(b"\x1b")
+        cancelled.done(130)
+        self.assert_only_marker()
+        following = self.terminal()
+        following.expect(MENU)
+        self.assert_no_intro(following)
+        self.leave_menu(following)
+
+    def test_escape_goes_back_then_exits_without_files(self):
+        session = self.terminal()
+        session.expect("01 / 06")
+        session.send(b"\r")
+        session.expect("02 / 06")
+        mark = len(session.capture)
+        session.send(b"\x1b")
+        session.after(mark, WELCOME)
+        session.send(b"\x1b")
+        session.done(130)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_cancelling_after_commit_and_on_last_page_never_marks_completed(self):
+        for last_page, cancel in ((5, b"\x03"), (6, b"\x04")):
+            with self.subTest(last_page=last_page):
+                session = self.terminal("intro")
+                for page in range(1, last_page):
+                    session.expect("%02d / 06" % page)
+                    session.send(b"\r")
+                session.expect("%02d / 06" % last_page)
+                self.assertEqual(list(self.root.iterdir()), [])
+                session.send(cancel)
+                session.done(130)
+                self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_typed_and_pasted_secrets_are_never_echoed_or_used_to_advance(self):
+        session = self.terminal("intro")
+        secret = b"synthetic_SECRET_never_echo_98765"
+        for page in range(1, 7):
+            session.expect("%02d / 06" % page)
+            mark = len(session.capture)
+            session.send(secret)
+            session.send(b"\x1b[20")
+            session.send(b"0~" + secret + b"\r\nGODMODE\r\n\x1b[201")
+            session.send(b"~")
+            session.settle(.04)
+            self.assertNotIn(secret, session.capture)
+            self.assertNotIn("%02d / 06" % (page + 1), plain(session.capture[mark:]))
+            self.assertIsNone(session.process.poll())
+            self.assertFalse(self.marker.exists())
+            session.send(b"\r")
+        session.done()
+        self.assert_only_marker()
+
+    def test_credentials_from_onboarding_do_not_repeat_confirmation(self):
+        for revisit in (False, True):
+            with self.subTest(revisit=revisit):
+                home = self.root / ("return" if revisit else "first")
+                prefix = ("--home", str(home))
+                if revisit:
+                    seen = self.terminal(*prefix, "intro")
+                    complete_intro(seen)
+                    seen.done()
+                session = self.terminal(*prefix)
+                if not revisit:
+                    complete_intro(session)
+                session.expect("Your details")
+                mark = len(session.capture)
+                session.send(b"\x1b[B\r")
+                session.after(mark, "GitHub")
+                output = plain(session.capture[mark:])
+                self.assertNotIn("Type GODMODE", output)
+                self.assertNotIn("No Godmode setup here yet", output)
+                mark = len(session.capture)
+                session.send(b"\x1b")
+                session.after(mark, "Your details")
+                session.send(b"\x1b")
+                session.done()
+                self.assertTrue((home / ".env.godmode").exists())
+                self.assertFalse((home / "profile.json").exists())
+
+    def test_direct_commands_keep_their_existing_contract_without_intro(self):
+        for route in (("setup",), ("set", "DEMO_TOKEN")):
+            with self.subTest(route=route):
+                session = self.terminal(*route)
+                session.expect("Type GODMODE to continue")
+                self.assert_no_intro(session)
+                session.send(b"\x1b")
+                session.done(130)
+                self.assertEqual(list(self.root.iterdir()), [])
+        profile = self.terminal("profile")
+        profile.expect("Your name")
+        self.assert_no_intro(profile)
+        profile.send(b"\x1b")
+        profile.done()
+        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(self.okay("list"), "")
+        self.assertIn("godmode intro", self.okay("help"))
+        self.assertEqual(list(self.root.iterdir()), [])
+        self.okay("set", "DEMO_TOKEN", "--stdin", input="synthetic_pipe_value")
+        self.assertEqual(self.okay("list"), "DEMO_TOKEN\n")
+        self.assertFalse(self.marker.exists())
+        self.assertFalse((self.home / "profile.json").exists())
+
+    def test_legacy_keys_remain_untouched_and_intro_uses_profile_home(self):
+        legacy = self.root / ".config" / "godmode"
+        legacy.mkdir(parents=True, mode=0o700)
+        key = legacy / ".env.godmode"
+        original = b"LEGACY_TOKEN='synthetic_legacy_value'\n"
+        key.write_bytes(original)
+        key.chmod(0o600)
+        before = key.stat()
+        self.assertEqual(self.okay("path").strip(), str(key))
+        session = self.terminal("intro")
+        complete_intro(session)
+        session.done()
+        self.assert_only_marker()
+        self.assertEqual(key.read_bytes(), original)
+        self.assertEqual(key.stat().st_mtime_ns, before.st_mtime_ns)
+        self.assertFalse((legacy / "intro.seen").exists())
+        self.assertEqual(self.okay("path").strip(), str(key))
+
+    def test_home_options_select_marker_and_explicit_home_wins(self):
+        for variable in ("GODMODE_HOME", "GODMODE_CONFIG_DIR"):
+            with self.subTest(variable=variable):
+                home = self.root / variable
+                session = self.terminal("intro", env=dict(self.env, **{variable: str(home)}))
+                complete_intro(session)
+                session.done()
+                self.assert_only_marker(home)
+        chosen = self.root / "chosen home"
+        ignored = self.root / "ignored"
+        session = self.terminal("--home", str(chosen), "intro",
+                                env=dict(self.env, GODMODE_HOME=str(ignored)))
+        complete_intro(session)
+        session.done()
+        self.assert_only_marker(chosen)
+        self.assertFalse(ignored.exists())
+        self.assertFalse(self.home.exists())
+
+    def test_unsafe_markers_are_rejected_without_clobbering_anything(self):
+        self.home.mkdir(mode=0o700)
+        unrelated = self.root / "unrelated"
+        unrelated.write_bytes(b"do not change")
+        for kind in ("nonempty", "symlink"):
+            with self.subTest(kind=kind):
+                if kind == "symlink":
+                    self.marker.symlink_to(unrelated)
+                else:
+                    self.marker.write_bytes(b"not an introduction receipt")
+                    self.marker.chmod(0o600)
+                session = self.terminal()
+                session.expect("intro.seen must be an empty, regular file")
+                session.wait(lambda: session.process.poll() is not None)
+                session.drain()
+                self.assertEqual(session.process.returncode, 2)
+                self.assert_no_intro(session)
+                self.assertEqual(unrelated.read_bytes(), b"do not change")
+                if kind == "symlink":
+                    self.assertTrue(self.marker.is_symlink())
+                else:
+                    self.assertEqual(self.marker.read_bytes(), b"not an introduction receipt")
+                self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
+                self.marker.unlink()
+
+    def test_small_terminal_cannot_advance_until_resized(self):
+        session = self.terminal("intro", cols=20, rows=5)
+        session.expect("Enlarge")
+        session.send(b"\r")
+        session.settle(.05)
+        self.assertNotIn("02 / 06", plain(session.capture))
+        self.assertFalse(self.home.exists())
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        session.after(mark, WELCOME)
+        session.send(b"\r")
+        session.expect("02 / 06")
+        session.send(b"\x03")
+        session.done(130)
+        self.assertFalse(self.home.exists())
+
+    def test_no_color_ascii_fallback_and_terminal_restoration(self):
+        env = dict(self.env, PYTHONIOENCODING="ascii", PYTHONUTF8="0", LC_ALL="C")
+        session = self.terminal("intro", env=env)
+        complete_intro(session)
+        session.done()
+        self.assertIsNone(re.search(rb"\x1b\[[0-9;]*m", session.capture))
+        self.assertTrue(all(byte < 128 for byte in session.capture))
+        self.assertNotIn("  ?  Esc", plain(session.capture))
+        self.assertIn("  |  Esc", plain(session.capture))
+        self.assertIn(b"\x1b[?25h", session.capture)
+        self.assert_only_marker()
+
+    def test_redirected_and_dumb_terminals_fail_without_state(self):
+        for route in (("intro",), (), ("init",)):
+            with self.subTest(route=route):
+                result = self.cli(*route)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("needs a terminal", result.stderr)
+        session = self.terminal("intro", env=dict(self.env, TERM="dumb"))
+        session.expect("This terminal cannot redraw")
+        session.wait(lambda: session.process.poll() is not None)
+        self.assertEqual(session.process.returncode, 2)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_termination_signal_restores_terminal_without_marking_complete(self):
+        harness = ("import os,runpy,sys; print('INTRO_CHILD_PID=%d' % os.getpid(), flush=True); "
+                   "sys.argv = [sys.argv[1], 'intro']; runpy.run_path(sys.argv[0], run_name='__main__')")
+        session = Terminal([sys.executable, "-c", harness, str(self.script)], self.env)
+        self.addCleanup(session.close)
+        session.expect("01 / 06")
+        child = re.search(rb"INTRO_CHILD_PID=(\d+)", session.capture)
+        self.assertIsNotNone(child)
+        os.kill(int(child[1]), signal.SIGTERM)
+        session.done(130)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+
+class BundledIntroTests(ModularIntroTests):
+    bundled = True
+
+
+if __name__ == "__main__":
+    unittest.main()

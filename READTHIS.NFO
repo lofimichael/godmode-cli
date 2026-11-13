@@ -1,5 +1,5 @@
 +--[ godmode ]-----------------------------------------------------------+
-| version .. 0.11.0                                                     |
+| version .. 0.12.0                                                     |
 | source ... https://github.com/lofimichael/godmode-cli                   |
 +-----------------------------------------------------------------------+
 
@@ -23,6 +23,11 @@
   to add one shell entry; omit it to manage PATH yourself.
 
 [ interactive setup ]
+
+  Run godmode for the six-page welcome and optional setup menu. Enter
+  continues, Esc goes back. Replay the welcome with godmode intro.
+  Completion saves only an empty intro.seen preference, not permission
+  for agents to act. See docs/INTRO.md and docs/REMOTE.md.
 
   Run godmode setup. Move through the providers with the arrow keys, or
   type a name, and press Enter. Each key gets one screen: what to create,

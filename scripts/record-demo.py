@@ -78,7 +78,8 @@ def font_path(explicit: Path | None) -> Path:
 
 
 class Recorder:
-    def __init__(self, terminal: Terminal, cols: int, rows: int, font: Path, theme: str = "dark"):
+    def __init__(self, terminal: Terminal, cols: int, rows: int, font: Path, theme: str = "dark",
+                 caption: str = "Interactive setup · synthetic credentials"):
         self.terminal = terminal
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.Stream(self.screen)
@@ -93,6 +94,7 @@ class Recorder:
         self.durations: list[int] = []
         self.text_colors: set[str] = set()
         self.theme = THEMES[theme]
+        self.caption = caption
 
     def sync(self) -> None:
         # After godmode exits, the test wrapper reports the terminal flags; that line is not Godmode's.
@@ -136,7 +138,7 @@ class Recorder:
         image = Image.new("RGB", (self.cols * self.cell_width,
                                    self.rows * self.cell_height + self.caption_height), self.theme["bg"])
         draw = ImageDraw.Draw(image)
-        draw.text((9, 5), "Interactive setup · synthetic credentials", font=self.font, fill=self.theme["caption"])
+        draw.text((9, 5), self.caption, font=self.font, fill=self.theme["caption"])
         draw.line((0, self.caption_height - 2, image.width, self.caption_height - 2), fill=self.theme["border"])
         for y in range(self.rows):
             for x in range(self.cols):
@@ -189,14 +191,40 @@ class Recorder:
                   f"{check.width}x{check.height}, {destination.stat().st_size:,} bytes")
 
 
+def record_intro(binary, config, env, font, args):
+    terminal = Terminal([str(binary), "--home", str(config)], env, cols=80, rows=22)
+    recorder = Recorder(terminal, 80, 22, font, args.theme, "Godmode · first-run introduction")
+    names = ["welcome", "power", "danger", "commit", "profile", "local", "setup"]
+    try:
+        for number in range(1, 7):
+            recorder.wait_for("%02d / 06" % number)
+            recorder.wait_for("Esc exit" if number == 1 else "Esc back")
+            recorder.capture(1400)
+            terminal.send(b"\r")
+        recorder.wait_for("Your details")
+        recorder.capture(1000)
+        terminal.send(b"\x1b")
+        terminal.done()
+        assert sorted(path.name for path in config.iterdir()) == ["intro.seen"]
+        recorder.write(args.output.resolve())
+        if args.frames_dir:
+            args.frames_dir.mkdir(parents=True, exist_ok=True)
+            for name, frame in zip(names, recorder.frames, strict=True):
+                frame.save(args.frames_dir / f"{name}.png")
+    finally:
+        terminal.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=REPO / "target/godmode")
-    parser.add_argument("--output", type=Path, default=REPO / "docs/images/setup.gif")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--intro", action="store_true", help="record the six-page welcome instead of credential entry")
     parser.add_argument("--font", type=Path)
     parser.add_argument("--theme", choices=THEMES, default="dark", help="terminal palette for the recording")
     parser.add_argument("--frames-dir", type=Path, help="also save readable PNGs of the recorded states")
     args = parser.parse_args()
+    args.output = args.output or REPO / "docs/images" / ("intro.gif" if args.intro else "setup.gif")
     binary = args.binary.resolve()
     if not binary.is_file():
         parser.error("Build the readable script first")
@@ -207,6 +235,9 @@ def main() -> None:
         config = root / ".godmode"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(root),
                "TERM": "xterm-256color", "COLORTERM": "truecolor"}
+        if args.intro:
+            record_intro(binary, config, env, font, args)
+            return
         # Keep the short recording focused on the new key-entry workflow. This
         # acknowledgement affects only the isolated synthetic home.
         subprocess.run([str(binary), "--home", str(config), "init", "--accept-disclaimer"],

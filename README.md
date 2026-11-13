@@ -2,6 +2,12 @@
 
 Enter your details and credentials once so your agents can use them. Godmode is a local onboarder: **Your details**, **Credentials**, **Agent instructions**, **Done**. Everything is optional.
 
+The first run opens a short, six-screen welcome. Enter continues, Esc goes back,
+and the risk acknowledgement changes no agent permissions. Replay it with
+`godmode intro`.
+
+![First-run welcome, recorded from the CLI](docs/images/intro.gif)
+
 Your name, business and contact facts live in a small editable `profile.json`. Pick a provider with the arrow keys, follow its short instructions, and paste a key or drag a credential JSON file behind a mask. Before saving, the CLI shows the intended credential-file edit with your value masked as `sealed(sk_•••••123)`. New credentials are sealed; older plain files stay plain until you choose to seal them.
 
 One readable Python command, local files, no service or synchronization. The provider defaults intentionally favor broad useful access for trusted agents. Your task and existing project rules define how they use it.
@@ -18,6 +24,7 @@ godmode profile                               # optional personal/business detai
 godmode profile get business_name             # read one saved fact
 godmode provider google                       # setup, access, verification and recovery
 godmode agents                                # one-time agent discovery hint
+godmode intro                                 # replay the welcome
 ```
 
 **Saved means stored, not verified.** Use only the credentials your task needs; the provider list is a catalog, not a checklist of required keys. Any name ending in `_JSON` accepts a JSON object, including a reusable OAuth grant exported by an official provider tool. Credential files, OAuth client configuration and permissions policies are different; use the type your consuming tool expects. See [Google's examples](docs/GOOGLE.md).
@@ -48,4 +55,4 @@ godmodeup
 godmode
 ```
 
-[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agent setup](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Security](docs/SECURITY.md) · [Picard](docs/PICARD.md) · [Development](docs/RELEASING.md)
+[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agent setup](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote development](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Picard](docs/PICARD.md) · [Development](docs/RELEASING.md)
