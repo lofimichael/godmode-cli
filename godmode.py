@@ -21,7 +21,7 @@ from godmode_store import Store, move_and_seal, normalize, plain_source, valid_k
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask
 from godmode_terminal import quiet, read_choice, read_menu, read_secret, screen_rows, style
 
-VERSION = '0.10.2'
+VERSION = '0.10.3'
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['╔═╗╔═╗╔╦╗╔╦╗╔═╗╔╦╗╔═╗', '║ ╦║ ║ ║║║║║║ ║ ║║║╣ ', '╚═╝╚═╝═╩╝╩ ╩╚═╝═╩╝╚═╝']
 PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
@@ -561,13 +561,11 @@ def plural(count, word):
     return '%d %s%s' % (count, word, '' if count == 1 else 's')
 
 
+MIGRATION_NOTICE = 'Before sealing, update programs that read this file to use godmode run NAME -- command.'
+
+
 def seal_keys(source, target):
     """Seal source's plain-text keys, moving them to target when it differs. Prints the outcome."""
-    scripts = source.config_dir / 'scripts'
-    if target.env_path != source.env_path and (scripts / 'git_credential.py').exists() and not (scripts / 'godmode_keys.py').exists():
-        # Older Godmode rules read this file directly; moving the keys first would stop them syncing.
-        raise ValueError('Update the Godmode rules in ' + home_path(source.config_dir) + ' before moving keys: '
-                         'python3 -B ~/.config/godmode/scripts/sync_config.py')
     moved, notes = move_and_seal(source, target, known_names())
     line(style(glyph('✓ ', ''), 'success') + sealed_message(moved, source, target))
     if notes:
@@ -587,7 +585,7 @@ def offer_seal(store, explicit):
         return store
     source, target = found
     moving = target.env_path != source.env_path
-    title = 'Found %s stored as plain text in %s.' % (plural(count, 'key'), home_path(source.env_path))
+    title = 'Found %s stored as plain text in %s. %s' % (plural(count, 'key'), home_path(source.env_path), MIGRATION_NOTICE)
     items = [(('Move them to ' + home_path(target.config_dir) + ' and seal them') if moving else 'Seal them', '', ''),
              ('Keep them as they are', '', '')]
     hint = glyph('↑↓ move · Enter choose · Esc keeps them', 'Up/Down move | Enter choose | Esc keeps them')
@@ -775,6 +773,7 @@ def main():
     elif args.command == 'migrate' and not args.name:
         found = plain_source(store, explicit)
         if found:
+            wrapped(MIGRATION_NOTICE)
             seal_keys(*found)
         else:
             line('Nothing to seal: no plain-text keys in ' + home_path(store.env_path) + '.')

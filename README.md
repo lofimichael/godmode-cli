@@ -1,6 +1,6 @@
 # Godmode
 
-Godmode is a credential onboarder. Pick a provider with the arrow keys, follow the short instructions, and paste a key or drag a credential JSON file behind a mask. Before saving, it shows the intended file edit with your value masked as `sealed(sk_•••••123)`. Values are sealed in one file. (Older plain-text files stay plain until you choose to seal them.) The CLI is readable Python.
+Godmode is a credential onboarder. Pick a provider with the arrow keys, follow the short instructions, and paste a key or drag a credential JSON file behind a mask. Before saving, it shows the intended file edit with your value masked as `sealed(sk_•••••123)`. Values are sealed in one file. (Older plain-text files stay plain until you choose to seal them.) The CLI is readable Python. Credential commands use local files; they do not require a rules repository, synchronization, or another computer.
 
 Agents use keys through it, one command at a time:
 

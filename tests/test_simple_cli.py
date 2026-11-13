@@ -694,6 +694,7 @@ class CLI(unittest.TestCase):
         command=[sys.executable,str(REPO/'target/godmode')]
         keep=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(keep)
         keep.expect('Found 2 keys stored as plain text in ~/.config/godmode/.env.godmode.')
+        keep.expect('Before sealing, update programs that read this file to use godmode run NAME -- command.')
         self.assertEqual(self.pointed(keep),'Move them to ~/.godmode and seal them')
         mark=len(keep.capture)
         keep.send(b'\x1b');keep.after(mark,MENU)  # Esc keeps them; setup goes on as before.
@@ -737,15 +738,30 @@ class CLI(unittest.TestCase):
         refused=self.godmode('migrate')
         self.assertEqual(refused.returncode,2)
         self.assertIn('line 1 (GMAIL_USER) has a comment after its value',refused.stderr)
-        # Moving out of a rules checkout whose scripts still read this file is refused until they are updated.
-        self.legacy('LATE_TOKEN=late_SYNTHETIC_value_0004\n')
-        scripts=old.parent/'scripts';scripts.mkdir();(scripts/'git_credential.py').write_text('# reads the file\n')
-        stale=self.godmode('migrate')
-        self.assertEqual(stale.returncode,2)
-        self.assertIn('Update the Godmode rules in ~/.config/godmode before moving keys',stale.stderr)
-        (scripts/'godmode_keys.py').write_text('# reads keys through godmode\n')
-        one=self.godmode('migrate')
-        self.assertIn('Moved 1 key to ~/.godmode and sealed it.',one.stdout)
+
+    def test_migrate_does_not_depend_on_private_helper_layout(self):
+        existing='kept_SYNTHETIC_value_0005'
+        incoming='late_SYNTHETIC_value_0004'
+        self.seed('KEPT_TOKEN',existing)
+        old=self.legacy('# Keep this source comment.\nLATE_TOKEN='+incoming+'\n')
+        scripts=old.parent/'scripts';scripts.mkdir()
+        marker=self.root/'helper-ran'
+        helper=scripts/'git_credential.py'
+        helper_text='from pathlib import Path\nPath('+repr(str(marker))+').write_text("unexpected")\n'
+        helper.write_text(helper_text)
+        # This used to require godmode_keys.py and direct the user to sync_config.py.
+        self.assertFalse((scripts/'godmode_keys.py').exists())
+        self.assertFalse((scripts/'sync_config.py').exists())
+        moved=self.godmode('migrate')
+        self.assertEqual(moved.returncode,0,moved.stderr)
+        self.assertIn('Before sealing, update programs that read this file',moved.stdout)
+        self.assertIn('Moved 1 key to ~/.godmode and sealed it.',moved.stdout)
+        self.assertEqual(values(self.file),{'KEPT_TOKEN':existing,'LATE_TOKEN':incoming})
+        self.assertTrue(old.read_text().endswith('# Keep this source comment.\n'))
+        self.assertIn('Godmode keys moved to ',old.read_text())
+        self.assertEqual(helper.read_text(),helper_text)
+        self.assertFalse(marker.exists())
+        self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text()+moved.stdout+moved.stderr)
 
     def test_help_always_prints_the_guide(self):
         fresh=self.godmode('help')
