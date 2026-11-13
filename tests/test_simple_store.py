@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from godmode_store import SEAL_PREFIX, STORE_SEALED, Store, move_and_seal, normalize, plain_source, seal, unseal, valid_key
+from godmode_store import SEAL_PREFIX, STORE_GUIDE_NAME, STORE_SEALED, Store, move_and_seal, normalize, plain_source, seal, unseal, valid_key
 
 
 class StoreTests(unittest.TestCase):
@@ -380,6 +380,33 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(self.store.env_path.read_text(), "A=plain_SYNTHETIC\n")
             self.assertFalse(self.store.key_path.exists())
         self.assertEqual(move_and_seal(self.store, target), (1, 0))
+
+    def test_a_sealed_home_holds_a_signpost_for_agents(self):
+        guide = self.store.config_dir / STORE_GUIDE_NAME
+        self.store.set("A", "a_SYNTHETIC")
+        self.assertIn("godmode run", guide.read_text())
+        self.assertNotIn("SYNTHETIC", guide.read_text())
+        guide.write_text("my own notes\n")  # Never overwritten.
+        self.store.set("B", "b_SYNTHETIC")
+        self.assertEqual(guide.read_text(), "my own notes\n")
+        # A plain home gets none, a home sealed by a move does, and a Git checkout never gets an untracked file.
+        plain = Store(self.root / "plain")
+        plain.config_dir.mkdir(mode=0o700)
+        plain.env_path.write_text("A=1\n")
+        plain.env_path.chmod(0o600)
+        plain.set("B", "b_SYNTHETIC")
+        self.assertFalse((plain.config_dir / STORE_GUIDE_NAME).exists())
+        moved = Store(self.root / "moved")
+        move_and_seal(plain, moved)
+        self.assertTrue((moved.config_dir / STORE_GUIDE_NAME).exists())
+        self.assertFalse((plain.config_dir / STORE_GUIDE_NAME).exists())
+        checkout = Store(self.root / "checkout")
+        checkout.config_dir.mkdir(mode=0o700)
+        env = {"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+        subprocess.run(["git", "init", "-q", str(checkout.config_dir)], env=env, check=True)
+        (checkout.config_dir / ".gitignore").write_text(".env.godmode\nseal.key\n")
+        checkout.set("A", "a_SYNTHETIC")
+        self.assertFalse((checkout.config_dir / STORE_GUIDE_NAME).exists())
 
     def test_moving_into_blank_names_fills_them_once(self):
         target = Store(self.root / "home")

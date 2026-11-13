@@ -119,7 +119,7 @@ class CLI(unittest.TestCase):
         self.assertNotIn(token.encode(),terminal.capture)
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
         self.assertEqual(self.file.stat().st_mode & 0o777,0o600)
-        self.assertEqual(sorted(p.name for p in self.home.iterdir()),['.env.godmode','seal.key'])
+        self.assertEqual(sorted(p.name for p in self.home.iterdir()),['.env.godmode','STOP_AND_READ_ME_FOR_KEYS.md','seal.key'])
         self.assertEqual((self.home/'seal.key').stat().st_mode & 0o777,0o600)
         again=self.terminal(['setup','github']);again.expect('Paste your token:')
         again.wait(lambda: SED+" 's/^GH_TOKEN=.*/GH_TOKEN=sealed(…)/' ~/.godmode/.env.godmode" in plain(again.capture))

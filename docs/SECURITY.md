@@ -11,7 +11,7 @@ That is the credential flow. No provider login, remote verification, telemetry, 
 
 ## The file and how agents reach it
 
-New files are sealed. Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag, using a random 32-byte key in `seal.key` beside the file (mode 0600), a fresh nonce per value, and the key's name bound into the tag so a value cannot be moved to another name. The file starts with a short header saying how to use it, so anyone who opens it learns the commands instead of finding values. The code is in [godmode_store.py](../lib/godmode_store.py).
+New files are sealed. Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag, using a random 32-byte key in `seal.key` beside the file (mode 0600), a fresh nonce per value, and the key's name bound into the tag so a value cannot be moved to another name. The file starts with a short header saying how to use it, so anyone who opens it learns the commands instead of finding values. Beside it, `STOP_AND_READ_ME_FOR_KEYS.md` says the same for an agent that lists the folder before opening anything; Godmode writes it once, never overwrites it, and never adds it to a Git checkout. The code is in [godmode_store.py](../lib/godmode_store.py).
 
 Sealing keeps values out of everything that reads the file as text: `cat`, `grep`, editors, agent transcripts, and copies of the file on their own. It is not a lock. Programs running as you can ask godmode for a key, and anything that reads both the file and `seal.key` can unseal it, including a backup that holds both.
 

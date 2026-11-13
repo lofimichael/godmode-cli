@@ -22,6 +22,24 @@ STORE_HEADER = (STORE_SEALED + "\n"
                 "#   godmode run NAME -- command     run a command with that key in its environment\n"
                 "#   godmode help                    how to use keys without exposing them\n")
 SEAL_PREFIX = "sealed:v1:"
+STORE_GUIDE_NAME = "STOP_AND_READ_ME_FOR_KEYS.md"
+STORE_GUIDE = """# Looking for an API key? Stop here.
+
+The keys in this folder are sealed. Do not open, cat, grep or copy .env.godmode or
+seal.key: the file shows names and ciphertext, and seal.key is what unseals it.
+
+Use the godmode command instead:
+
+    godmode list                                   names of the saved keys
+    godmode run GH_TOKEN -- gh repo list           a command with that key in its environment
+    godmode run GMAIL_USER GMAIL_APP_PASSWORD -- python3 check_inbox.py
+    godmode help                                   the whole guide
+
+The program reads each key from its environment, for example os.environ["GH_TOKEN"].
+Pass only the keys it needs, and never print one: no echo, printenv, env or set -x.
+A name missing from godmode list is not saved; ask the owner to add it with
+godmode set NAME.
+"""
 
 
 def _seal_parts(key, nonce, data):
@@ -320,10 +338,25 @@ class Store:
                 result[key] = "malformed"
         return result
 
+    def _in_git(self):
+        return any((parent / ".git").exists() for parent in (self.config_dir,) + tuple(self.config_dir.parents))
+
+    def _guide(self):
+        """Leave a signpost beside a sealed file for agents that look in the folder. Never overwrites,
+        and never adds an untracked file to a Git checkout. Best effort: the keys are already saved."""
+        if self._in_git():
+            return
+        try:
+            fd = os.open(self.config_dir / STORE_GUIDE_NAME, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+            with os.fdopen(fd, "w") as target:
+                target.write(STORE_GUIDE)
+        except OSError:
+            pass
+
     def _git_guard(self, *names):
         """Refuse to write inside a Git checkout unless these files are ignored and untracked."""
         names = names or (".env.godmode",)
-        if not any((parent / ".git").exists() for parent in (self.config_dir,) + tuple(self.config_dir.parents)):
+        if not self._in_git():
             return
         env = {"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
         base = ["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", str(self.config_dir)]
@@ -385,6 +418,8 @@ class Store:
                 self._git_guard("seal.key")
                 self._key(create=True)
                 self._write(STORE_HEADER, previous, directory)
+            if self.sealed():
+                self._guide()
 
     def plan(self, key):
         """Describe what set(key, value) changes, without reading any value.
@@ -434,6 +469,8 @@ class Store:
                     lines.append(newline)
                 lines.append(key + "=" + shlex.quote(value) + newline)
             self._write("".join(lines), previous, directory)
+            if SEAL_PREFIX in value:
+                self._guide()
 
 
 STORE_MOVED = ("# Godmode keys moved to {target} and are sealed there.\n"
@@ -547,6 +584,7 @@ def _seal_file(store, directory, add, known=()):
         if created and os.path.lexists(store.key_path):
             os.unlink(store.key_path)
         raise
+    store._guide()
     return len(plain)
 
 

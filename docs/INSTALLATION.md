@@ -30,6 +30,7 @@ godmode
   env                     shell PATH setup
   .env.godmode            your credentials, sealed
   seal.key                the key that unseals them (mode 0600)
+  STOP_AND_READ_ME_FOR_KEYS.md  how agents use keys without opening the file
   state/picard/           optional media cache and playback socket
 ```
 
