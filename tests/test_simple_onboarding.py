@@ -336,7 +336,8 @@ class ModularOnboardingTests(unittest.TestCase):
         session = self.terminal("agents")
         session.expect("Add to Claude Code and Codex")
         screen = plain(session.capture)
-        for text in ("+ create", "~/.claude/rules/godmode.md", "+ append", "~/.codex/AGENTS.md",
+        for text in ("These files will be created:", "~/.claude/rules/godmode.md",
+                     "These files will be modified:", "~/.codex/AGENTS.md",
                      "✓ added", "~/.gemini/GEMINI.md", "<!-- godmode:start -->"):
             self.assertIn(text, screen)
         self.assertNotIn("I added it", screen)

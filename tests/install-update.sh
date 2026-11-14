@@ -137,4 +137,22 @@ fi
 [ -d "$custom/bin/.godmode-install-lock" ]
 cmp "$scratch/current" "$custom/bin/godmode"
 rmdir "$custom/bin/.godmode-install-lock"
+# Exercise the actual native executable when supplied by the local release build.
+# The destination and all profile/key fixtures remain in this disposable home.
+if [ -n "${GODMODE_TEST_NATIVE_BINARY:-}" ]; then
+    [ -f "$GODMODE_TEST_NATIVE_BINARY" ] && [ -x "$GODMODE_TEST_NATIVE_BINARY" ]
+    native_version=$("$GODMODE_TEST_NATIVE_BINARY" --version)
+    case "$native_version" in 'godmode '*) ;; *) echo 'native binary has no Godmode version' >&2; exit 1 ;; esac
+    cp "$HOME/.zshenv" "$scratch/native-startup-before"
+    native_digest=$(shasum -a 256 < "$GODMODE_TEST_NATIVE_BINARY" | awk '{print $1}')
+    "$custom/bin/godmodeup" --binary "$GODMODE_TEST_NATIVE_BINARY" --sha256 "$native_digest" > "$scratch/native-output"
+    cmp "$GODMODE_TEST_NATIVE_BINARY" "$custom/bin/godmode"
+    cmp "$scratch/artifacts/two" "$custom/bin/godmode.previous"
+    [ "$("$custom/bin/godmode" --version)" = "$native_version" ]
+    cmp "$scratch/keys-before" "$custom/.env.godmode"
+    cmp "$scratch/facts-before" "$custom/profile.json"
+    cmp "$scratch/native-startup-before" "$HOME/.zshenv"
+    cmp "$scratch/env-before" "$custom/env"
+    printf '%s\n' 'Native updater preservation passed.'
+fi
 printf '%s\n' 'Updater tests passed (managed updates, previous backup, checksum/refusal, env and startup file preservation, .zshenv, unknown shells, quoted PATH and concurrency).'

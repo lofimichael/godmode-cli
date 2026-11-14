@@ -1,6 +1,6 @@
 #!/bin/sh
 # godmode-installer-format: 1
-# Install the readable CLI script; the installed copy is the godmodeup command.
+# Install the CLI; the installed copy of this script is the godmodeup command.
 # Explicit local-artifact modes remain offline. Never reads stored credentials.
 set -eu
 umask 077
@@ -310,7 +310,7 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     if [ -n "$version" ]; then
         valid_version "$version" || fail "version must be vX.Y.Z"
     fi
-    # New releases are portable scripts. Native names remain for old version pins.
+    # Native releases take priority. Older portable Python releases remain installable.
     case "$(uname -s):$(uname -m)" in
         Darwin:arm64|Darwin:aarch64) target=aarch64-apple-darwin ;;
         Darwin:x86_64) target=x86_64-apple-darwin ;;
@@ -368,10 +368,10 @@ if [ -z "$archive$binary$checksum$expected" ]; then
             curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null
         fi
     }
-    if ! fetch_archive "godmode-$version-unix.tar.gz"; then
-        [ "$target" != unix ] || fail "no downloadable portable archive for $version; nothing installed"
+    if ! fetch_archive "godmode-$version-$target.tar.gz"; then
+        [ "$target" != unix ] || fail "no compatible archive for $version on this CPU; nothing installed"
         rm -f "$download_dir/SHA256SUMS"
-        fetch_archive "godmode-$version-$target.tar.gz" || fail "cannot download the release archive and checksum; nothing installed"
+        fetch_archive "godmode-$version-unix.tar.gz" || fail "cannot download the release archive and checksum; nothing installed"
     fi
     archive=$download_dir/$name
     checksum=$download_dir/SHA256SUMS

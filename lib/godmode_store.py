@@ -468,11 +468,13 @@ class Store:
                 "crlf": _store_newline(text) == "\r\n",
                 "separate": bool(text) and not text.endswith("\n")}
 
-    def set(self, key, value):
+    def set(self, key, value, expected_digest=None):
         valid_key(key)
         value = normalize(value, key)
         with self._writer() as directory:
             text, previous = self._read()
+            if expected_digest is not None and hashlib.sha256(text.encode("utf-8")).hexdigest() != expected_digest:
+                raise ValueError("The key file changed after the preview. Open the key again.")
             if self.sealed(text):
                 self._git_guard("seal.key")
                 # A new seal.key only for a file holding no sealed values: never a second key.

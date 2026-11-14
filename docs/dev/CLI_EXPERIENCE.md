@@ -1,10 +1,30 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies them to commands. Its interface has two routes: guided setup for choosing and editing, and direct commands for repeat work and automation.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the native 0.15 interface. Direct commands and the Python plain/compatibility interface retain their own output contracts.
 
-![Godmode home](../images/visual/home.png)
+![Godmode home](../images/native/home.png)
 
-![Masked key edit](../images/visual/key.png)
+![Masked key edit](../images/native/key-preview.png)
+
+## Native interface
+
+Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses three columns when the terminal is wide enough and rows when narrower. Profile, Providers and Agents stay independent, followed by Help / FAQ, Music and Done. The first incomplete section is selected when home opens; a complete setup selects Done.
+
+```mermaid
+flowchart LR
+    Terminal[Bubble Tea + Lip Gloss] -->|private operation pipe| Engine[Embedded Python file engine]
+    Engine --> Profile[profile.json]
+    Engine --> Keys[.env.godmode + seal.key]
+    Engine --> Notes[Guarded agent-note appends]
+    Direct[Direct and plain commands] --> Engine
+    Terminal -->|close UI before handoff| Music[Optional Python music interface]
+    Music --> Darunia[Local Darunia tools and songs]
+    Darunia --> Cache[Cached WAV + PCM visualizer]
+```
+
+The Go interface temporarily holds newly entered text. The Python engine validates it, supplies masked key previews, retains file snapshots and performs writes. It never returns a stored plaintext secret to the interface. One Python process serves each native UI session; the executable embeds its source and passes it on a descriptor separate from request input.
+
+[Framework research](CLI_FRAMEWORKS.md) compares ten libraries across Python, Go, Rust and TypeScript. [NFO identity](NFO_DESIGN.md) records the source voice and visual choices. Complete source is available in the separate release source archive; `godmode source` prints the embedded Python engine and `godmode build-info` reports its hash and Go dependencies.
 
 ## Research
 
@@ -18,7 +38,7 @@ Godmode stores profile fields and provider keys, then supplies them to commands.
 | [GitHub CLI accessibility](https://github.blog/engineering/user-experience/building-a-more-accessible-github-cli/), May 2, 2025; updated May 12 | Sequential prompts, static progress, terminal-owned colors | Plain mode uses ordinary numbered choices. Theme colors and words preserve readable state. |
 | [GitHub CLI foundations](https://github.com/cli/cli/blob/trunk/docs/primer/foundations/README.md), read November 14, 2026 | Human output and machine output have different needs | Guided mode uses visual status; direct data output stays complete and pipeable. |
 | [Charm Huh](https://github.com/charmbracelet/huh#accessibility), read November 14, 2026 | Focused fields; accessible mode replaces redraws with standard prompts | Plain mode is a separate interaction mode. Disabling color alone does not select it. |
-| [Charm Gum](https://github.com/charmbracelet/gum), read November 14, 2026 | Small selection, filter, input, and confirmation controls | Provider search reduces the catalog without introducing a new runtime. |
+| [Charm Gum](https://github.com/charmbracelet/gum), read November 14, 2026 | Small selection, filter, input, and confirmation controls | Provider search reduces the catalog with a slash filter in the current interface. |
 | [Command Line Interface Guidelines](https://clig.dev/), read November 14, 2026 | Useful help, purposeful symbols, actionable errors, composable output | Common commands appear first. Errors name the repair. Direct commands keep their output contracts. |
 | [uv style guide](https://raw.githubusercontent.com/astral-sh/uv/main/STYLE.md), read November 14, 2026 | Meaning survives without styling; data and logs use separate streams | Counts and status words remain readable with no color. Errors stay on stderr. |
 | [Stripe CLI login](https://docs.stripe.com/cli/login), read November 14, 2026 | Browser, manual, and headless paths are explicit | Key entry keeps a visible provider link and a separate stdin route. |
@@ -27,178 +47,141 @@ Godmode stores profile fields and provider keys, then supplies them to commands.
 
 ```mermaid
 flowchart TD
-    Install[Install or update] --> Entry[godmode]
-    Entry --> Seen{Welcome completed?}
-    Seen -->|No| Welcome[Profile + keys → commands\nEnter accepts and opens setup]
-    Seen -->|Yes| Home[Home\nProfile · Providers · Agents]
-    Welcome --> Home
+    Entry[godmode] --> Seen{Welcome completed?}
+    Seen -->|No| Welcome[NFO welcome + account-use statement]
+    Seen -->|Yes| Home[Profile · Providers · Agents · FAQ · Music · Done]
+    Welcome -->|Enter accepts| Home
     Home --> Profile[Profile field list]
     Profile --> Field[Edit one field]
-    Field -->|Save or skip| Missing{More empty fields?}
-    Missing -->|Yes| Field
-    Missing -->|No| Profile
-    Field -->|Escape| Profile
+    Field -->|Save| Profile
     Home --> Providers[Provider list + search]
-    Providers --> Keys{One key?}
-    Keys -->|Yes| Input[Provider steps + masked input]
-    Keys -->|No| KeyList[Required keys or key checklist]
+    Providers --> One{One key?}
+    One -->|Yes| Input[Provider guidance + masked key preview]
+    One -->|No| KeyList[Choose a key]
     KeyList --> Input
-    Providers --> Custom[Custom key name]
-    Custom --> Input
-    Input -->|Enter| Saved[Saved receipt]
-    Input -->|Tab| Detail[Shell edit detail]
-    Detail --> Input
-    Saved --> Providers
-    Home --> Agents[Agent list]
-    Agents --> Preview[Exact note + target paths]
-    Preview -->|Enter| Added[Append note]
-    Added --> Home
-    Profile -->|Back| Home
-    Providers -->|Back| Home
-    Agents -->|Back| Home
-    Home -->|Done| Shell[Shell prompt]
-    Direct[Direct command] --> Data[Result or actionable error]
-    Data --> Shell
+    Input -->|Save| Return[Provider list or key list]
+    Home --> Preview[Agent file changes + shared note]
+    Preview -->|Full review then Enter| Append[Guarded append]
+    Append --> Home
+    Home --> FAQ[FAQ list and readable entries]
+    Home --> Music[Close native UI; open Python music interface]
+    Music --> Home
+    Home -->|Done or Esc| Shell[Shell prompt]
+    Direct[Direct command] --> Result[Complete output or error]
+    Result --> Shell
 ```
+
+`intro` always replays the welcome. On a fresh home, native `setup` and `set NAME` also show it before opening their requested route. Native `profile`, `agents` and `faq` open their sections directly. Back from a section opened as its own command exits; back from a section opened through home returns home.
 
 ## Guided setup
 
 | Surface | Visible content | Action and return |
 | --- | --- | --- |
-| Install | Installed version, command location, setup command | Opens setup unless `--no-setup` is set. `--path` controls shell integration. |
-| Update | Current version or old → new version | Replaces installed program files. `--setup` opens setup. |
-| Welcome | One compact relationship diagram, local storage, concrete consequences of using keys | Enter completes the welcome. Escape exits without marking it complete. |
-| Home | Overall setup meter; profile, provider, and agent rows with their own counts and bars | Enter opens a row. Done or Escape returns to the shell with a short summary. |
-| Providers | Provider names and saved state; description for the selected row | `/` starts search. Enter opens the selected provider. Back returns home. |
-| One-key provider | Key name, provider link, numbered acquisition steps, masked input, destination and assignment | Enter with an empty field opens the provider page. Enter with a valid value saves it. Escape returns without saving. |
-| Required key group | The next missing required key | A successful save advances through the group. Cancellation preserves earlier saves. |
-| Alternative key group | Each key and saved state | The user chooses a key. A valid alternative set completes that provider's local setup. |
-| Custom key | Name entry, followed by masked value entry | Valid names use letters, digits, and underscores. Names ending in `_JSON` accept JSON files. |
-| Save details | Shell equivalent and exceptional edits, such as duplicate-line removal | Tab opens or closes detail. The normal view keeps the destination, key name, and masked value visible. |
-| Save error | Specific problem beside the input | Correct the value or cancel. Invalid input is never committed. |
-| Save result | Key name and saved state | Returns to the provider context. No separate success page. |
-| Profile | Six label-value rows with a filled-field count | Enter edits one field. Saved fields remain visible; missing fields remain reachable. |
-| Profile field | Label, current value, editable input | Enter saves, skips an empty new field, or keeps an empty edit, then opens the next empty field. `/clear` removes the field. Escape returns to the list. |
-| Agents | Detected agents, existing note state, exact note, and destination paths | Enter on Add writes the previewed note. Copy or print supports other agents. |
-| Agent preview | Complete note and exact destination paths | Enter appends only after the complete preview fits. Escape returns. Plain mode prints the complete preview before confirming. |
-| Agent result | Added file paths | Returns to the task. Existing instruction text remains intact. |
-| Exit | Setup amount and local counts | Returns immediately to the shell. |
+| Welcome | Original block lettering, local-file statement and consequences of account access | Enter accepts only while the complete statement/action fit. Esc exits without recording completion. Explicit `intro` exits after acceptance; other routes continue to their destination. |
+| Home | Overall meter, three setup counts, FAQ, Music and Done | Enter opens a selection. Back from Profile focuses Providers; back from Providers focuses Agents; back from Agents focuses FAQ. Done or Esc exits without a final setup summary. |
+| Providers | Names, saved state and selected description | `/` filters the catalog. Enter opens a match. Esc clears active search first. An empty search result does not open a provider or URL. |
+| One-key provider | Bold visit heading, separate link, spaced instruction bullets, masked input and file preview | Empty Enter opens the provider page when available. Valid input saves only on Enter; paste never submits. Esc abandons the field. |
+| Multiple-key provider | Key checklist and saved states | Choose a key. After save, the checklist selects the next missing key, or Back once a required/alternative set is complete. It does not automatically open the next field. |
+| Custom key | Name entry followed by key input | Type a valid name using letters, digits and underscores. Name fields ignore pastes. `_JSON` keys accept a validated object or supported file input. |
+| Key preview | Target path, `+ Add` or `± Replace` and masked assignment | The complete input/review area must fit before Enter can save. Tab toggles shell-equivalent detail. Existing plaintext secret values are never shown. |
+| Key error | Validation message or actionable file error | Correct the entry or cancel. Invalid input is not committed. |
+| Key save | Masked receipt in the return context | Return to provider/key list. A direct `set NAME` exits after save. No separate success screen. |
+| Profile | One business-details paragraph and six optional label-value fields | Enter opens the selected field. Stored values remain visible. |
+| Profile field | Existing value and editable text | Enter saves, skips an empty new value or keeps an emptied existing value; `/clear` removes it. Return to the list with the next row selected. Esc returns without saving. |
+| Agent preview | Created/modified target groups, addition/removal counts and one shared note | Scroll through the entire preview before Enter appends. Width changes reset review progress. A terminal below the minimum review size cannot append. `c` copies the note when a clipboard tool is available. |
+| No detected agent | Shared note for manual use | Copy/select it, then `m` marks it added only after review. This marker describes a user action, not verified agent execution. |
+| Agent result | Added-file count | Return to home or exit a direct `agents` session. Existing instructions remain intact. |
+| FAQ | Topic list followed by scrollable explanations | Enter opens a topic; Esc returns to the list. |
+| Music | Local song picker, cached synthesis and PCM spectrum | The native session closes before the Python music interface takes the terminal. Returning from music starts a fresh native home session. |
 
-Provider instructions remain numbered because the provider's own interface still requires those actions. A picture cannot replace a scope name or the account choice.
+The profile fields are `operator_name`, `business_name`, `legal_name`, `website`, `public_email`, and `business_mailing_address`. A provider instruction must still name the correct scope, account and page. Brief copy does not remove information needed for a decision.
 
-The profile fields are `operator_name`, `business_name`, `legal_name`, `website`, `public_email`, and `business_mailing_address`. Empty fields remain optional during work; the meter describes how much of the profile is stored.
-
-## Direct commands
+## Commands and compatibility
 
 | Command | Result |
 | --- | --- |
-| `godmode`, `godmode onboard` | Guided home, preceded by the welcome only on first use |
-| `godmode intro` | Replays the welcome |
-| `godmode setup [PROVIDER]` | Provider selection or direct provider setup |
-| `godmode set NAME` | Masked key entry with a save preview |
-| `godmode set NAME --stdin` | Saves one key from a pipe or file |
-| `godmode list` | One saved key name per line; no values |
-| `godmode run NAME... -- CMD` | Replaces Godmode with CMD and supplies only the requested saved keys |
-| `godmode run VAR=NAME -- CMD` | Supplies a saved key under another environment variable name |
-| `godmode profile`, `godmode profile edit` | Profile field menu |
-| `godmode profile get FIELD` | One field value; a missing field exits with status 1 |
-| `godmode profile show` | Complete profile as JSON |
-| `godmode profile set FIELD [--stdin]` | Visible field entry, or piped field input |
-| `godmode profile unset FIELD` | Removes one field |
-| `godmode profile path` | Profile file location |
-| `godmode agents` | Guided agent setup; redirected output contains only the instruction note |
-| `godmode provider` | Provider names and purposes |
-| `godmode provider SLUG` | Credential setup, scope, verification, recovery, and official links |
-| `godmode help` | Saved names and profile-field state, followed by the agent usage contract |
-| `godmode --help`, `godmode -h` | Compact command reference |
-| `godmode COMMAND --help` | Command-specific syntax, actions, and examples |
-| `godmode run --help` | Key forwarding and variable mapping syntax |
-| `godmode path` | Key file location |
-| `godmode edit` | Opens the selected key file in nano |
-| `godmode migrate` | Seals compatible legacy keys after verifying the copied values |
-| `godmode --version` | Installed version |
-| `godmode picard [link\|open\|show\|play\|stop]` | Explicit optional media action, separate from setup and credentials |
-| `godmode init` | Compatibility entry point for onboarding |
+| `godmode`, `godmode onboard` | Native home in a capable interactive terminal; first-use welcome when needed |
+| `godmode intro` | Replay welcome |
+| `godmode setup [PROVIDER]` | Native catalog or requested provider |
+| `godmode set NAME` | Native masked entry and preview |
+| `godmode set NAME --stdin` | Save one key from a pipe/file through the core |
+| `godmode list` | Saved key names, one per line; no values |
+| `godmode run NAME... -- CMD` | Supply requested stored keys to CMD; native parent waits and relays termination signals, preserving streams and child exit status |
+| `godmode run VAR=NAME -- CMD` | Supply a stored key under another environment variable name |
+| `godmode profile` | Native field list |
+| `godmode profile edit` | Python compatibility field menu |
+| `godmode profile get FIELD` | One value; missing field exits 1 |
+| `godmode profile show` | Complete profile JSON |
+| `godmode profile set FIELD [--stdin]` | Python field entry or piped value |
+| `godmode profile unset FIELD`, `profile path` | Remove one field; print profile path |
+| `godmode agents` | Native append preview; redirected output contains the instruction note |
+| `godmode provider [SLUG]` | Catalog summary or printable provider guide |
+| `godmode faq` | Native topic list; core output when plain or redirected |
+| `godmode help` | Saved names/profile state and agent usage contract |
+| `godmode --help`, `godmode COMMAND --help` | Command reference and command-specific help |
+| `godmode path`, `edit`, `migrate` | Print key-file path; open nano; verify and seal compatible legacy keys |
+| `godmode source`, `build-info` | Embedded Python source; core hash, compiler and dependency metadata |
+| `godmode music [init\|list\|play\|status\|clear\|forget]` | Explicit optional local synthesis and playback; see [Music](../MUSIC.md) |
+| `godmode picard [link\|open\|show\|play\|stop]` | Explicit optional Picard media |
+| `godmode --version` | Version only |
+| `godmode init` | Compatibility alias for onboarding |
 
-`--home DIR` selects a home; `--config-dir`, `GODMODE_HOME`, and `GODMODE_CONFIG_DIR` retain their existing compatibility. The legacy `init --accept-disclaimer` path remains for existing automation. `--state-dir` selects optional Picard state. These controls do not expand what a key authorizes.
+`--home DIR`, `--config-dir`, `GODMODE_HOME` and `GODMODE_CONFIG_DIR` retain their existing core selection behavior. `init --accept-disclaimer` remains a compatibility route. `--state-dir` selects Picard state; music state is under the selected Godmode home. None of these controls expands a key's authority.
+
+The native launcher handles guided routes only with both input and output attached to a suitable terminal. `--plain`, `GODMODE_PLAIN=1`, an empty/dumb `TERM`, and redirected operation use the Python path. Plain key entry displays a masked review after Enter and saves on a second Enter. The compatibility menu may advance through fields differently from the native list; it is not the native renderer without color.
 
 ## Installation and recovery
 
+The shell installer selects a compatible native release for macOS/Linux ARM64 or x86-64, checks its SHA-256, installs the executable and updater, and opens setup unless disabled. Python 3.9+ remains required. Native installation needs neither Go nor pip; source builds use pinned Go 1.26.7 and vendored modules.
+
 | Route | Behavior |
 | --- | --- |
-| Online install | Downloads the selected compatible release, checks its SHA-256, installs the readable Python program and updater, then opens setup |
-| Private release | Uses an existing authorized GitHub CLI login |
-| Offline archive | `--archive PATH --checksum SHA256SUMS` verifies and installs the supplied archive |
-| Offline program | `--binary PATH --sha256 HEX` verifies and installs the supplied script |
-| Alternate destination | `--home DIR` selects the data and executable home; `--bin-dir DIR` changes only the executable directory |
-| Shell integration | `--path` backs up the startup file before adding the generated environment file |
-| Existing executable | The install receipt identifies managed files; `--force` explicitly adopts an unknown existing program |
-| Update and rollback | `godmodeup` checks the current release and preserves the previous executable as `godmode.previous` |
-| Missing command | Source the generated environment file or use the installed executable's full path |
-| Legacy keys | `migrate` reads back the sealed copy before replacing the legacy source; conflicts identify names and line numbers |
-| Malformed data | A specific error preserves the data; `edit`, `migrate`, or profile editing provides the relevant repair |
-| Remote machine | The [remote guide](../REMOTE.md) describes copying the selected files to an owned machine |
-| Remove programs | The [installation guide](../INSTALLATION.md#uninstall) separates deleting program files from deleting the profile and keys |
-| Revoke access | Provider-side revocation remains a provider action; removing a local key does not revoke it |
+| Private release | Existing GitHub CLI login supplies repository access |
+| Offline archive | `--archive PATH --checksum SHA256SUMS` verifies/installs the supplied compatible archive |
+| Offline program | `--binary PATH --sha256 HEX` verifies/installs the supplied executable |
+| Alternate destination | `--home DIR` selects data/executable home; `--bin-dir DIR` changes executable directory only |
+| Shell integration | `--path` backs up startup files before adding the generated environment source line |
+| Existing executable | Receipt identifies managed files; `--force` explicitly adopts an unknown existing program |
+| Update | `godmodeup` preserves the previous executable as `godmode.previous`; `--setup` explicitly opens setup |
+| Legacy keys | `migrate` verifies the sealed copy before replacing the compatible legacy file |
+| Remove programs | [Installation](../INSTALLATION.md#uninstall) distinguishes programs from keys/profile |
+| Remote machine | [Remote guide](../REMOTE.md) explains explicit selected-file copies |
+| Revoke access | Revoke at the provider; deleting a local key does not revoke it |
 
-The installer remains standard-library Python on macOS and Linux, with Python 3.9 or newer. No new UI framework, package manager, or background service is required.
+## Completion and visual rules
 
-## Completion
+The setup meter has 18 points: six optional profile fields contribute one each, one complete stored provider set contributes six, and one agent note contributes six. A custom key can satisfy the provider portion. More providers are optional. The total uses integer flooring. `Saved` means stored locally; `Added` means an instruction note exists or the user marked a manual addition. Neither proves live provider access or successful agent execution.
 
-The setup meter has 18 points. Each of the six profile fields contributes one point. One complete provider key set contributes six points. One agent note contributes six points. A custom key can satisfy the provider portion. Additional providers remain available without becoming a requirement.
+The native interface uses Unicode block art, arrows, separators and bars. It currently has no complete ASCII substitution layer; use plain mode for ASCII-oriented terminals. Light/dark palettes adapt to terminal background information. `NO_COLOR=1` and `CLICOLOR=0` retain selection text and symbols without color. `--no-motion` or `GODMODE_NO_MOTION=1` suppresses decorative motion; the native welcome also skips its reveal when colors are disabled. Plain mode provides static sequential output. Music has its own monochrome visualizer and no-motion behavior.
 
-| Component | Full amount | Visible state |
-| --- | --- | --- |
-| Profile | 6 fields | Filled count out of 6 |
-| Providers | 1 usable saved key set | Number of saved providers, plus partial sets |
-| Agents | 1 added note | Added agent count or a manually added note |
+File previews carry meaning in text and signs, not color alone. Native keys show `+ Add` or `± Replace` with a masked assignment. Agent appends show plus-prefixed additions and a zero removal count. Ordinary field entry has no spinner or invented progress animation. Direct outputs remain complete and pipeable.
 
-The total uses integer flooring, so 100% requires all three portions. `Saved` describes local storage. `Added` describes an instruction note. Neither word claims that a provider accepted a key or that an agent ran a command.
+## Design boundaries
 
-## Copy and space
-
-| v0.13 behavior | Revised behavior | Reduction |
-| --- | --- | --- |
-| Three welcome pages and three Enter presses | One welcome and one Enter press | Two screens and two Enter presses |
-| 158 words in welcome titles and prose | 25 words in the title and prose | 84% fewer words; diagram and controls counted separately |
-| A three-provider target for the provider third | One usable saved provider fills that third | Two provider enrollments removed from the completion target |
-| One overall bar and text states | Three status rows with small bars and counts | Each component shows its own completion |
-| Provider name, state, and every description | Name and state; selected description | Only one provider description at a time |
-| Long shell edit and encryption explanation during every key entry | File and masked assignment; shell detail on Tab | Detailed shell syntax leaves the default input view |
-| Agent purpose, file list, note, actions, and hints compete for one screen | Shorter note, exact file rows, and complete-preview gate | Repeated explanation leaves the preview |
-| No sequential guided mode | `--plain` and `GODMODE_PLAIN=1` | Cursor redraws become numbered prompts |
-| Global help for most subcommands | Command-specific syntax and examples | Each command exposes only its relevant options |
-
-Copy names the object and state: `Profile 3/6`, `Providers 2 saved`, `GH_TOKEN saved`, `Add to Codex`. Keyboard hints occupy one footer. Text that changes the decision stays visible: the file, replacement, invalid value, required provider scope, and cancellation action.
-
-The visual vocabulary is small. `›` or `>` marks selection. A check plus a status word marks a saved item. Counts describe partial state. Bars show amount. Default terminal colors carry ordinary text; accents identify selection and status. Unicode has an ASCII equivalent.
-
-## Alternatives
-
-| Alternative | Decision |
+| Choice | Current decision |
 | --- | --- |
-| Full-screen dashboard with bordered cards | Reject. Borders and padding consume rows needed for fields and instructions. |
-| A Go, Node, Rich, or Textual rewrite | Reject. The existing standard-library renderer supports the required interactions. |
-| Automatic provider login and refresh | Reject. Godmode remains a credential store and command launcher. |
-| Connect every provider to reach 100% | Reject. Useful setup requires only the services the user chooses. |
-| A spinner or animated meter during entry | Reject. User input has no measurable time remaining. |
-| Emoji-only or Nerd Font controls | Reject. Font dependence and ambiguous speech make status harder to read. |
-| Hide all instructions behind detail | Reject. Provider scope and exact changes determine whether the action is correct. |
-| Preserve a partial agent preview with an active Add action | Reject. The full proposed note and destinations must be readable before a write. |
-| Treat `NO_COLOR` as plain mode | Reject. Color, glyphs, and cursor redraws are separate capabilities. |
-| Replace direct output with visual tables | Reject. Existing scripts require complete names, JSON, and child-command output. |
+| Go terminal framework | Bubble Tea and Lip Gloss are the selected default; Python retains file operations and compatibility routes |
+| Responsive home | Three unbordered columns when space permits; compact rows otherwise |
+| Source inspection | Embedded engine through `source`; complete matching sources and vendor tree in the separate source archive |
+| Provider login/refresh | Provider tools own these operations; Godmode stores credentials |
+| Full-catalog completion target | Not required; only chosen services need setup |
+| Agent append review | Every preview section must be reviewed before write; existing file text is preserved |
+| Color versus plain mode | Distinct controls; plain mode changes interaction, not only styling |
+| Optional music | Local synth integration, separate process and removable adapter; no tools/fonts/songs bundled |
 
-## Verification
+The [0.15 verification record](UX_VERIFICATION.md) contains the executed native, compatibility, packaging and preservation checks.
+
+## Verification requirements
 
 | Area | Required checks |
 | --- | --- |
-| State | Empty, partial, complete, malformed keys, malformed profile, and no detected agents |
-| Size | 80×24, 60×20, narrow width, short height, long paths, and resizing during a prompt |
-| Rendering | UTF-8, ASCII, light and dark palettes, `NO_COLOR`, `TERM=dumb`, plain mode, and redirected output |
-| Entry | Typed key, bracketed paste, multiline JSON, dragged file, invalid input, replacement, and duplicate-key cleanup |
-| Navigation | Search, empty result, Escape clearing search, Escape leaving a form, Ctrl-C, and return after save |
-| Agent changes | Exact preview, too-small preview gate, existing note, appended note, and partial write failure |
-| Commands | Stable `list`, `run`, profile JSON, provider guide, help, exit codes, and stdout/stderr behavior |
-| Preservation | Existing key and profile data, instruction text, terminal state, unrelated files, and installer rollback |
+| State | Empty, partial, complete, malformed store/profile, no detected agents |
+| Size | Wide/narrow/short terminals, long paths, resizing during entry and agent review |
+| Rendering | Light/dark, no color, no motion, native Unicode, plain ASCII, dumb terminal and redirected output |
+| Entry | Typed key, complete/fragmented bracketed paste, large-paste refusal, JSON/file input, replacement and invalid values |
+| Navigation | Search/no match, Escape behavior, Ctrl-C, profile return selection, multi-key checklist and direct-route exit |
+| Agent changes | Exact preview, scroll gate, width-change re-review, prior note, guarded append and partial failure |
+| Commands | Stable names/JSON/guides, stdin, child streams/signals/exit codes, source/build-info |
+| Preservation | Existing keys/profile/instructions, terminal state, unrelated files, updater backup and removable music |
 
-Walkthroughs use synthetic keys and temporary homes. Compare first key, replacement key, profile completion, agent addition, and return visits. Count actual screen transitions and actions. Capture real terminal output for visual review. The executed results belong in the release record.
+Use synthetic keys and temporary homes. Record native and compatibility checks separately. Screenshots, successful local storage and protocol tests do not prove provider permissions, paid demand or screen-reader usability. Executed results belong in the release verification record.

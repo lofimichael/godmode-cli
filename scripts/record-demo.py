@@ -253,7 +253,7 @@ def main() -> None:
             recorder.wait_for("❯ Cloudflare")
             recorder.capture(700)
             terminal.send(b"\r")
-            recorder.wait_for("Cloudflare · API token")
+            recorder.wait_for("Visit Cloudflare's token page")
             recorder.wait_for("CLOUDFLARE_API_TOKEN=sealed(…)")
             recorder.capture(1900)
             terminal.paste(SYNTHETIC)

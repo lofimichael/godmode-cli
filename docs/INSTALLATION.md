@@ -1,12 +1,12 @@
 # Installation
 
-Godmode needs macOS or Linux and Python 3.9 or newer. It installs no Python packages and needs no root access.
+Godmode uses a native Go interface built with Bubble Tea and Lip Gloss. Its embedded file engine needs Python 3.9 or newer. Native releases support macOS and Linux on Apple Silicon/ARM64 and x86-64. Installation needs no Go compiler, Python packages or root access.
 
 ```sh
 gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
 ```
 
-The installer checks the release's SHA-256, installs `~/.godmode/bin/godmode` and `godmodeup`, and starts setup. Options go after `--`:
+The installer selects the release for your operating system and CPU, checks its SHA-256, installs `~/.godmode/bin/godmode` and `godmodeup`, and starts setup. Options go after `--`:
 
 | Option | Effect |
 | --- | --- |
@@ -29,23 +29,40 @@ godmodeup
 
 ## Install offline
 
-Build the script from a checkout and pass its SHA-256:
+Download the native archive for the destination machine and its `SHA256SUMS`, then install them locally. For example, on Apple Silicon macOS:
 
 ```sh
-python3 scripts/build.py --output target/godmode
-GODMODE_SCRIPT_SHA=$(shasum -a 256 target/godmode | awk '{print $1}')
-sh install.sh --binary target/godmode --sha256 "$GODMODE_SCRIPT_SHA"
+sh install.sh --archive godmode-vX.Y.Z-aarch64-apple-darwin.tar.gz --checksum SHA256SUMS
 ```
 
-`--archive godmode-vX.Y.Z-unix.tar.gz --checksum SHA256SUMS` installs a downloaded release archive instead. Neither mode downloads anything.
+Other native archive suffixes are `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`. Replace `vX.Y.Z` with the release version. Offline installs do not open setup unless you add `--setup`.
 
-The installed file is ordinary Python source: read it with `less ~/.godmode/bin/godmode`, or run the checkout directly with `python3 godmode.py --home /absolute/path/to/a/test-home`.
+To build from a checkout or the separate `godmode-vX.Y.Z-source.tar.gz` archive, use Python 3.9+ and the Go 1.26.7 toolchain pinned in `go.mod`:
+
+```sh
+sh scripts/build-native.sh --output target/godmode-native
+GODMODE_BINARY_SHA=$(shasum -a 256 target/godmode-native | awk '{print $1}')
+sh install.sh --binary target/godmode-native --sha256 "$GODMODE_BINARY_SHA"
+```
+
+The source archive includes pinned vendored Go dependencies. For an offline build, the exact pinned Go 1.26.7 compiler must already be installed and selected by `go` on PATH (`go version` confirms it); run the build with `GOPROXY=off GOSUMDB=off`. An older `go` on PATH may try to download or verify the pinned toolchain instead. The installer's `--archive` and `--binary` modes download nothing. Add `--without-music` to the build command to omit the optional music adapter.
+
+## Inspect the source
+
+The installed command is a native executable. These commands inspect its readable embedded Python engine and build metadata:
+
+```sh
+godmode source | less
+godmode build-info
+```
+
+The separate source archive contains the matching Go and Python sources, build scripts and vendored dependencies. Native archives include build metadata and dependency license notices. See [Security](SECURITY.md) for source and rebuild checks. `python3 godmode.py --home /absolute/path/to/a/test-home` still runs the Python compatibility interface from a checkout; it does not run the native UI.
 
 ## Files
 
 ```text
 ~/.godmode/
-  bin/godmode                   the readable Python script
+  bin/godmode                   native UI with embedded Python file engine
   bin/godmodeup                 the updater
   env                           PATH setup, sourced by your shell with --path
   profile.json                  your profile
@@ -55,11 +72,12 @@ The installed file is ordinary Python source: read it with `less ~/.godmode/bin/
   intro.seen                    empty; you finished the welcome
   agent.added                   empty; you added the Agents text by hand
   state/picard/                 optional Picard media cache
+  state/music/                  optional local music settings and render cache
 ```
 
 `--home DIR` or `GODMODE_HOME` selects another home. `godmode path` and `godmode profile path` print where the key file and profile are.
 
-`godmode --plain` uses static text and numbered choices. `GODMODE_PLAIN=1` selects the same mode for later commands; `TERM=dumb` selects it automatically. `NO_COLOR` or `CLICOLOR=0` removes color while keeping the arrow-key interface.
+`godmode --plain` uses static text and numbered choices through the Python interface. `GODMODE_PLAIN=1` selects the same mode for later commands; `TERM=dumb` selects it automatically. `NO_COLOR=1` or `CLICOLOR=0` removes color while keeping the arrow-key interface. `--no-motion` or `GODMODE_NO_MOTION=1` disables decorative animation.
 
 ## Uninstall
 
@@ -74,7 +92,7 @@ rm -f ~/.godmode/bin/godmode ~/.godmode/bin/godmodeup ~/.godmode/bin/godmode.pre
   ~/.godmode/bin/.godmode-install-receipt ~/.godmode/env
 ```
 
-Sealed values can be read only through `godmode`, so keep a copy of the script if you keep the keys. Deleting a key here does not revoke it; revoke it at the provider.
+Keep a working Godmode executable or its matching Python engine if you keep sealed keys. The matching `seal.key` is also required to read them. Deleting a key here does not revoke it; revoke it at the provider.
 
 ## Troubleshooting
 

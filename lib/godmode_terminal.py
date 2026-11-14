@@ -8,6 +8,7 @@ import signal
 import sys
 import termios
 import textwrap
+import time
 import tty
 import unicodedata
 
@@ -47,7 +48,8 @@ def color_enabled(stream=None):
 def style(text, role="accent"):
     # dim is faint (SGR 2), not bright black (SGR 90), which some themes draw in the background color.
     codes = {"title": "1", "heading": "1", "accent": "36", "link": "4;36", "secret": "1;36",
-             "success": "32", "warning": "33", "error": "31", "dim": "2", "brand": "1;36", "risk": "1;33"}
+             "success": "32", "warning": "33", "error": "31", "dim": "2", "brand": "1;36", "risk": "1;33",
+             "nfo": "1;35", "nfo_edge": "36", "diff_add": "32", "diff_remove": "31"}
     if not color_enabled() or role not in codes or not str(text):
         return str(text)
     return "\033[" + codes[role] + "m" + str(text) + "\033[0m"
@@ -293,6 +295,51 @@ class _Keyboard:
             self.pending.extend(chunk)
             self._parse()
         return self.events.pop(0)
+
+    def poll(self, timeout=0):
+        """Return one event or None without waiting for a complete paste.
+
+        Animations use the same hidden, bounded paste parser as ordinary prompts.
+        Partial pastes stay buffered; Escape alone needs the same 80 ms grace.
+        """
+        deadline = time.monotonic() + max(0, timeout)
+        for _ in range(64):  # Drain at most 256 KiB before letting an animation draw.
+            if self.events:
+                return self.events.pop(0)
+            waiting = self.pending.startswith(b"\x1b") and self.paste is None
+            now = time.monotonic()
+            since = getattr(self, "poll_escape_since", None)
+            if waiting:
+                if since is None:
+                    self.poll_escape_since = since = now
+                if now - since >= 0.08:
+                    alone = self.pending == b"\x1b"
+                    self.pending.clear()
+                    self.poll_escape_since = None
+                    return ("key", "esc") if alone else None
+            else:
+                self.poll_escape_since = None
+            delay = max(0, deadline - now)
+            if waiting:
+                delay = min(delay, max(0, 0.08 - (now - since)))
+            ready = select.select([self.fd, self.wake], [], [], delay)[0]
+            if not ready:
+                if waiting and time.monotonic() - since >= 0.08:
+                    continue
+                return None
+            if self.wake in ready:
+                with contextlib.suppress(BlockingIOError):
+                    while os.read(self.wake, 512):
+                        pass
+                return ("resize", None)
+            chunk = os.read(self.fd, 4096)
+            if not chunk:
+                raise Cancelled()
+            self.pending.extend(chunk)
+            self._parse()
+            if not self.pending.startswith(b"\x1b") or self.paste is not None:
+                self.poll_escape_since = None
+        return self.events.pop(0) if self.events else None
 
     def _parse(self):
         """Turn complete input into events; leave an unfinished sequence for the next read."""
@@ -620,7 +667,7 @@ def read_page(render):
 
 
 def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_width=0, abouts=False,
-              searchable=False, header_required=False):
+              searchable=False, header_required=False, row_spacing=0):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 
     items are (name, status, about) rows; None leaves a gap that cannot be chosen.
@@ -703,7 +750,7 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
         blocked = header_required and drawn_height(above + below, width) + min(3, len(items)) > screen_rows() - 1
         if blocked:
             return ["  " + row for row in textwrap.wrap("Enlarge the terminal to review all changes. Esc back.", max(1, width - 3))]
-        if top_rows and not header_required and len(above) + len(items) + len(below) > screen_rows() - 1:
+        if top_rows and not header_required and len(above) + min(5, len(items)) + len(below) > screen_rows() - 1:
             above = ([""] if gap else []) + titled + ([""] if titled else [])  # A short window drops the header first.
         if filtering:
             above += ["  / " + (short(query, max(1, width - 5)) if matches() else "No matches"), ""]
@@ -741,6 +788,9 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
                 if note:
                     row += " " * max(0, mark_width - cells(mark)) + (note if focus else style(note, "dim"))
                 rows.append((style(pointer, "accent") if focus else "  ") + row)
+        if row_spacing and drawn_height(above + rows + below, width) + row_spacing * (len(rows) - 1) <= screen_rows() - 1:
+            rows = [part for index, row in enumerate(rows)
+                    for part in (([""] * row_spacing if index else []) + [row])]
         return above + rows + below
 
     with _Keyboard() as keyboard:
@@ -834,3 +884,63 @@ def _plain_menu(items, start, title, header):
         answer = _plain_choice("Number, then Enter (%d). Esc back." % default,
                                [""] + [str(i) for i in range(1, len(choices) + 1)], keyboard)
     return choices[int(answer or default) - 1]
+
+
+def read_document(title, paragraphs):
+    """Read local prose with scrolling. Enter or Esc returns; pasted input stays hidden."""
+    def rows(width):
+        result = ["  " + style(title, "title"), ""]
+        for paragraph in paragraphs:
+            result += ["  " + row for row in textwrap.wrap(paragraph, max(1, width - 4),
+                       break_on_hyphens=False)] + [""]
+        return result
+    if plain_enabled():
+        with _Keyboard() as keyboard:
+            _plain_rows(rows(plain_columns()) + ["Enter back."])
+            while True:
+                kind, key = keyboard.read()
+                if kind == "key" and key in ("esc", "enter"):
+                    return
+    offset, drawn = 0, []
+    with _Keyboard() as keyboard:
+        try:
+            sys.stdout.write("\033[?25l")
+            while True:
+                width, height = columns(), screen_rows()
+                content, room = rows(width), max(1, height - 4)
+                offset = min(offset, max(0, len(content) - room))
+                hint = "Up/Down scroll | Enter back" if len(content) > room else "Enter back"
+                footer = ["  " + style(row, "dim") for row in fit(hint, max(2, width - 2))]
+                drawn = _draw(content[offset:offset + room] + [""] + footer, drawn)
+                kind, key = keyboard.read()
+                if kind == "key" and key in ("esc", "enter"):
+                    return
+                if kind == "key" and key in ("up", "pageup", "home"):
+                    offset = 0 if key == "home" else max(0, offset - (room if key == "pageup" else 1))
+                if kind == "key" and key in ("down", "pagedown", "end"):
+                    offset = len(content) if key == "end" else offset + (room if key == "pagedown" else 1)
+        finally:
+            _draw([], drawn)
+
+
+def motion_enabled():
+    return (color_enabled() and os.environ.get("GODMODE_NO_MOTION", "").lower() in ("", "0", "false", "no"))
+
+
+def animate_entrance(rows):
+    """A brief logo reveal, only in a color terminal. No work or progress is implied."""
+    if not motion_enabled() or not sys.stdin.isatty():
+        return
+    if drawn_height(rows, columns()) >= screen_rows() - 2:
+        return
+    drawn = []
+    with _Keyboard() as keyboard:
+        try:
+            sys.stdout.write("\033[?25l")
+            for count in range(1, len(rows) + 1):
+                drawn = _draw(rows[:count], drawn)
+                # Any input ends the reveal; it cannot submit the next screen.
+                if select.select([keyboard.fd, keyboard.wake], [], [], 0.025)[0]:
+                    return
+        finally:
+            _draw([], drawn)

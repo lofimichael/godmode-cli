@@ -1,8 +1,12 @@
 # Agents
 
-**Agents** in `godmode` lists detected agents, the exact note, and destination files. Enter on **Add to…** writes the note.
+**Agents** lists the destination files under **These files will be created:** and **These files will be modified:**. Green `+` lines show the note each selected file receives. The count shows added lines and `-0` removed lines. Enter on **Add to…** appends it.
 
-Godmode finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode by their folders. Claude Code uses `~/.claude/rules/godmode.md`. The note is appended between `<!-- godmode:start -->` and `<!-- godmode:end -->`; existing instruction text stays intact. A short terminal blocks the write until the complete note and paths fit. `godmode --plain agents` prints the full preview in sequence.
+Godmode finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode by their folders. Claude Code uses `~/.claude/rules/godmode.md`. Existing files keep every byte, file mode and inode. The new note follows their current text, separated by a blank line. CRLF files receive CRLF additions. A file with a Godmode marker or `godmode help` is left unchanged, including edited and incomplete notes.
+
+The preview shows a symlink's resolved destination. Broken links, hard links, special files, files owned by someone else, and files over 1 MiB are refused. Before an append, Godmode locks the opened file and checks it against the preview. A changed file requires a new preview. New files use exclusive creation; existing files use `O_APPEND`, never replacement or truncation. A failed disk write can leave part of the new note; it cannot overwrite the original prefix. File locks coordinate Godmode processes. An editor that ignores those locks can still write to the file.
+
+A short terminal blocks the write until the complete note and paths fit. `godmode --plain agents` prints the full preview in sequence.
 
 **Copy the note** supports Cursor and other agents. Paste it into the agent's instructions, then choose **I added it** when that action is available. Redirected output contains only the note, so `godmode agents | pbcopy` works. A project's instruction file limits the note to that project.
 

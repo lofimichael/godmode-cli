@@ -210,17 +210,25 @@ printf '  %s\n' 'Downloading Godmode 7.6.5' "$check Installed ~/.godmode/bin/god
 [ -f "$scratch/fresh-account/.zshenv" ]
 [ ! -e "$scratch/fresh-account/.zshrc" ]
 
-# A portable archive is preferred when both new and legacy asset names exist.
+# Native archives take priority when an older portable asset is also present.
 universal_name=godmode-v7.6.5-unix.tar.gz
 cp "$scratch/godmode-test.tar.gz" "$scratch/fixtures/$universal_name"
 printf '%s  %s\n%s  %s\n' "$archive_digest" "$fixture_name" "$archive_digest" "$universal_name" > "$scratch/fixtures/SHA256SUMS"
 : > "$GODMODE_TEST_NETWORK_LOG"
-PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-home" > /dev/null
-cmp "$scratch/artifact/godmode" "$scratch/universal-home/bin/godmode"
-grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"
-if grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"; then
-    echo 'legacy archive was downloaded despite an available portable script' >&2; exit 1
+PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/native-priority-home" > /dev/null
+cmp "$scratch/artifact/godmode" "$scratch/native-priority-home/bin/godmode"
+grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
+if grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"; then
+    echo 'portable archive was downloaded despite an available native archive' >&2; exit 1
 fi
+# A release carrying only the portable script remains installable.
+mv "$scratch/fixtures/$fixture_name" "$scratch/native-held.tar.gz"
+: > "$GODMODE_TEST_NETWORK_LOG"
+PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/legacy-portable-home" > /dev/null
+cmp "$scratch/artifact/godmode" "$scratch/legacy-portable-home/bin/godmode"
+grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
+grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"
+mv "$scratch/native-held.tar.gz" "$scratch/fixtures/$fixture_name"
 # A portable script does not depend on a known native CPU architecture.
 GODMODE_TEST_ARCH=riscv64 PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-cpu-home" > /dev/null
 cmp "$scratch/artifact/godmode" "$scratch/universal-cpu-home/bin/godmode"
@@ -495,4 +503,4 @@ if PATH="$scratch/no-python" /bin/sh "$repo/install.sh" --no-setup --home "$scra
     echo 'missing Python was accepted' >&2; exit 1
 fi
 [ ! -e "$scratch/no-python-home" ]
-printf '%s\n' 'Installer tests passed (portable/native downloads, version check, Python requirement, checksums, no-clobber, quoted ~ commands, three-line output, piped setup and plain/color output).'
+printf '%s\n' 'Installer tests passed (native-first and legacy-portable downloads, version check, Python requirement, checksums, no-clobber, quoted ~ commands, three-line output, piped setup and plain/color output).'

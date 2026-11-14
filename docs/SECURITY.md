@@ -4,9 +4,79 @@ Values are encrypted in .env.godmode with a random key in seal.key.
 Reading the file shows names, never values.
 Any program running as you can still ask godmode for a key.
 Anyone with both files has every key.
-Godmode sends nothing over the network.
+Profile and key commands make no network calls. `godmodeup` downloads releases;
+provider links open in your browser; Picard downloads media on request. A command
+started with `godmode run` has its own network access. Music uses local Darunia
+tools and local song files.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
+
+## Source and releases
+
+The native Go interface uses Bubble Tea and Lip Gloss. It embeds a readable
+Python file engine. Python 3.9 or newer is required; startup installs no packages
+and starts no background service. The engine runs in Python isolated mode, which
+ignores Python startup customizations and module paths from the environment.
+
+The interface sends operations over a private pipe. New keys travel on stdin,
+never in command arguments or environment variables. The engine returns masks,
+file plans and saved key names; it never exports a saved secret to the interface.
+The same store validates and writes files for interactive and direct commands.
+A changed file invalidates a pending write.
+
+Every release provides a separate `-source.tar.gz` archive containing Go and
+Python source, pinned Go modules, vendored libraries and their licenses. Native
+archives contain the executable, build metadata and dependency license notices.
+From a reviewed source archive or checkout at the release commit, with the Go
+toolchain named in `go.mod`:
+
+```sh
+scripts/build-native.sh
+cmp target/godmode-native "$(command -v godmode)"
+
+godmode source > target/installed-core.py
+python3 scripts/build.py --verify target/installed-core.py
+godmode build-info
+```
+
+The native build omits local path and VCS metadata. Matching compiler, target,
+source and dependencies produce matching bytes. `godmode source` prints the
+embedded engine; `build-info` names the compiler, module versions and engine
+hash. These commands report the running program's contents. An independent
+rebuild from reviewed source supplies the comparison.
+
+Release archives have SHA-256 checksums. The installer checks the archive before
+reading its executable, refuses unrecorded replacements and keeps the previous
+executable. It streams only named archive members into files it created; archive
+paths cannot choose a destination. A checksum delivered beside an archive detects
+corruption, but an attacker who replaces both can replace the program. A pinned,
+reviewed source commit supplies a separate comparison.
+
+For an offline install from reviewed source, first put the exact Go compiler
+named in `go.mod` on PATH and confirm it with `go version`. An older compiler
+may try to fetch or verify that toolchain. With the pinned compiler selected:
+
+```sh
+GOPROXY=off GOSUMDB=off scripts/build-native.sh
+sh install.sh --binary target/godmode-native --sha256 "$(shasum -a 256 target/godmode-native | cut -d ' ' -f 1)" --no-setup
+```
+
+Godmode source is MIT licensed; dependency licenses ship in the source archive.
+Repository access remains private. Installation uses release archives rather than
+a package registry. Source builds use the vendored dependencies.
+
+## Optional music
+
+`lib/godmode_music.py` contains the music adapter. It receives local paths and
+never receives a credential store. Darunia code, fonts, tools and songs stay
+outside Godmode's release. Their licenses remain separate.
+
+```sh
+scripts/build-native.sh --without-music
+```
+
+This removes the music adapter from the native command while keeping profile and key
+commands. [Music](MUSIC.md) lists the local files, cache and removal commands.
 
 ## The key file
 
@@ -33,12 +103,12 @@ To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 - JSON gets syntax checks only. The two Google service-account keys also check Google's file shape (`"type": "service_account"`, `project_id`, `private_key_id`, a PEM `private_key`, a `…gserviceaccount.com` `client_email` and Google's `token_uri`).
 - Values cannot contain control characters, and no value is evaluated as shell code. Keys are never accepted as command-line arguments.
 - `--plain` or `GODMODE_PLAIN=1` uses static prompts. Input stays hidden until Enter displays a masked review; a second Enter submits it. Pasted newlines never submit a value.
-- Python cannot guarantee that every copy of a value is erased from memory.
+- Neither Go nor Python guarantees that every copy of a value is erased from memory.
 
 ## How agents reach keys
 
 - `godmode list` prints the names of saved keys, never values.
-- `godmode run NAME... -- command` replaces itself with the command, adding only the named keys to its environment and their names to `GODMODE_KEYS`. It prints nothing. A missing or unreadable key stops it before the command starts, naming the key only. The exit status is the command's own.
+- `godmode run NAME... -- command` supplies only the named stored keys and their names in `GODMODE_KEYS`. The Python engine replaces itself with the command; the native launcher waits, relays termination signals and returns its exit status. Godmode prints nothing. A missing or unreadable key stops it before the command starts, naming the key only.
 - `godmode set NAME --stdin` saves a key from a pipe or file redirection.
 
 ## Other actions

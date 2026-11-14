@@ -1,6 +1,6 @@
 # Godmode
 
-Godmode stores your business profile and API keys on this machine. Coding agents read profile fields and run commands with selected keys.
+GODMODE gives your agents the goddamn keys. Your business profile and keys are stored in local files. Agents read profile fields and run commands with selected keys.
 
 ```text
 Profile + API keys → Godmode → commands
@@ -10,7 +10,7 @@ Profile + API keys → Godmode → commands
 
 ## Install
 
-macOS or Linux with Python 3.9 or newer. Private downloads use a GitHub CLI login with repository access. Godmode installs no Python packages.
+macOS or Linux with Python 3.9 or newer. Private downloads use a GitHub CLI login with repository access. The interface uses Bubble Tea and Lip Gloss. Its embedded Python file engine installs no packages.
 
 ```sh
 gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
@@ -28,9 +28,15 @@ gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cl
 
 `godmode --plain` uses static text and numbered choices. `GODMODE_PLAIN=1` keeps that mode for later commands. Key entry stays hidden; Enter shows the proposed edit, and a second Enter saves it.
 
+`--no-motion` disables animation. `NO_COLOR=1` disables color. **Help / FAQ** answers questions about sealing, token paths, network access, and source.
+
 ## Connect your agent
 
-**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. It shows the exact note and destination files; Enter on **Add to…** writes the note. Other agents use the copied note. New agent sessions run `godmode help` when a task needs a key or profile field.
+**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. Other agents use the copied note. New agent sessions run `godmode help` when a task needs a key or profile field.
+
+## Music
+
+`godmode music` plays local tracks through an initialized [Darunia's CLI](https://github.com/lofimichael/darunias-cli) installation. The visualizer follows the rendered audio. Synthesized tracks stay cached; `godmode music clear` removes the cache. The [music adapter](docs/MUSIC.md) has no bundled songs, fonts, or synth tools and can be omitted from the build.
 
 ## Commands
 
@@ -45,6 +51,11 @@ gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cl
 | `godmode profile get FIELD` | Print one profile field, such as `business_name` |
 | `godmode provider [PROVIDER]` | Setup, verification and recovery guide for a provider |
 | `godmode help` | The guide your agent reads, with what is saved |
+| `godmode faq` | Answers about Godmode |
+| `godmode music` | Local music and visualizer |
+| `godmode music clear` | Remove synthesized music from the cache |
+| `godmode source` | Print the embedded Python file engine |
+| `godmode build-info` | Compiler, dependencies and engine hash |
 
 ## Files
 
@@ -58,4 +69,6 @@ Keys stay local. Godmode stores credentials; provider tools handle sign-in and r
 
 Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes your keys too) and remove the two `# Godmode` lines from your shell startup file. Deleting a key here does not revoke it; revoke it at the provider.
 
-[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agents](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote machines](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Picard](docs/PICARD.md)
+Each release provides a separate source archive containing Go, Python and vendored dependencies. `godmode source` prints the native command's embedded file engine; `godmode build-info` lists its hash and the Go dependencies. `scripts/build-native.sh` rebuilds reviewed source for a byte-for-byte comparison. [Security](docs/SECURITY.md) covers release checksums, local files, and the trust in downloaded code.
+
+[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agents](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote machines](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Music](docs/MUSIC.md) · [Picard](docs/PICARD.md)

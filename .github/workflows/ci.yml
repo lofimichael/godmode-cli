@@ -15,29 +15,39 @@ concurrency:
 jobs:
   check:
     # Private repositories opt in after checking their included Actions budget.
-    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true'
+    if: "!github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true'"
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - name: Test readable source and terminal input
-        run: python3 -m unittest discover -s tests -p 'test_simple*.py'
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test the Python engine and terminal input
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Installer and managed updates
         run: |
-          sh -n install.sh
-          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh tests/install.sh tests/install-update.sh; fi
+          sh -n install.sh scripts/build-native.sh
+          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh scripts/build-native.sh tests/install.sh tests/install-update.sh; fi
           sh tests/install.sh
           sh tests/install-update.sh
-      - name: Assemble the plain-text executable
+      - name: Build and test the native terminal UI offline
+        env:
+          CGO_ENABLED: '0'
+          GOTOOLCHAIN: local
+          GOPROXY: 'off'
         run: |
-          python3 scripts/build.py --output target/godmode
-          target/godmode --version
+          sh scripts/build-native.sh
+          go test -mod=vendor ./...
+          target/godmode-native --version
+          GODMODE_TEST_NATIVE_BINARY="$PWD/target/godmode-native" sh tests/install-update.sh

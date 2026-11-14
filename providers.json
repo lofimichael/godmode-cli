@@ -10,11 +10,11 @@
         "label": "Access token",
         "goal": "Create a GitHub token",
         "steps": [
-          "On the pre-filled form, set **Resource owner** to the account agents use.",
-          "Under **Repository access**, select **All repositories**.",
-          "Select **Generate token** (again if asked), then copy the token."
+          "Choose the **Resource owner** and **All repositories**.",
+          "Select **Generate token** and copy it."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit GitHub's token page"
       }
     ],
     "access": "A fine-grained personal access token acts as its owner within one selected user or organization. The setup requests broad repository write access, including administration, across all repositories for that owner. Organization approval, token lifetime policy and your own role still apply; other accounts or API operations can require different permissions or a GitHub App.",
@@ -46,11 +46,12 @@
         "label": "API token",
         "goal": "Create a Cloudflare API token",
         "steps": [
-          "Select **Create Token**, then the **Read All Resources** template.",
-          "Change its permissions from **Read** to **Edit** where available.",
-          "Select **Continue to summary** > **Create Token**, then copy the token."
+          "Create a token from **Read All Resources**.",
+          "Change **Read** to **Edit** where available.",
+          "Review the summary, create the token and copy it."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit Cloudflare's token page"
       }
     ],
     "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. For domain registration, verify Registrar write permission for the intended account; changing Read to Edit does not establish Registrar access. The Registrar API beta registers supported available domains and requires a valid default payment method, a default registrant contact and acceptance of the Domain Registration Agreement. The user must set up billing in the dashboard. Check the domain's current availability and price and the user's purchase authorization before registering. R2 S3 credentials are a separate credential type.",
@@ -94,11 +95,10 @@
         "label": "Access token",
         "goal": "Create a Vercel token",
         "steps": [
-          "Type a token name.",
-          "Under **Scope**, select **Full Account**.",
-          "Choose an expiration, select **Create**, then copy the token."
+          "Make a token with **Full Account** scope. Choose an expiration date."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit Vercel's token page"
       }
     ],
     "access": "A Full Account token reaches your personal account and teams, subject to your role. Team and project scopes are alternatives when desired. Full-account requests need the intended team ID or slug when targeting team resources; a valid token can otherwise select a different default team.",
@@ -134,7 +134,8 @@
           "Type a name and set **Expires in** to **Never**.",
           "Select **Generate token**, then copy the token."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit Supabase's access tokens"
       }
     ],
     "access": "The legacy full-access personal token reaches all organizations and projects your account can access, including future ones. Scoped tokens are also available. This credential authenticates the Management API, CLI and compatible tools; it is not a database password, project publishable key or runtime secret key.",
@@ -171,18 +172,20 @@
         "goal": "Copy your Stripe test secret key",
         "note": "If there is no sk_test_ key, switch to a sandbox in the account picker.",
         "steps": [
-          "Under **Standard keys**, reveal the **Secret key** (sk_test_\u2026) and copy it."
+          "Under **Standard keys**, reveal the **Secret key** (sk_test_…) and copy it."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Stripe’s test keys"
       },
       {
         "name": "STRIPE_TEST_PUBLISHABLE_KEY",
         "label": "Test publishable key",
         "goal": "Copy your Stripe test publishable key",
         "steps": [
-          "Under **Standard keys**, copy the **Publishable key** (pk_test_\u2026)."
+          "Under **Standard keys**, copy the **Publishable key** (pk_test_…)."
         ],
-        "kind": "public-key"
+        "kind": "public-key",
+        "visit": "Visit Stripe’s test keys"
       },
       {
         "name": "STRIPE_LIVE_SECRET_KEY",
@@ -192,9 +195,10 @@
         "steps": [
           "Select **Create secret key** and type the verification code.",
           "Type a **Key name**, then select **Create**.",
-          "Select the key (sk_live_\u2026) to copy it."
+          "Select the key (sk_live_…) to copy it."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Stripe’s live keys"
       },
       {
         "name": "STRIPE_LIVE_PUBLISHABLE_KEY",
@@ -203,9 +207,10 @@
         "console": "https://dashboard.stripe.com/apikeys",
         "note": "If it starts with pk_test_, switch to live mode first.",
         "steps": [
-          "Under **Standard keys**, copy the **Publishable key** (pk_live_\u2026)."
+          "Under **Standard keys**, copy the **Publishable key** (pk_live_…)."
         ],
-        "kind": "public-key"
+        "kind": "public-key",
+        "visit": "Visit Stripe’s live keys"
       }
     ],
     "ready": [
@@ -246,9 +251,10 @@
         "goal": "Create a PostHog API key",
         "steps": [
           "Select **Create key**; the form is already filled in.",
-          "Copy the key (phx_\u2026) from the dialog."
+          "Copy the key (phx_…) from the dialog."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit PostHog's personal API keys"
       }
     ],
     "access": "A personal API key accesses private analytics, insights, flags and other APIs using your account permissions and the key's scopes. The MCP preset is convenient for broad agent use; confirm its organization/project selection. Use the matching US, EU or self-hosted instance. A project ingestion key is a different credential.",
@@ -289,7 +295,8 @@
           "Choose the workspace, **Notion API**, and an expiration.",
           "Select **Create token**, then copy the token."
         ],
-        "kind": "static-token"
+        "kind": "static-token",
+        "visit": "Visit Notion's token page"
       }
     ],
     "access": "The personal access token acts as its creator in one workspace, with the selected Notion API capability and that user's content permissions. The workspace can restrict who creates or uses PATs. An internal connection token is an alternative identity with capabilities and explicitly shared pages, independent of one user's membership.",
@@ -330,13 +337,14 @@
         "name": "GMAIL_APP_PASSWORD",
         "label": "App password",
         "goal": "Create a Gmail app password",
-        "drop": " \u00a0",
+        "drop": "  ",
         "note": "This page works only with 2-Step Verification turned on.",
         "steps": [
           "Type a name under **App name**, then select **Create**.",
           "Copy the 16-character password."
         ],
-        "kind": "app-password"
+        "kind": "app-password",
+        "visit": "Visit Google's app passwords"
       }
     ],
     "access": "The mailbox address and app password support IMAP/SMTP clients where Google Account policy allows them. App passwords require 2-Step Verification and can be unavailable for some organization accounts, security-key-only setups or Advanced Protection. They do not grant Gmail API, Google SSO or Workspace administration access.",
@@ -375,7 +383,8 @@
           "Pick your Ads project, then open or create a service account.",
           "Select **Keys** > **Add key** > **Create new key** > **JSON** > **Create**."
         ],
-        "kind": "service-account-json"
+        "kind": "service-account-json",
+        "visit": "Visit Google's service accounts"
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
@@ -389,7 +398,8 @@
           "Pick your Search Console project, then open or create a service account.",
           "Select **Keys** > **Add key** > **Create new key** > **JSON** > **Create**."
         ],
-        "kind": "service-account-json"
+        "kind": "service-account-json",
+        "visit": "Visit Google's service accounts"
       }
     ],
     "ready": [
@@ -452,10 +462,11 @@
         ],
         "note": "The copied key is ID:secret. This saves the ID; the next step, the secret.",
         "steps": [
-          "Select **Create API key**, name it, then select **Create key**.",
-          "Select **Copy API key** and keep the dialog open."
+          "Create and name an **API key**.",
+          "Copy the key. Keep the dialog open."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Higgsfield's API keys"
       },
       {
         "name": "HIGGSFIELD_API_KEY_SECRET",
@@ -466,7 +477,7 @@
           ":",
           1
         ],
-        "note": "This saves the part after the colon. Dialog closed? Create a new key.",
+        "note": "If the key is lost, create one and replace both the ID and secret.",
         "steps": [],
         "kind": "static-key",
         "prompt": "Paste the same key again"
@@ -508,7 +519,8 @@
           "Open **API Keys**, then select **Create API key**.",
           "Name the key, select **Create key**, then copy it."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Zernio's API keys"
       }
     ],
     "access": "The API key accesses Zernio profiles and resources within its permissions. This setup uses broad read/write access; narrower profile, resource and read-only scopes exist. Social accounts must also be connected with their own platform permissions.",
@@ -548,7 +560,8 @@
         "steps": [
           "Under **API authentication**, select **Show key** and copy it."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Prodigi's API settings"
       },
       {
         "name": "PRODIGI_API_KEY",
@@ -558,7 +571,8 @@
         "steps": [
           "Under **API authentication**, select **Show key** and copy it."
         ],
-        "kind": "static-key"
+        "kind": "static-key",
+        "visit": "Visit Prodigi's API settings"
       }
     ],
     "ready": [

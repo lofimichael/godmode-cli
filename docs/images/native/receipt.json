@@ -1,0 +1,164 @@
+{
+  "caption": "Godmode CLI \u00b7 2026-11-14",
+  "binary_sha256": "8eec579ccc60135f5ad09baeb06717f2fca0f85bf4177f1ae80d54803a45d7e6",
+  "screens": [
+    {
+      "file": "intro.png",
+      "command": "godmode ",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "home-empty.png",
+      "command": "godmode ",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "providers.png",
+      "command": "godmode setup",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "vercel.png",
+      "command": "godmode setup vercel",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "key-preview.png",
+      "command": "godmode setup vercel",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "home.png",
+      "command": "godmode ",
+      "columns": 110,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "home-80.png",
+      "command": "godmode ",
+      "columns": 80,
+      "rows": 24,
+      "theme": "dark"
+    },
+    {
+      "file": "home-40.png",
+      "command": "godmode ",
+      "columns": 40,
+      "rows": 12,
+      "theme": "dark"
+    },
+    {
+      "file": "home-light.png",
+      "command": "godmode ",
+      "columns": 110,
+      "rows": 32,
+      "theme": "light"
+    },
+    {
+      "file": "profile.png",
+      "command": "godmode profile",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "faq.png",
+      "command": "godmode faq",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "agents.png",
+      "command": "godmode agents",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    },
+    {
+      "file": "agents-added.png",
+      "command": "godmode agents",
+      "columns": 100,
+      "rows": 32,
+      "theme": "dark"
+    }
+  ],
+  "checks": [
+    "complete paste stayed pending until Enter",
+    "saved key stayed sealed",
+    "godmode run supplied the exact synthetic key",
+    "native terminal restored on exit",
+    "agent append preserved existing CRLF bytes and mode",
+    "existing agent notes stayed unchanged",
+    "synthetic key inventory stayed unchanged"
+  ],
+  "artifacts": {
+    "agents-added.png": {
+      "sha256": "400417135896416d3f2ff0b502f8d9c6e70d478e4fbae4f9811674406386649a",
+      "bytes": 23987
+    },
+    "agents.png": {
+      "sha256": "e29a5ec9bc2f20cccc3f81a65e5c1fb546394cebd75c156e2bd2b489b81e7332",
+      "bytes": 41929
+    },
+    "faq.png": {
+      "sha256": "73331638735b5a5e217058a94a596d67ea84f392afaa40d852f0217e41a81500",
+      "bytes": 25805
+    },
+    "home-40.png": {
+      "sha256": "05b3d34cc6efa54a810061d4ff74ebde1a3376a7cd267f04a26a9cc1b7eb4ac5",
+      "bytes": 14985
+    },
+    "home-80.png": {
+      "sha256": "98a3fecacfa67fb3c5e9ac6b04b3780c1be6a19b526c7e791bdc2fdcc0b0137d",
+      "bytes": 20323
+    },
+    "home-empty.png": {
+      "sha256": "75ccdc0a48c40f0760828c23b3ddd00f0709c868cffa45c2e9b16f276f7aeda7",
+      "bytes": 24122
+    },
+    "home-light.png": {
+      "sha256": "f673a1c674cc43e9aade0be8515433dd05b6b449a829d60c5b294b4b83509f56",
+      "bytes": 24916
+    },
+    "home.png": {
+      "sha256": "a7cc3d55b0bfdd210ea2787c97e91430c2cbdedb658c4c907de0410fddb0cc45",
+      "bytes": 24983
+    },
+    "intro.png": {
+      "sha256": "791dd67ad77a44fe70dbd4df2fd89e382f9a1ea045e1aa6dc987d9847c2141fd",
+      "bytes": 21219
+    },
+    "key-preview.png": {
+      "sha256": "502236d33e91310f5457ee347497a777ee90319a2ead9298cd6733e29cc3c1a4",
+      "bytes": 18797
+    },
+    "profile.png": {
+      "sha256": "1db680ed5dbf82e3099c9df36377a5c0b4eee3cfc0f0154a6208cb20b92f1ccc",
+      "bytes": 29130
+    },
+    "providers.png": {
+      "sha256": "e45255d11c519c3c939a92420268dc43ccc3c6b16fbd6a10651e90f8f024326c",
+      "bytes": 34370
+    },
+    "tour.gif": {
+      "sha256": "a7b00b6bea42f85380c8296c057efec574a093be6596c72e2093ad30aa727818",
+      "bytes": 70893
+    },
+    "vercel.png": {
+      "sha256": "2cfd61f23acee5008b23d6253d5b31f48fd92ea569713f1b1fe2f0578183796d",
+      "bytes": 23996
+    }
+  }
+}

@@ -1,47 +1,41 @@
-# Godmode 0.14.0
+# Godmode 0.15.0
 
-Godmode uses one welcome screen, independent setup bars, provider search, compact file edits, and static numbered prompts. The Python standard library remains its only runtime dependency.
+Godmode uses Bubble Tea 2 and Lip Gloss 2 for its native terminal interface. A readable embedded Python engine owns credentials, profiles and append-only agent notes. Direct commands and plain prompts use the same engine.
 
 ## Checks
 
 | Check | Result |
 | --- | --- |
-| Full Python suite | 181 tests passed on Python 3.9.6 and 3.14.5 |
-| Final profile resize regression | All 38 onboarding tests passed on both versions; two-column entry cannot save until the form is visible |
-| Static terminal mode | 27 terminal tests passed, including an 8×12 welcome and masked review, invalid menu numbers, paste rejection, and terminal restoration |
-| Installer and updater suites | Passed, including checksums, managed updates, previous executable, shell files, and concurrency |
-| Shell syntax and ShellCheck | Passed |
-| Actual 0.13.0 → 0.14.0 archive upgrade | Synthetic keys, profile, intro marker, and agent instructions stayed byte-for-byte identical; the saved key still reached a child command; previous executable reports 0.13.0 |
-| Layout sweep | 330 width/height combinations across intro, name, base prompts, searchable menus, and required previews completed without unexpected exceptions |
-| Added-text secret scan | Two synthetic test fixtures; no provider token or private-key matches |
-| Git whitespace check | Passed |
+| Full Python suite | 252 tests passed on Python 3.9.6 and 3.14.5 |
+| Final native regression suite | 16 tests passed on both interpreters, including the last UTF-8 refusal fix: 11 real-terminal tests and 5 packaging tests |
+| Go packages | All packages passed with the race detector and vendored dependencies |
+| Installer and updater | Passed; native upgrade preserved synthetic keys, profile, markers, agent notes, and the previous command |
+| ShellCheck | Passed for installer, native builder, installer tests and updater tests |
+| Agent append | Original bytes, CRLF, final newline state, permissions and inode preserved; repeat notes skipped; stale previews and unsafe targets refused |
+| Secret entry | Edited pastes stay masked, pastes never submit, interrupted/oversized pastes cancel without saving, queued test tails stay private |
+| Terminal state | Flags, bracketed-paste mode and alternate screen restored after success and cancellation |
+| Layout | Dark/light views across 8×5, 28×12, 40×18, 80×24 and 110×36; writes blocked when required previews cannot be read |
+| Native artifacts | macOS arm64/amd64 and Linux arm64/amd64 compiled; archive CPU headers checked |
+| Source rebuild | Extracted source archive rebuilt byte-identically with the pinned Go compiler on PATH, GOPROXY=off and GOSUMDB=off |
+| Embedded engine | `godmode source` matched the readable source assembler byte-for-byte |
+| Optional music | Real local synthesis, repeated cache reuse, WAV decoding, playback, PCM visualization, stop cleanup and scoped cache clearing exercised |
+| Music removal | `--without-music` build omitted the adapter and kept key/profile commands working |
+| Credential-pattern scan | Only the PEM validator and existing synthetic service-account fixture matched; no live credentials found |
 
-The profile resize tests were added after the full-suite run. Both final profile suites include them. All terminal and upgrade checks use temporary homes and synthetic data.
+The full suites ran before the final UTF-8 refusal case was added; the final native suites include it. The source rebuild used an already installed Go 1.26.7 compiler. Other CPU targets were compiled and inspected, not executed. Terminal sessions used synthetic homes and keys. Human newcomer task completion and screen-reader speech output have not been measured.
+
+## Independent review
+
+Separate agents reviewed the framework choice, copy, visuals, append behavior and native engineering. The [native review](NATIVE_REVIEW.md) records the paste bugs, their reproductions and fixes. The copy review led to working no-result search actions, accurate link hints, clearer multiline-address instructions and visible scroll position. A final visual pass used actual terminal captures.
 
 ## Screens
 
-The screenshots contain output from the real program in a pseudo-terminal. `scripts/record-demo.py` records first use and key saving. `scripts/record-tour.py` records profile, agent, search, error, and narrow-window states. Optional Pillow and pyte dependencies belong only to these recording tools.
+`scripts/record-native.py` records the running command, verifies its interactions and writes a receipt with binary and image hashes. Pillow and pyte belong only to the recording tools. The recorder implements the terminal scroll-region commands used by Bubble Tea.
 
-![Profile](../images/visual/profile.png)
+![Native terminal tour](../images/native/tour.gif)
 
-![Exact agent note and target files](../images/visual/agents.png)
+![Agents append preview](../images/native/agents.png)
 
-![Provider search](../images/visual/search.png)
+![Vercel token entry](../images/native/vercel.png)
 
-![Narrow home](../images/visual/narrow.png)
-
-![Narrow error](../images/visual/error.png)
-
-![Agent preview on a light terminal](../images/visual/agents-light.png)
-
-## Measurements
-
-| Measure | 0.13.0 | 0.14.0 |
-| --- | ---: | ---: |
-| Welcome screens | 3 | 1 |
-| Welcome titles and prose | 158 words | 25 words |
-| Enter presses in welcome | 3 | 1 |
-| Providers needed to fill the provider portion | 3 | 1 |
-| Runtime packages | 0 | 0 |
-
-The word count excludes diagrams, storage paths, and keyboard controls. Human newcomer task completion and screen-reader speech output have not been measured.
+The [experience map](CLI_EXPERIENCE.md), [framework comparison](CLI_FRAMEWORKS.md), and [NFO sources](NFO_DESIGN.md) contain the design decisions and primary-source links.

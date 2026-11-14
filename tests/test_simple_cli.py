@@ -176,13 +176,13 @@ class CLI(unittest.TestCase):
         self.assertEqual((self.home/'seal.key').stat().st_mode & 0o777,0o600)
         again=self.terminal(['setup','github']);again.expect('Paste your token:')
         again.expect('Replace GH_TOKEN=sealed(…)')
-        self.assertIn('GitHub · Access token  ✓ saved', plain(again.capture))
+        self.assertIn("Visit GitHub's token page  ✓ saved", plain(again.capture))
         again.send(b'\x1b');again.done(130)
         self.assertIn('Cancelled.',plain(again.capture))
         self.assertNotIn('Previously saved keys were kept',plain(again.capture))
         env,record=self.opener()
         keep=self.terminal(['set','GH_TOKEN'],env);keep.expect('Enter opens github.com')
-        self.assertIn('GitHub · Access token',plain(keep.capture))
+        self.assertIn("Visit GitHub's token page",plain(keep.capture))
         self.assertIn('Resource owner',plain(keep.capture))
         keep.send(b'\r');keep.expect('Opened github.com')
         keep.send(b'\x1b');keep.done(130)
@@ -293,7 +293,7 @@ class CLI(unittest.TestCase):
         self.assertIsNone(terminal.process.poll())
         terminal.send(b'cl\r');terminal.expect('Paste your token:');terminal.settle(.15)
         screen=[row for row in Screen(80).feed(terminal.capture).lines() if row]
-        key_rows=screen[screen.index(next(r for r in screen if r.startswith('  Cloudflare · API token'))):]
+        key_rows=screen[screen.index(next(r for r in screen if r.startswith("  Visit Cloudflare's token page"))):]
         self.assertLessEqual(len(key_rows),12,key_rows)
         self.assertTrue(all(len(row)<80 for row in key_rows))
         self.assertTrue(all(row.startswith('  ') for row in key_rows),key_rows)  # Every row at the margin.
@@ -360,7 +360,7 @@ class CLI(unittest.TestCase):
                 terminal.after(mark,shown)
                 terminal.settle(.15)
                 self.assert_one_region(terminal)
-                self.assertEqual(Screen(100).feed(terminal.capture).count('GitHub · Access token'),1)
+                self.assertEqual(sum(Screen(100).feed(terminal.capture).count(title) for title in ('GitHub · Access token', "Visit GitHub's token page")),1)
         self.assertEqual(record.read_text(),self.providers['github']['console']+'\n')
         terminal.send(b'\x03');terminal.done(130)
         self.assertNotIn('GH_TOKEN',values(self.file))
@@ -458,7 +458,7 @@ class CLI(unittest.TestCase):
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Esc back')
         self.assertEqual(self.pointed(terminal),'Test secret key')
-        terminal.send(b'\r');terminal.expect('Stripe · Test secret key')
+        terminal.send(b'\r');terminal.expect('Visit Stripe’s test keys')
         terminal.paste('sk_test_DEMO_ONLY_first_key_0001')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved STRIPE_TEST_SECRET_KEY=sealed(sk_•••••001)')
@@ -467,7 +467,7 @@ class CLI(unittest.TestCase):
         self.assertRegex('\n'.join(Screen(100).feed(terminal.capture).lines()),r'\n  Test secret key +✓ saved\n')
         # Each key opens its own page: live keys are not on the sandbox page.
         mark=len(terminal.capture)
-        terminal.send(b'l\r');terminal.after(mark,'Stripe · Live secret key')
+        terminal.send(b'l\r');terminal.after(mark,'Visit Stripe’s live keys')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Opened dashboard.stripe.com')
         self.assertEqual(record.read_text().splitlines(),['https://dashboard.stripe.com/apikeys'])
@@ -637,7 +637,7 @@ class CLI(unittest.TestCase):
         mark=len(gmail.capture)
         # Saved: the app password prompt follows directly, with no list in between.
         gmail.send(b'\r');gmail.after(mark,'  ✓ Saved GMAIL_USER=sealed(demo@example.com)')
-        gmail.after(mark,'Gmail · App password');gmail.after(mark,'Paste your password:')
+        gmail.after(mark,"Visit Google's app passwords");gmail.after(mark,'Paste your password:')
         self.assertNotIn('Esc done',plain(gmail.capture[mark:]))
         # Google shows app passwords in groups of four; the spaces are not part of it.
         mark=len(gmail.capture)
@@ -703,7 +703,7 @@ class CLI(unittest.TestCase):
         # Saving the last provider not ready further down wraps to the first one still not ready.
         terminal.send(b'z')
         self.assertTrue(self.pointed(terminal).startswith('Zernio'))
-        terminal.send(b'\r');terminal.expect('Zernio · API key')
+        terminal.send(b'\r');terminal.expect("Visit Zernio's API keys")
         terminal.paste('zernio_DEMO_ONLY_value_123456')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved ZERNIO_API_KEY');terminal.after(mark,MENU)
@@ -757,10 +757,10 @@ class CLI(unittest.TestCase):
                                 self.assertGreaterEqual(found,0,step)
                                 position=found+1
                             self.assertIn(key.get('note',''),flat)
-                            self.assertTrue(flat.startswith(provider['name'] + ' · ' + key['label']))
+                            self.assertTrue(flat.startswith(key.get('visit', provider['name'] + ' · ' + key['label'])))
                             page=key['console'] if 'console' in key else provider['console']
-                            if page and len(provider['name'] + ' · ' + key['label'])+2+len(page)<width:
-                                self.assertEqual(text.splitlines()[0],provider['name'] + ' · ' + key['label']+': '+page)
+                            if page and len(page)<width:
+                                self.assertIn(page, text.splitlines())
                             self.assertEqual(page is not None and len(page)<width, bool(page) and page in text)
                             # Exactly the labels marked ** in the data are bold, in order.
                             labels=[label for step in key['steps'] for label in step.split('**')[1::2]]

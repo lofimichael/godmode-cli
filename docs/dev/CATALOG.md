@@ -1,6 +1,6 @@
 # Provider catalog
 
-[providers.json](../../providers.json) is the only source of provider instructions. The build embeds it in the installed script.
+[providers.json](../../providers.json) is the only source of provider instructions. The native build embeds it in the Python file engine inside the executable.
 
 A provider has `id` (used by `setup` and `provider`), `name`, a short menu `about`, a default `console` page, and `key` entries. Its printable agent guide has:
 
@@ -19,4 +19,4 @@ Each key has:
 - `file`: accept a dragged key file. `format`: `google-service-account` checks the standard Google key shape, not live access.
 - `drop`: characters removed from interactive input. `split`: `[":", 0]` keeps the first part and `[":", 1]` keeps the rest. Interactive `godmode set NAME` uses these rules too; `--stdin` saves its input without them.
 
-Never put keys, account-specific facts or personal operating policy in the catalog. Keep onboarding steps here rather than copying them into separate documents. After editing it, rebuild with `scripts/build.py` and reinstall.
+Never put keys, account-specific facts or personal operating policy in the catalog. Keep onboarding steps here rather than copying them into separate documents. After editing it, rebuild with `sh scripts/build-native.sh` and reinstall the new native executable. That build runs `scripts/build.py` to refresh the embedded engine and catalog first.
