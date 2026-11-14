@@ -156,8 +156,17 @@ case "$1" in
                 *) exit 1 ;;
             esac
         done
-        cp "$GODMODE_TEST_FIXTURES/$name" "$dir/$name"
-        cp "$GODMODE_TEST_FIXTURES/SHA256SUMS" "$dir/SHA256SUMS"
+        # gh reports success when any --pattern matches, including SHA256SUMS
+        # alone. Existing destination files fail without --clobber.
+        found=no
+        for asset in "$name" SHA256SUMS; do
+            if [ -f "$GODMODE_TEST_FIXTURES/$asset" ]; then
+                [ ! -e "$dir/$asset" ] || exit 1
+                cp "$GODMODE_TEST_FIXTURES/$asset" "$dir/$asset"
+                found=yes
+            fi
+        done
+        [ "$found" = yes ]
         ;;
     *) exit 1 ;;
 esac
@@ -221,7 +230,8 @@ grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
 if grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"; then
     echo 'portable archive was downloaded despite an available native archive' >&2; exit 1
 fi
-# A release carrying only the portable script remains installable.
+# A release carrying only the portable script remains installable even when gh
+# returns success for the missing native archive because SHA256SUMS matched.
 mv "$scratch/fixtures/$fixture_name" "$scratch/native-held.tar.gz"
 : > "$GODMODE_TEST_NETWORK_LOG"
 PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/legacy-portable-home" > /dev/null
@@ -229,6 +239,27 @@ cmp "$scratch/artifact/godmode" "$scratch/legacy-portable-home/bin/godmode"
 grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
 grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"
 mv "$scratch/native-held.tar.gz" "$scratch/fixtures/$fixture_name"
+# Success with only the archive is also incomplete: neither target installs
+# without SHA256SUMS, and the failed download leaves no destination or residue.
+mv "$scratch/fixtures/SHA256SUMS" "$scratch/checksums-held"
+if PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/no-checksum-home" > "$scratch/no-checksum-output" 2>&1; then
+    echo 'archive-only GitHub CLI success was accepted' >&2; exit 1
+fi
+grep -q 'cannot download the release archive and checksum; nothing installed' "$scratch/no-checksum-output"
+[ ! -e "$scratch/no-checksum-home" ]
+[ -z "$(ls -A "$scratch/downloads")" ]
+mv "$scratch/checksums-held" "$scratch/fixtures/SHA256SUMS"
+# SHA256SUMS alone cannot install either target or leave an empty home.
+mv "$scratch/fixtures/$fixture_name" "$scratch/native-held.tar.gz"
+mv "$scratch/fixtures/$universal_name" "$scratch/universal-held.tar.gz"
+if PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/no-archive-home" > "$scratch/no-archive-output" 2>&1; then
+    echo 'checksum-only GitHub CLI success was accepted' >&2; exit 1
+fi
+grep -q 'cannot download the release archive and checksum; nothing installed' "$scratch/no-archive-output"
+[ ! -e "$scratch/no-archive-home" ]
+[ -z "$(ls -A "$scratch/downloads")" ]
+mv "$scratch/native-held.tar.gz" "$scratch/fixtures/$fixture_name"
+mv "$scratch/universal-held.tar.gz" "$scratch/fixtures/$universal_name"
 # A portable script does not depend on a known native CPU architecture.
 GODMODE_TEST_ARCH=riscv64 PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-cpu-home" > /dev/null
 cmp "$scratch/artifact/godmode" "$scratch/universal-cpu-home/bin/godmode"

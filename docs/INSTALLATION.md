@@ -27,6 +27,18 @@ godmodeup
 
 `godmodeup` replaces only the files it installed, keeps the previous executable as `~/.godmode/bin/godmode.previous`, and never touches your profile or keys. It refuses an executable it did not install; `--force` adopts it. `--version vX.Y.Z` installs a specific release and `--setup` opens setup afterwards.
 
+## Upgrade an older updater
+
+The 0.14 updater can report `archive or checksum file is missing` when GitHub downloads a checksum but no matching universal archive. It stops before changing installed files. Download the native archive explicitly and give it to the updater. On Apple Silicon macOS:
+
+```sh
+mkdir -p godmode-update
+gh release download v0.15.1 --repo lofimichael/godmode-cli --pattern 'godmode-v0.15.1-aarch64-apple-darwin.tar.gz' --pattern SHA256SUMS --dir godmode-update
+godmodeup --archive godmode-update/godmode-v0.15.1-aarch64-apple-darwin.tar.gz --checksum godmode-update/SHA256SUMS
+```
+
+Use the destination machine's archive suffix below. This also installs the corrected updater. Later `godmodeup` calls use native archives first and check that both downloads exist.
+
 ## Install offline
 
 Download the native archive for the destination machine and its `SHA256SUMS`, then install them locally. For example, on Apple Silicon macOS:

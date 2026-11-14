@@ -1,4 +1,4 @@
-# Godmode 0.15.0
+# Godmode 0.15.1
 
 Godmode uses Bubble Tea 2 and Lip Gloss 2 for its native terminal interface. A readable embedded Python engine owns credentials, profiles and append-only agent notes. Direct commands and plain prompts use the same engine.
 
@@ -23,6 +23,8 @@ Godmode uses Bubble Tea 2 and Lip Gloss 2 for its native terminal interface. A r
 | Credential-pattern scan | Only the PEM validator and existing synthetic service-account fixture matched; no live credentials found |
 
 The full suites ran before the final UTF-8 refusal case was added; the final native suites include it. The source rebuild used an already installed Go 1.26.7 compiler. Other CPU targets were compiled and inspected, not executed. Terminal sessions used synthetic homes and keys. Human newcomer task completion and screen-reader speech output have not been measured.
+
+The real 0.14 GitHub upgrade exposed a checksum-only download being treated as success. It stopped before changing files. Version 0.15.1 checks both downloaded files; the installer regression covers a successful GitHub response with a missing first-choice archive. An explicit downloaded native archive supplies the compatible upgrade path for the old updater.
 
 ## Independent review
 

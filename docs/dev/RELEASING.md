@@ -39,7 +39,7 @@ The Linux names retain `-musl` for compatibility with older updaters; the binari
 are static Go builds.
 
 Do not add a `-unix.tar.gz` alias. Pre-0.15 updaters try that name first, then the
-native target. Omitting it makes those updaters install the native command.
+native target. With curl, omitting it makes those updaters try the native command. The 0.14 GitHub CLI route can return success for a checksum-only download and stop before falling back; use the explicit archive upgrade in docs/INSTALLATION.md for those installs.
 New updaters prefer native targets and retain the legacy universal fallback.
 
 Create a private draft release with all files in the distribution directory:

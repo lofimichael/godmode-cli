@@ -361,7 +361,11 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     fetch_archive() {
         name=$1
         if [ "$transport" = gh ]; then
-            gh release download "$version" --repo "github.com/$repository" --pattern "$name" --pattern SHA256SUMS --dir "$download_dir" >/dev/null 2>&1
+            # gh succeeds when either pattern matches. Both files must arrive
+            # before this archive can win over the legacy fallback.
+            gh release download "$version" --repo "github.com/$repository" --pattern "$name" --pattern SHA256SUMS --dir "$download_dir" >/dev/null 2>&1 &&
+            [ -f "$download_dir/$name" ] && [ ! -L "$download_dir/$name" ] &&
+            [ -f "$download_dir/SHA256SUMS" ] && [ ! -L "$download_dir/SHA256SUMS" ]
         else
             base=https://github.com/$repository/releases/download/$version
             curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/$name" "$base/$name" 2>/dev/null &&
