@@ -20,22 +20,59 @@ GitHub CLI login can access private/draft releases; public releases use HTTPS.
 Default destination: ~/.godmode/bin/godmode (or $GODMODE_HOME/bin/godmode).
 --home DIR selects a home; --bin-dir DIR changes only the executable directory.
 --no-setup installs only; --setup also opens setup for an offline installation.
-godmodeup updates only files matching its install receipt; setup is opt-in.
+godmodeup updates only files matching its install receipt and downloads nothing
+when the installed version is current; setup is opt-in.
 Unknown existing files require --force. Symlinks are always refused.
---path adds one source line for the generated env file to your shell startup file.
-Without --path, shell profiles stay unchanged. Credentials are never migrated.
+--path adds one source line for the generated env file to ~/.zshenv (zsh),
+~/.bashrc and the bash login file, or ~/.profile (sh, dash, ksh). Other shells
+are left unchanged. Without --path, shell startup files stay unchanged.
+Credentials are never migrated.
 USAGE
 }
 # Styling follows the destination descriptor, including stderr redirections.
-# Copyable commands stay plain; NO_COLOR (even empty) and TERM=dumb opt out.
+# Copyable commands stay plain; NO_COLOR (even empty), CLICOLOR=0 and an empty
+# or dumb TERM opt out, as in the CLI.
 paint() {
-    if [ -t 1 ] && [ "${NO_COLOR+x}" != x ] && [ "${TERM:-}" != dumb ] && [ "${CLICOLOR:-}" != 0 ]; then
+    if [ -t 1 ] && [ "${NO_COLOR+x}" != x ] && [ "${TERM:-dumb}" != dumb ] && [ "${CLICOLOR:-}" != 0 ]; then
         printf '\033[%sm%s\033[0m' "$1" "$2"
     else
         printf '%s' "$2"
     fi
 }
 say() { paint "$1" "$2"; printf '\n'; }
+# The CLI's glyph rule: Unicode for UTF-8 locales and the C locale (which Python
+# reads as UTF-8), never on the Linux console. The file itself stays ASCII.
+unicode() {
+    [ "${TERM:-}" != linux ] || return 1
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-C}}}" in
+        C|POSIX|*[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) return 0 ;;
+    esac
+    return 1
+}
+# Progress and notes share the CLI's two-column gutter; errors stay flush left.
+check() {
+    if unicode; then mark=$(printf '\342\234\223'); else mark=+; fi
+    printf '  '
+    paint '32' "$mark"
+    printf ' %s\n' "$1"
+}
+# Show a path as it would be typed: ~ for HOME, quoted only when a shell needs it.
+show_path() {
+    shown_prefix=
+    shown_rest=$1
+    shown_home=${HOME%/}
+    if [ -n "$shown_home" ]; then
+        # shellcheck disable=SC2088 # The ~ is printed for the reader's shell to expand.
+        case "$1" in
+            "$shown_home") printf '~'; return 0 ;;
+            "$shown_home"/*) shown_prefix='~/'; shown_rest=${1#"$shown_home"/} ;;
+        esac
+    fi
+    case "$shown_rest" in
+        ''|*[!A-Za-z0-9_./+:@%,=-]*) printf '%s' "$shown_prefix"; shell_quote "$shown_rest" ;;
+        *) printf '%s%s' "$shown_prefix" "$shown_rest" ;;
+    esac
+}
 fail() { say '31' "godmode install: $*" >&2; exit 1; }
 need_value() { [ "$#" -ge 2 ] && [ -n "$2" ] || fail "missing option value"; }
 valid_version() {
@@ -48,13 +85,35 @@ shell_quote() {
     printf '%s' "$1" | sed "s/'/'\\\\''/g"
     printf "'"
 }
-setup_command() {
-    shell_quote "$destination"
-    if [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; then
+# The command a person types to open Godmode. It is the bare name unless another
+# godmode would run instead or the directory cannot be on PATH.
+godmode_command() {
+    if [ "$direct" = yes ]; then show_path "$destination"; else printf 'godmode'; fi
+    if { [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; } && [ "$godmode_home" != "${HOME%/}/.godmode" ]; then
         printf ' --home '
-        shell_quote "$godmode_home"
+        show_path "$godmode_home"
     fi
-    printf ' %s\n' "${1:-init}"
+}
+# Prints X.Y.Z for a recorded executable that reports a version, otherwise nothing.
+installed_version() {
+    [ "$existing" = yes ] && managed_file "$destination" godmode || return 0
+    reported=$("$destination" --version </dev/null 2>/dev/null) || return 0
+    case "$reported" in "godmode "*) reported=${reported#godmode } ;; *) return 0 ;; esac
+    if valid_version "v$reported"; then printf '%s' "$reported"; fi
+}
+path_note() {
+    case ":${PATH:-}:" in *:"$bin_dir":*) return 0 ;; esac
+    case "$bin_dir" in
+        *:*) printf '  %s\n' 'A directory with a colon cannot be on PATH; run godmode by its full path.'; return 0 ;;
+    esac
+    if [ -n "$startup" ]; then
+        printf '  Open a new terminal, or run:  . %s\n' "$(show_path "$env_file")"
+        return 0
+    fi
+    printf "  Add %s to PATH in your shell's startup file.\n" "$(show_path "$bin_dir")"
+    if [ "$env_ready" = yes ] && [ "$shell_known" = yes ]; then
+        printf '  For this shell, run:  . %s\n' "$(show_path "$env_file")"
+    fi
 }
 tty_device() {
     # Descriptor 3 holds the caller's stdout before command substitution captures
@@ -119,9 +178,12 @@ download_dir=
 updater_staged=
 receipt_staged=
 env_staged=
+env_ready=no
 backup_staged=
 lock_dir=
 staged=
+release_url=
+setup_tty=
 repository=lofimichael/godmode-cli
 previous_command=$(command -v godmode 2>/dev/null || :)
 while [ "$#" -gt 0 ]; do
@@ -164,6 +226,7 @@ if [ "$bin_option:$home_option:$update" = no:no:yes ]; then
                 */bin) godmode_home=${bin_dir%/bin}; home_option=yes; home_record=explicit ;;
             esac
         elif [ -z "$recorded_home" ] && [ "$bin_dir" != "$godmode_home/bin" ]; then
+            printf '  '
             say '33' 'Older install receipt: using normal configuration discovery. Select a home with godmode --home DIR if needed.'
         fi
     fi
@@ -178,16 +241,24 @@ receipt=$bin_dir/.godmode-install-receipt
 [ ! -L "$updater" ] || fail "updater is a symlink; nothing installed"
 [ ! -L "$receipt" ] || fail "install receipt is a symlink; nothing installed"
 [ ! -e "$receipt" ] || [ -f "$receipt" ] || fail "install receipt is not a regular file"
+shadow=
+[ -z "$previous_command" ] || [ "$previous_command" = "$destination" ] || shadow=$previous_command
+direct=no
+[ -z "$shadow" ] || direct=yes
+case "$bin_dir" in *:*) direct=yes ;; esac
 existing=no
 if [ -e "$destination" ]; then
     existing=yes
     [ -f "$destination" ] || fail "destination is not a regular file"
     if [ "$force" != yes ] && { [ "$update" != yes ] || ! managed_file "$destination" godmode; }; then
-        say '31' "godmode install: $destination already exists; nothing replaced." >&2
-        say '36' 'Start the existing installation with:' >&2
-        printf '  ' >&2
-        setup_command init >&2
-        fail "use godmodeup for managed updates; an unknown or modified binary requires explicit --force"
+        if managed_file "$destination" godmode; then
+            say '31' "godmode install: $(show_path "$destination") already exists; nothing replaced." >&2
+            printf 'Run %s to set up, or godmodeup to update.\n' "$(godmode_command)" >&2
+        else
+            say '31' "godmode install: $(show_path "$destination") was changed or installed another way; nothing replaced." >&2
+            printf '%s\n' 'Use --force to replace it.' >&2
+        fi
+        exit 1
     fi
 fi
 existing_updater=no
@@ -198,30 +269,36 @@ if [ -e "$updater" ]; then
         fail "godmodeup is not the recorded updater; nothing replaced (use --force to adopt it explicitly)"
     fi
 fi
-# PATH setup is a separate, explicit action. Never source the existing profile.
+# PATH setup is a separate, explicit action. Never source an existing startup file.
 env_file=$godmode_home/env
 case "$bin_dir" in *:*) [ "$path_setup" != yes ] || fail "a bin directory containing a colon cannot be added to PATH" ;; esac
-profile=
-profile_extra=
+# Every zsh reads .zshenv, including agents' non-interactive shells. An existing
+# .zshrc line from an older install stays as it is. Other shells get a note.
+startup=
+startup_extra=
+shell_name=${SHELL:-sh}
+shell_known=yes
+case "${shell_name##*/}" in
+    zsh) startup=${ZDOTDIR:-$HOME}/.zshenv ;;
+    bash)
+        startup=$HOME/.bashrc
+        if [ -e "$HOME/.bash_profile" ]; then startup_extra=$HOME/.bash_profile
+        elif [ -e "$HOME/.bash_login" ]; then startup_extra=$HOME/.bash_login
+        else startup_extra=$HOME/.profile
+        fi
+        ;;
+    sh|dash|ksh) startup=$HOME/.profile ;;
+    *) shell_known=no ;;
+esac
 if [ "$path_setup" = yes ]; then
-    shell_name=${SHELL:-sh}
-    case "${shell_name##*/}" in
-        zsh) profile=${ZDOTDIR:-$HOME}/.zshrc ;;
-        bash)
-            profile=$HOME/.bashrc
-            if [ -e "$HOME/.bash_profile" ]; then profile_extra=$HOME/.bash_profile
-            elif [ -e "$HOME/.bash_login" ]; then profile_extra=$HOME/.bash_login
-            else profile_extra=$HOME/.profile
-            fi
-            ;;
-        sh|dash|ksh) profile=$HOME/.profile ;;
-        *) fail "unknown shell; omit --path and source the generated env file in your shell" ;;
-    esac
-    for candidate in "$profile" "$profile_extra"; do
+    for candidate in "$startup" "$startup_extra"; do
         [ -n "$candidate" ] || continue
         [ ! -L "$candidate" ] || fail "shell startup file is a symlink; add the env source line yourself"
         [ ! -e "$candidate" ] || [ -f "$candidate" ] || fail "shell startup file is not a regular file"
     done
+else
+    startup=
+    startup_extra=
 fi
 
 trap cleanup 0
@@ -242,7 +319,6 @@ if [ -z "$archive$binary$checksum$expected" ]; then
         Darwin:*|Linux:*) target=unix ;;
         *) fail "Godmode supports macOS and Linux" ;;
     esac
-    download_dir=$(mktemp -d "${TMPDIR:-/tmp}/godmode-download.XXXXXX")
     transport=curl
     if command -v gh >/dev/null 2>&1; then
         # gh owns authentication. No token is requested, captured or logged here.
@@ -267,6 +343,21 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     fi
     # Validate remote metadata before it can become a URL, pattern or filename.
     valid_version "$version" || fail "release tag must be vX.Y.Z"
+    release_url=https://github.com/$repository/releases/tag/$version
+    installed=
+    [ "$update" != yes ] || installed=$(installed_version)
+    # An explicit --force, --setup or --path still runs in full on the same version.
+    if [ "$installed" = "${version#v}" ] && [ "$force:$setup:$path_setup" = no:no:no ]; then
+        printf '  Godmode %s is up to date.\n' "$installed"
+        exit 0
+    fi
+    if [ -n "$installed" ] && [ "$installed" != "${version#v}" ]; then
+        if unicode; then arrow=$(printf '\342\206\222'); else arrow='->'; fi
+        printf '  Godmode %s %s %s\n' "$installed" "$arrow" "${version#v}"
+    else
+        printf '  Downloading Godmode %s\n' "${version#v}"
+    fi
+    download_dir=$(mktemp -d "${TMPDIR:-/tmp}/godmode-download.XXXXXX")
     fetch_archive() {
         name=$1
         if [ "$transport" = gh ]; then
@@ -277,7 +368,6 @@ if [ -z "$archive$binary$checksum$expected" ]; then
             curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null
         fi
     }
-    say '36' "Downloading Godmode $version..."
     if ! fetch_archive "godmode-$version-unix.tar.gz"; then
         [ "$target" != unix ] || fail "no downloadable portable archive for $version; nothing installed"
         rm -f "$download_dir/SHA256SUMS"
@@ -422,99 +512,61 @@ if [ -n "$env_staged" ]; then
     if [ ! -e "$env_file" ]; then
         ln "$env_staged" "$env_file" || fail "env file appeared during install"
     fi
+    env_ready=yes
 fi
 mv -f "$receipt_staged" "$receipt"
 receipt_staged=
-if [ "$path_setup" = yes ]; then
+if [ "$update" = yes ]; then
+    check "Updated $(show_path "$destination")"
+    [ -z "$release_url" ] || printf '  Changes: %s\n' "$release_url"
+else
+    check "Installed $(show_path "$destination")"
+fi
+if [ -n "$startup" ]; then
     source_line="[ ! -f $(shell_quote "$env_file") ] || . $(shell_quote "$env_file")"
-    for candidate in "$profile" "$profile_extra"; do
+    added=
+    for candidate in "$startup" "$startup_extra"; do
         [ -n "$candidate" ] || continue
-        [ ! -L "$candidate" ] || fail "shell startup file became a symlink; profile unchanged"
+        [ ! -L "$candidate" ] || fail "shell startup file became a symlink; it was not changed"
         [ ! -e "$candidate" ] || [ -f "$candidate" ] || fail "shell startup file is no longer a regular file"
         if [ ! -f "$candidate" ] || ! grep -Fqx "$source_line" "$candidate"; then
             if [ -f "$candidate" ]; then
-                profile_backup=$(mktemp "$candidate.godmode-backup.XXXXXX")
-                cp -p "$candidate" "$profile_backup"
+                startup_backup=$(mktemp "$candidate.godmode-backup.XXXXXX")
+                cp -p "$candidate" "$startup_backup"
             fi
             mkdir -p "$(dirname "$candidate")"
             printf '\n# Godmode\n%s\n' "$source_line" >> "$candidate"
-            printf 'Added Godmode to %s\n' "$candidate"
+            added=${added:+$added and }$(show_path "$candidate")
         fi
     done
+    [ -z "$added" ] || check "Added $(show_path "$bin_dir") to PATH in $added"
 fi
-paint '32' 'Installed '
-paint '0' "$destination"
-printf '\n'
-if [ "$path_setup" = yes ]; then
-    printf '%s\n' 'Configuration and credentials unchanged.'
-else
-    printf '%s\n' 'No configuration, credentials or shell profile changed.'
-fi
-if [ -x "$updater" ]; then
-    printf 'Update with: '
-    shell_quote "$updater"
-    printf '\n'
-fi
-if [ -n "$previous_command" ] && [ "$previous_command" != "$destination" ]; then
-    printf 'Another godmode command was already available: '
-    paint '0' "$previous_command"
-    printf '\n'
-    printf '%s\n' 'It was not changed. Use the full path below to select this installation.'
-fi
-printf '\n'
-if [ "$update" = yes ]; then
-    say '36' 'Run:'
-    printf '  '
-    shell_quote "$destination"
-    if [ "$home_option" = yes ]; then
-        printf ' --home '
-        shell_quote "$godmode_home"
-    fi
-    printf '\n'
-else
-    say '36' 'Start interactive setup:'
-    printf '  '
-    setup_command
-fi
-case ":${PATH:-}:" in
-    *:"$bin_dir":*) ;;
-    *)
-        case "$bin_dir" in
-            *:*) printf '\nThis directory contains a colon; use the full executable path instead of adding it to PATH.\n' ;;
-            *)
-                printf '\n'
-                say '36' 'For this shell, add the bin directory to PATH:'
-                if [ -f "$env_file" ] && { [ "$bin_option" != yes ] || [ "$path_setup" = yes ]; }; then
-                    printf '  . '
-                    shell_quote "$env_file"
-                    printf '\n'
-                else
-                    printf '  export PATH='
-                    shell_quote "$bin_dir"
-                    # shellcheck disable=SC2016 # Print a command for the user's shell.
-                    printf ':"$PATH"\n'
-                fi
-                [ "$path_setup" = yes ] || printf '%s\n' 'Use --path to add it to your shell startup file.'
-                ;;
-        esac
-        ;;
-esac
 if [ "$setup" = yes ]; then
     exec 3>&1
     setup_tty=$(tty_device) || setup_tty=
     exec 3>&-
-    if [ -n "$setup_tty" ]; then
-        printf '\n'
-        say '36' 'Starting interactive setup...'
-        if [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; then
-            # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
-            "$destination" --home "$godmode_home" init <"$setup_tty" >"$setup_tty" 2>&1
-        else
-            # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
-            "$destination" init <"$setup_tty" >"$setup_tty" 2>&1
-        fi
+fi
+if [ -n "$setup_tty" ]; then
+    # The install is complete. Leaving setup early (Esc, Ctrl-C) does not undo it.
+    trap : INT
+    if [ "$home_option" = yes ] || [ -n "${GODMODE_HOME:-}" ]; then
+        # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
+        "$destination" --home "$godmode_home" init <"$setup_tty" >"$setup_tty" 2>&1 || :
     else
-        printf '\nNo usable terminal device was found; run the setup command above in a terminal.\n'
+        # shellcheck disable=SC2094 # A character device is intentionally opened both ways.
+        "$destination" init <"$setup_tty" >"$setup_tty" 2>&1 || :
+    fi
+    trap 'exit 130' INT
+fi
+[ -z "$shadow" ] || printf '  Another godmode is on PATH at %s; it was not changed.\n' "$(show_path "$shadow")"
+if [ "$update" != yes ] || [ "$path_setup" = yes ]; then
+    path_note
+fi
+if [ -z "$setup_tty" ]; then
+    if [ "$setup" = yes ]; then
+        printf '  To set up, run this in a terminal:  %s\n' "$(godmode_command)"
+    elif [ "$update" != yes ]; then
+        printf '  To set up, run:  %s\n' "$(godmode_command)"
     fi
 fi
 }

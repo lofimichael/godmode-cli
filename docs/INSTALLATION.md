@@ -1,61 +1,43 @@
-# Install and update
+# Installation
 
-Godmode is one readable Python script. It needs Python 3.9+ and a POSIX system; it installs no Python packages. The same script runs on macOS and Linux. This release is exercised locally on macOS; the Linux CI workflow is available separately.
-
-For the private repository, use a GitHub CLI login with repository access:
+Godmode needs macOS or Linux and Python 3.9 or newer. It installs no Python packages and needs no root access.
 
 ```sh
-gh api -H 'Accept: application/vnd.github.raw+json' \
-  repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+curl -fsSL https://github.com/lofimichael/godmode-cli/releases/latest/download/install.sh | sh -s -- --path
 ```
 
-The installer verifies the release checksum, installs under `~/.godmode/bin`, and opens setup. `--path` adds an idempotent source line to your shell startup file, backing up an existing profile. Omit it to manage PATH yourself. No root permissions or package manager are needed when Python is already installed.
+The installer checks the release's SHA-256, installs `~/.godmode/bin/godmode` and `godmodeup`, and starts setup. Options go after `--`:
 
-Open a new terminal, or use the current one:
+| Option | Effect |
+| --- | --- |
+| `--path` | Adds a line that sources `~/.godmode/env` to your shell's startup file (`~/.zshenv` for zsh, so agents' non-interactive shells find `godmode` too), backing it up first. Without it, no startup file changes. |
+| `--no-setup` | Installs without starting setup. |
+| `--home DIR` | Installs into `DIR/bin` instead of `~/.godmode/bin`. Later commands need `--home DIR` or `GODMODE_HOME=DIR` to use that home. |
+| `--version vX.Y.Z` | Installs that release instead of the newest. |
+
+`sh install.sh --help` lists every option.
+
+## Before the public release
+
+The repository and its releases are private for now. With a [GitHub CLI](https://cli.github.com/) login that has access to the repository, run:
 
 ```sh
-. "$HOME/.godmode/env"
+gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+```
+
+The installer and `godmodeup` then download private releases through that login.
+
+## Update
+
+```sh
 godmodeup
-godmode
 ```
 
-`godmodeup` updates managed scripts, keeps the previous executable, and does not reopen setup unless you pass `--setup`. `--version v0.9.0` pins a release. The updater refuses unrelated or modified executables; `--force` explicitly adopts them. It never edits your keys.
+`godmodeup` replaces only the files it installed, keeps the previous executable as `~/.godmode/bin/godmode.previous`, and never touches your profile or keys. It refuses an executable it did not install; `--force` adopts it. `--version vX.Y.Z` installs a specific release and `--setup` opens setup afterwards.
 
-## One home
+## Install offline
 
-```text
-~/.godmode/
-  bin/godmode             readable Python script
-  bin/godmodeup           readable shell updater
-  env                     shell PATH setup
-  profile.json            optional operator facts, private plain JSON (mode 0600)
-  intro.seen              empty first-run completion marker; not authorization
-  .env.godmode            your credentials, sealed
-  seal.key                the key that unseals them (mode 0600)
-  STOP_AND_READ_ME_FOR_KEYS.md  how agents use keys without opening the file
-  state/picard/           optional media cache and playback socket
-```
-
-The installer also keeps its small hash receipt and previous-executable backup under `bin`. Finishing all six intro screens creates only an empty `intro.seen` (mode 0600) beside the profile. This skips the welcome on future visits; it is a UI preference, not permission to act or proof that credentials work. No account registry or background process is created.
-
-Run `godmode` to choose details, credentials or agent instructions. Skipping a section creates nothing for that section. `godmode profile` reopens the details form; `godmode setup` opens the credential catalog directly. The profile defaults to `~/.godmode/profile.json` even while legacy keys remain in `~/.config/godmode`; adding a profile does not move or hide them. An explicit `--home`, `GODMODE_HOME`, or legacy `GODMODE_CONFIG_DIR` selects the profile's home too. Use `godmode profile path` to check it.
-
-On the first visit, `godmode` and the installer's `godmode init` show the welcome before that menu. Enter continues and Esc returns to the previous screen; Esc on the first screen or Ctrl-C exits without recording completion. An undersized terminal asks you to enlarge it instead of hiding the text. `godmode intro` replays the welcome. Direct commands such as `profile`, `setup`, `set`, `list` and `run` keep their existing behavior and never acquire this intro step. See [intro behavior](INTRO.md).
-
-`godmode agents` prints a discovery hint for your existing agent instructions. Neither installation nor setup edits those instructions. Copy the hint once using [the agent setup guide](AGENT_SETUP.md); ordinary updates then change the help the agent reads, not your global rules. No new `AGENTS.md` is created inside either Godmode home.
-
-An existing `~/.config/godmode/.env.godmode` that still assigns a value is preserved and selected while `~/.godmode` contains no credential file, operating rules or legacy catalog marker. Otherwise, including a rules checkout with no such file or one holding only blank `NAME=` lines, new keys go to `~/.godmode`. Nothing is copied unless you accept setup's offer to move plain-text keys, or run `godmode migrate`. `godmode path` prints the selected file; `--home DIR` or `GODMODE_HOME` chooses another home. Existing `AGENTS.md` and OAuth state remain untouched. Old `providers.toml` overlays are no longer loaded; their keys can still be edited with `godmode set KEY` or nano.
-
-## Inspect or run the source
-
-```sh
-less ~/.godmode/bin/godmode
-python3 godmode.py --home /absolute/path/to/a/test-home
-```
-
-The installed file is ordinary Python source, assembled without compression or obfuscation from the small files under `lib/`, the menu in `godmode.py`, and static provider guidance. It has no dependencies outside Python's standard library. `godmode edit` opens the file in nano: sealed files show ciphertext, while older plain files expose their values. Do not rename sealed assignments; use `godmode set NAME` to save values.
-
-For an offline install, build the script and pass its SHA-256:
+Build the script from a checkout and pass its SHA-256:
 
 ```sh
 python3 scripts/build.py --output target/godmode
@@ -63,8 +45,55 @@ GODMODE_SCRIPT_SHA=$(shasum -a 256 target/godmode | awk '{print $1}')
 sh install.sh --binary target/godmode --sha256 "$GODMODE_SCRIPT_SHA"
 ```
 
-The installer also accepts a release `--archive` with its `--checksum` file. These local-artifact modes do not download anything. The first portable release includes legacy archive filenames so previously installed `godmodeup` versions can update normally; those archives contain the same readable script, not native binaries.
+`--archive godmode-vX.Y.Z-unix.tar.gz --checksum SHA256SUMS` installs a downloaded release archive instead. Neither mode downloads anything.
 
-## Remove
+The installed file is ordinary Python source: read it with `less ~/.godmode/bin/godmode`, or run the checkout directly with `python3 godmode.py --home /absolute/path/to/a/test-home`.
 
-Remove the installed `godmode`, `godmodeup`, their receipt and optional previous-executable backup. If enabled, remove the Godmode source line from your shell profile and the generated `env` file. The key file and `seal.key` stay, but sealed values can be read only through `godmode`: keep the executable, or save the keys elsewhere first. Removing a key locally does not revoke it at the provider.
+## Files
+
+```text
+~/.godmode/
+  bin/godmode                   the readable Python script
+  bin/godmodeup                 the updater
+  env                           PATH setup, sourced by your shell with --path
+  profile.json                  your profile
+  .env.godmode                  your keys, sealed
+  seal.key                      the key that unseals them
+  STOP_AND_READ_ME_FOR_KEYS.md  tells agents to use godmode instead of opening the files
+  intro.seen                    empty; you finished the welcome
+  agent.added                   empty; you added the Agents text by hand
+  state/picard/                 optional Picard media cache
+```
+
+`--home DIR` or `GODMODE_HOME` selects another home. `godmode path` and `godmode profile path` print where the key file and profile are.
+
+## Uninstall
+
+```sh
+rm -rf ~/.godmode
+```
+
+This deletes your keys and profile too. Then remove the `# Godmode` line and the line below it from each startup file that `--path` changed. To keep your keys, remove only the programs and PATH setup:
+
+```sh
+rm -f ~/.godmode/bin/godmode ~/.godmode/bin/godmodeup ~/.godmode/bin/godmode.previous \
+  ~/.godmode/bin/.godmode-install-receipt ~/.godmode/env
+```
+
+Sealed values can be read only through `godmode`, so keep a copy of the script if you keep the keys. Deleting a key here does not revoke it; revoke it at the provider.
+
+## Troubleshooting
+
+- `godmode: command not found`: open a new terminal, or run `. ~/.godmode/env`. An agent whose shell skips your startup file can run `~/.godmode/bin/godmode`.
+- `--path` with a shell other than zsh, bash, sh, dash or ksh (fish, for example): Godmode installs anyway; add `~/.godmode/bin` to PATH in that shell's startup file yourself.
+- Updating from 0.12 or earlier with zsh: run `godmodeup --path` once so `~/.zshenv` gets the PATH line; the old `~/.zshrc` line can stay.
+- `is a symlink or not a directory`: the Godmode home must be a real directory. Symlinks above it, such as a linked `/home` or macOS `/tmp`, are fine. Run with `--home` and the real path.
+- `Godmode needs Python 3.9 or newer`: install a newer `python3`; Godmode uses the first one on PATH.
+
+## Upgrading from 0.9 or earlier
+
+Godmode 0.9 and earlier saved keys as plain text, and some setups kept them in `~/.config/godmode/.env.godmode`. While `~/.godmode` has no `.env.godmode` and that old file still holds a value, Godmode keeps using it: `list` and `run` read it as before, and keys saved there stay plain text. `godmode path` shows which file is in use. The profile still lives in `~/.godmode/profile.json`. `GODMODE_CONFIG_DIR` still works as an older name for `GODMODE_HOME`.
+
+Setup offers to move those keys to `~/.godmode` and seal them; `godmode migrate` does the same without the menu. First change any program that reads the old file directly to use `godmode run NAME -- command`. Godmode reads and changes only `.env.godmode` in `~/.config/godmode`.
+
+`migrate` changes nothing until every value reads back identically from the sealed copy. It refuses a file it cannot carry exactly, naming line numbers and key names but never values: a key saved twice, a value with unquoted spaces, a comment after a value, a line that is not `NAME=value`, or a known key's `NAME=` inside another value. Keys already in `~/.godmode` stay, and a name in both files must hold the same value, so an interrupted move finishes when run again. Afterwards the old file says where the keys went and keeps its own `#` comment lines, which never go into the sealed file; Godmode says how many stayed so you can delete any key written in one.

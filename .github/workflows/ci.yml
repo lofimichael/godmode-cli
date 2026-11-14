@@ -34,6 +34,7 @@ jobs:
       - name: Installer and managed updates
         run: |
           sh -n install.sh
+          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh tests/install.sh tests/install-update.sh; fi
           sh tests/install.sh
           sh tests/install-update.sh
       - name: Assemble the plain-text executable

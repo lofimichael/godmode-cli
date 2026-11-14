@@ -25,15 +25,13 @@ godmode run GOOGLE_ADS_SERVICE_ACCOUNT_JSON -- python3 your_ads_script.py
 
 These JSON variable names are Godmode conventions. A Google SDK does not automatically discover them. Your consumer must parse the variable and configure the official library, or provide the credential using that tool's supported private-file mechanism. `GOOGLE_APPLICATION_CREDENTIALS`, for example, expects a **file path**, not the JSON contents. The Python auth library supports loading a parsed service-account object with `Credentials.from_service_account_info`; use the library's API-specific scopes and authenticated transport rather than printing access tokens. [Python service-account credentials](https://google-auth.readthedocs.io/en/latest/reference/google.oauth2.service_account.html), [Application Default Credentials](https://docs.cloud.google.com/docs/authentication/application-default-credentials).
 
-Godmode stores and supplies values. It does not sign in, enable APIs, grant roles, refresh credentials or update a provider's own login cache. Keep credential downloads and caches private and out of Git. Preserve a working provider-owned credential store unless the task calls for migrating it.
+Godmode does not enable APIs or grant roles. Keep credential downloads private and out of Git.
 
-## Refresh is usually routine
+## Refresh
 
-A service-account key and an OAuth refresh grant can both support unattended API calls. The consuming library obtains new access tokens when needed. An expired access token alone does not require a new private key, new OAuth client or user consent. Service-account private keys are long-lived unless an organization sets an expiry or the key is disabled or deleted. [Service-account credential lifecycle](https://docs.cloud.google.com/iam/docs/service-account-creds).
+Routine refresh and general recovery are in [Providers](PROVIDERS.md#refresh-and-recovery). Service-account private keys are long-lived unless an organization sets an expiry or the key is disabled or deleted. [Service-account credential lifecycle](https://docs.cloud.google.com/iam/docs/service-account-creds).
 
 For user OAuth, request the access your workflow needs through the client's documented flow and retain the refresh grant. A valid refresh grant normally avoids repeated browser sign-in. Google can invalidate it after revocation, long inactivity, some password changes, token limits or policy changes. External OAuth apps in **Testing** normally receive refresh tokens that expire after seven days, with an exception for basic identity-only scopes. Use the appropriate consent-screen publishing configuration for ongoing use and complete any required verification. A production setting does not guarantee permanent access. [Google OAuth lifecycle](https://developers.google.com/identity/protocols/oauth2), [Desktop authorization and offline access](https://developers.google.com/identity/protocols/oauth2/native-app).
-
-If refresh fails, inspect the error and subtype. Fix a scope, client or account-policy issue when that is the cause. If the underlying grant is invalid or Google requires renewed sign-in, run the consuming tool's official authorization flow, complete the human step, and import the replacement grant. If a library rotates or otherwise saves a replacement refresh credential, import that value explicitly; `godmode run` does not write it back.
 
 For a failed service-account private key, replace the key on the **same service account**, verify the consumer, and retire the old key. This preserves the identity's existing account/property grants. Rotating the key is separate from routine access-token renewal. [Service-account key rotation](https://docs.cloud.google.com/iam/docs/key-rotation).
 

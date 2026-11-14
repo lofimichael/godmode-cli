@@ -1,12 +1,14 @@
 # Godmode: language, sources and terminal presentation
 
+Historical research, not current behaviour.
+
 Research reference for **Godmode 0.3.0**, revised on **2026-11-04**. This is the reference for the CLI's prose and presentation, including its help, diagnostics, onboarding, provider instructions, installer and documentation. It supersedes the previous direction built around repeated warnings and slogans. Version 0.4.0 adds a harsher, explicitly requested first-run notice for an unconfigured home; routine messages retain the quieter register described here.
 
-This is historical language research, not a current command reference. Some command names below describe older versions; use `godmode help` and the [README](../README.md) for today's interface.
+This is historical language research, not a current command reference. Some command names below describe older versions; use `godmode help` and the [README](../../../README.md) for today's interface.
 
-Version 0.12 adds an explicitly requested six-page first-run introduction. Its
-current copy, behavior and Claude/Executor design references are described in
-[INTRO.md](INTRO.md). The quiet treatment still applies to routine commands.
+Version 0.12 added an explicitly requested first-run introduction. Its
+Claude/Executor design references are in [INTRO-NOTES.md](INTRO-NOTES.md). The
+quiet treatment still applies to routine commands.
 
 The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html) that Michael supplied. Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
 
@@ -74,7 +76,7 @@ YTMND's current metadata for site 508 reports creation on April 25, 2004 and ide
 
 Showing the source image and playing the source excerpt makes the reference available without making ordinary credential operations impersonate a meme. The browser composition also explains why an invented ASCII face, a modern reaction GIF, and the original Picard image are not interchangeable.
 
-The implementation should identify any terminal adaptation honestly. A color-cell rendering of the original image preserves its subject and composition at reduced resolution; it is not a recovered period ASCII portrait. A terminal image protocol may preserve more pixels but depends on the terminal. The original page remains the reference for its complete composition. Image and audio can be requested independently, stop controls stay apparent, and neither starts merely because someone is entering a key. Source assets, measured properties, rendering choices and attribution belong in [PICARD.md](PICARD.md).
+The implementation should identify any terminal adaptation honestly. A color-cell rendering of the original image preserves its subject and composition at reduced resolution; it is not a recovered period ASCII portrait. A terminal image protocol may preserve more pixels but depends on the terminal. The original page remains the reference for its complete composition. Image and audio can be requested independently, stop controls stay apparent, and neither starts merely because someone is entering a key. Source assets, measured properties, rendering choices and attribution belong in [PICARD.md](../../PICARD.md).
 
 ## Writing rules for this CLI
 

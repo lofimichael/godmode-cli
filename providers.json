@@ -10,7 +10,7 @@
         "label": "Access token",
         "goal": "Create a GitHub token",
         "steps": [
-          "On the pre-filled form, check the **Resource owner**.",
+          "On the pre-filled form, set **Resource owner** to the account agents use.",
           "Under **Repository access**, select **All repositories**.",
           "Select **Generate token** (again if asked), then copy the token."
         ],
@@ -53,7 +53,7 @@
         "kind": "static-token"
       }
     ],
-    "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. For domain registration, verify Registrar write permission for the intended account; changing Read to Edit does not establish Registrar access. The Registrar API beta registers supported available domains and requires a valid default payment method, a default registrant contact and acceptance of the Domain Registration Agreement. The account owner must configure billing in the dashboard. Check the domain's current availability and price and the user's purchase authorization before registering. R2 S3 credentials are a separate credential type.",
+    "access": "A user API token reaches the account and zone resources included in its policies. The setup deliberately starts broad and changes available Read permissions to Edit; inspect the summary for Workers, D1, R2, DNS and any other intended service. Resource selection, your account role and service availability still limit access. For domain registration, verify Registrar write permission for the intended account; changing Read to Edit does not establish Registrar access. The Registrar API beta registers supported available domains and requires a valid default payment method, a default registrant contact and acceptance of the Domain Registration Agreement. The user must set up billing in the dashboard. Check the domain's current availability and price and the user's purchase authorization before registering. R2 S3 credentials are a separate credential type.",
     "verify": [
       "Check the user token with GET /client/v4/user/tokens/verify, then list the intended account or zone resources using Cloudflare's API or Wrangler. An active token does not prove every service permission. Select the exact account and zone before provisioning or deploying."
     ],
@@ -169,10 +169,9 @@
         "name": "STRIPE_TEST_SECRET_KEY",
         "label": "Test secret key",
         "goal": "Copy your Stripe test secret key",
-        "note": "No sk_test_ key there? Open the account picker and switch to a sandbox.",
+        "note": "If there is no sk_test_ key, switch to a sandbox in the account picker.",
         "steps": [
-          "Under **Standard keys**, find **Secret key** and reveal it if hidden.",
-          "Select the key (sk_test_\u2026) to copy it."
+          "Under **Standard keys**, reveal the **Secret key** (sk_test_\u2026) and copy it."
         ],
         "kind": "static-key"
       },
@@ -202,14 +201,22 @@
         "label": "Live publishable key",
         "goal": "Copy your Stripe live publishable key",
         "console": "https://dashboard.stripe.com/apikeys",
-        "note": "Shows pk_test_? Switch from sandbox mode to live mode first.",
+        "note": "If it starts with pk_test_, switch to live mode first.",
         "steps": [
           "Under **Standard keys**, copy the **Publishable key** (pk_live_\u2026)."
         ],
         "kind": "public-key"
       }
     ],
-    "access": "Standard secret keys have broad API access in one account or sandbox. Test and live credentials are separate; publishable keys are for client applications and cannot perform secret-key operations. Restricted keys are an alternative. Webhook signing secrets are separate values. Saving a live key does not authorize charges, refunds or payouts.",
+    "ready": [
+      [
+        "STRIPE_TEST_SECRET_KEY"
+      ],
+      [
+        "STRIPE_LIVE_SECRET_KEY"
+      ]
+    ],
+    "access": "Standard secret keys have broad API access in one account or sandbox. Test and live credentials are separate; publishable keys are for client applications and cannot perform secret-key operations. Restricted keys are an alternative. Webhook signing secrets are separate values.",
     "verify": [
       "Use the Stripe SDK or API to read the intended account and inspect a resource in the selected sandbox or live mode. Supply the selected secret key explicitly: these Godmode key names are not an automatic Stripe SDK configuration. Build and test payment flows in a sandbox before an authorized live operation."
     ],
@@ -324,7 +331,7 @@
         "label": "App password",
         "goal": "Create a Gmail app password",
         "drop": " \u00a0",
-        "note": "Needs 2-Step Verification turned on for that Google Account.",
+        "note": "This page works only with 2-Step Verification turned on.",
         "steps": [
           "Type a name under **App name**, then select **Create**.",
           "Copy the 16-character password."
@@ -358,34 +365,40 @@
     "key": [
       {
         "name": "GOOGLE_ADS_SERVICE_ACCOUNT_JSON",
-        "label": "Ads service account key",
+        "label": "Ads service account",
         "goal": "Save a Google Ads service account key",
         "prompt": "Drag or paste the key file",
         "file": true,
         "format": "google-service-account",
-        "note": "Its email needs access in Google Ads: Admin > Access and security.",
+        "note": "Then add its email in Google Ads under Admin > Access and security.",
         "steps": [
-          "Pick your Ads project; open its service account, or create one.",
-          "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
-          "Drag the downloaded .json file here, or paste what is in it."
+          "Pick your Ads project, then open or create a service account.",
+          "Select **Keys** > **Add key** > **Create new key** > **JSON** > **Create**."
         ],
         "kind": "service-account-json"
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
-        "label": "Search service account",
+        "label": "Search Console account",
         "goal": "Save a Search Console service account key",
         "prompt": "Drag or paste the key file",
         "file": true,
         "format": "google-service-account",
-        "note": "Its email needs property access: Settings > Users and permissions.",
+        "note": "Then add its email to the property under Settings > Users and permissions.",
         "steps": [
-          "Pick your Search project; open its service account, or create one.",
-          "Open it, then **Keys** > **Add key** > **Create new key** > **JSON** > **Create**.",
-          "Drag the downloaded .json file here, or paste what is in it."
+          "Pick your Search Console project, then open or create a service account.",
+          "Select **Keys** > **Add key** > **Create new key** > **JSON** > **Create**."
         ],
         "kind": "service-account-json"
       }
+    ],
+    "ready": [
+      [
+        "GOOGLE_ADS_SERVICE_ACCOUNT_JSON"
+      ],
+      [
+        "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON"
+      ]
     ],
     "access": "The bundled JSON entries are service-account private keys, not OAuth clients or user grants. For Ads, enable the API and obtain the required API access level in that Cloud project, then add the service-account email to the intended Ads account or manager. For Search Console, enable its API and grant the identity access to each property. Cloud IAM roles alone do not grant Ads or Search Console access.",
     "verify": [
@@ -437,7 +450,7 @@
           ":",
           0
         ],
-        "note": "The copy holds the ID and the secret; this entry keeps the ID.",
+        "note": "The copied key is ID:secret. This saves the ID; the next step, the secret.",
         "steps": [
           "Select **Create API key**, name it, then select **Create key**.",
           "Select **Copy API key** and keep the dialog open."
@@ -453,9 +466,10 @@
           ":",
           1
         ],
-        "note": "Keeps the part after the colon. Dialog closed? New key, then redo the ID.",
+        "note": "This saves the part after the colon. Dialog closed? Create a new key.",
         "steps": [],
-        "kind": "static-key"
+        "kind": "static-key",
+        "prompt": "Paste the same key again"
       }
     ],
     "access": "The key ID and secret are one credential pair for a personal or organization account. Both are needed for server-side authentication. The selected account owns generated work and charges; individual models and environments can have separate access requirements.",
@@ -497,7 +511,7 @@
         "kind": "static-key"
       }
     ],
-    "access": "The API key accesses Zernio profiles and resources within its permissions. Broad read/write access is useful for an operator; narrower profile, resource and read-only scopes are available. Social accounts must also be connected with their own platform permissions. Saving a Zernio key does not connect those accounts or authorize public posts.",
+    "access": "The API key accesses Zernio profiles and resources within its permissions. This setup uses broad read/write access; narrower profile, resource and read-only scopes exist. Social accounts must also be connected with their own platform permissions.",
     "verify": [
       "Use Zernio's SDK or API to list profiles and connected accounts, then confirm the intended account ID and connection health. Check platform support before scheduling posts, reading analytics or managing an inbox. SDKs read ZERNIO_API_KEY."
     ],
@@ -547,7 +561,15 @@
         "kind": "static-key"
       }
     ],
-    "access": "Sandbox and live API keys belong to separate environments. Sandbox orders are not fulfilled or charged. Live orders enter production and shipping. Select the matching endpoint and account key; possession of the live key does not authorize placing a billable order.",
+    "ready": [
+      [
+        "PRODIGI_SANDBOX_API_KEY"
+      ],
+      [
+        "PRODIGI_API_KEY"
+      ]
+    ],
+    "access": "Sandbox and live API keys belong to separate environments. Sandbox orders are not fulfilled or charged. Live orders are printed, shipped and billed. Select the endpoint that matches the key.",
     "verify": [
       "Use the Print API's documented authentication header with the matching environment. Read existing orders or product details to check the intended access, or request a quote for the intended specification. Use sandbox orders for fulfillment integration tests; a sandbox result does not prove a live print was produced."
     ],

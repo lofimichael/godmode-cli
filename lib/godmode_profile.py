@@ -18,11 +18,16 @@ def _profile_stamp(info):
 
 
 def _profile_directories(path, create=False):
+    # As for keys: symlinks above the home are resolved; the home itself must be a real directory.
+    path = Path(os.path.realpath(path.parent)) / path.name
     for directory in reversed((path,) + tuple(path.parents)):
         if create and not os.path.lexists(directory):
             directory.mkdir(mode=0o700)
         if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
-            raise ValueError("Profile paths must not contain symlinks or non-directories.")
+            home, text = os.path.expanduser("~").rstrip(os.sep), str(directory)
+            shown = "~" + text[len(home):] if text.startswith(home + os.sep) else text
+            raise ValueError(shown + " is a symlink or not a directory; Godmode needs a real directory "
+                             "there. Use --home with the real path.")
     if path.exists():
         info = path.stat()
         if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:

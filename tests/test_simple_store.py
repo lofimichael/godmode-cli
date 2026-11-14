@@ -128,12 +128,15 @@ class StoreTests(unittest.TestCase):
             self.store.set("KEY", "other")
         self.assertEqual(target.read_text(), "untouched")
 
-    def test_refuses_symlinked_parent_and_nonregular_file(self):
+    def test_resolves_symlinked_parent_but_refuses_symlinked_home_and_nonregular_file(self):
         (self.root / "actual").mkdir(mode=0o700)
         (self.root / "alias").symlink_to(self.root / "actual", target_is_directory=True)
-        with self.assertRaises(ValueError):
-            Store(self.root / "alias/config").set("KEY", "synthetic")
-        self.assertFalse((self.root / "actual/config").exists())
+        Store(self.root / "alias/config").set("KEY", "synthetic")  # A linked parent, like macOS /var.
+        self.assertEqual(Store(self.root / "actual/config").values(["KEY"]), {"KEY": "synthetic"})
+        (self.root / "linked-home").symlink_to(self.root / "actual/config", target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "is a symlink or not a directory"):
+            Store(self.root / "linked-home").set("OTHER", "synthetic")
+        self.assertEqual(Store(self.root / "actual/config").names(), ["KEY"])
         self.store.config_dir.mkdir(mode=0o700)
         os.mkfifo(self.store.env_path, mode=0o600)
         with self.assertRaises(ValueError):

@@ -12,7 +12,6 @@ import math
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 import tempfile
 import time
@@ -100,7 +99,8 @@ class Recorder:
         # After godmode exits, the test wrapper reports the terminal flags; that line is not Godmode's.
         end = self.terminal.capture.find(b"__PTY_FLAGS=")
         end = len(self.terminal.capture) if end < 0 else end
-        chunk = self.terminal.capture[self.read_at:end]
+        # pyte has no faint attribute; draw SGR 2 as the palette's grey so dim text reads as dim.
+        chunk = bytes(self.terminal.capture[self.read_at:end]).replace(b"\x1b[2m", b"\x1b[90m")
         self.read_at = max(self.read_at, end)
         self.stream.feed(self.decoder.decode(chunk))
 
@@ -192,17 +192,16 @@ class Recorder:
 
 
 def record_intro(binary, config, env, font, args):
-    terminal = Terminal([str(binary), "--home", str(config)], env, cols=80, rows=22)
-    recorder = Recorder(terminal, 80, 22, font, args.theme, "Godmode · first-run introduction")
-    names = ["welcome", "power", "danger", "commit", "profile", "local", "setup"]
+    terminal = Terminal([str(binary)], env, cols=80, rows=22)
+    recorder = Recorder(terminal, 80, 22, font, args.theme, "Godmode · first-run welcome")
+    names = ["welcome", "risk", "profile", "home"]
     try:
-        for number in range(1, 7):
-            recorder.wait_for("%02d / 06" % number)
-            recorder.wait_for("Esc exit" if number == 1 else "Esc back")
-            recorder.capture(1400)
+        for number in range(1, 4):
+            recorder.wait_for("%d / 3" % number)
+            recorder.capture(1800)
             terminal.send(b"\r")
-        recorder.wait_for("Your details")
-        recorder.capture(1000)
+        recorder.wait_for("Esc quit")
+        recorder.capture(1600)
         terminal.send(b"\x1b")
         terminal.done()
         assert sorted(path.name for path in config.iterdir()) == ["intro.seen"]
@@ -219,12 +218,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=REPO / "target/godmode")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--intro", action="store_true", help="record the six-page welcome instead of credential entry")
+    parser.add_argument("--intro", action="store_true", help="record the three-page welcome and the home screen instead of a first key")
     parser.add_argument("--font", type=Path)
     parser.add_argument("--theme", choices=THEMES, default="dark", help="terminal palette for the recording")
     parser.add_argument("--frames-dir", type=Path, help="also save readable PNGs of the recorded states")
     args = parser.parse_args()
-    args.output = args.output or REPO / "docs/images" / ("intro.gif" if args.intro else "setup.gif")
+    args.output = args.output or (REPO / "target/intro.gif" if args.intro else REPO / "docs/images/setup.gif")
     binary = args.binary.resolve()
     if not binary.is_file():
         parser.error("Build the readable script first")
@@ -238,39 +237,41 @@ def main() -> None:
         if args.intro:
             record_intro(binary, config, env, font, args)
             return
-        # Keep the short recording focused on the new key-entry workflow. This
-        # acknowledgement affects only the isolated synthetic home.
-        subprocess.run([str(binary), "--home", str(config), "init", "--accept-disclaimer"],
-                       env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
-        command = [str(binary), "--home", str(config), "setup"]
-        terminal = Terminal(command, env, cols=84, rows=26)
+        # Start where a returning user starts: the welcome was seen, nothing is saved yet.
+        # The marker affects only the isolated synthetic home.
+        config.mkdir(mode=0o700)
+        os.close(os.open(config / "intro.seen", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        terminal = Terminal([str(binary)], env, cols=84, rows=26)
         recorder = Recorder(terminal, 84, 26, font, args.theme)
         try:
-            recorder.wait_for("↑↓ move")
-            recorder.wait_for("❯ GitHub")
+            recorder.wait_for("Esc quit")
+            recorder.wait_for("0%")
             recorder.capture(1300)
-            terminal.send(b"\x1b[B")  # Down arrow
+            terminal.send(b"\x1b[B\r")  # Down to Providers, then Enter
+            recorder.wait_for("❯ GitHub")
+            recorder.capture(1000)
+            terminal.send(b"\x1b[B")
             recorder.wait_for("❯ Cloudflare")
-            recorder.capture(900)
+            recorder.capture(700)
             terminal.send(b"\r")
             recorder.wait_for("Create a Cloudflare API token")
-            recorder.wait_for("$ printf '%s\\n' 'CLOUDFLARE_API_TOKEN=sealed(…)' >> ~/.godmode/.env.godmode")
-            recorder.capture(2600)
-            before = (config / ".env.godmode").read_bytes()
+            recorder.wait_for("CLOUDFLARE_API_TOKEN=sealed(…)")
+            recorder.capture(1900)
             terminal.paste(SYNTHETIC)
-            recorder.wait_for("'CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)'")
+            recorder.wait_for("CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)")
             recorder.wait_for("Paste your token: cf_•••••d8f")
-            recorder.capture(2200)
-            assert (config / ".env.godmode").read_bytes() == before, "paste submitted without Enter"
+            recorder.capture(1800)
+            assert not (config / ".env.godmode").exists() or SYNTHETIC not in (config / ".env.godmode").read_text()
             terminal.send(b"\r")
             recorder.wait_for("Saved CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)")
-            recorder.wait_for("✓ saved")
             recorder.wait_for("❯ Vercel")
+            recorder.capture(1100)
+            terminal.send(b"\x1b")
+            recorder.wait_for("11%")
             recorder.capture(1700)
             terminal.send(b"\x1b")
-            recorder.wait_for("Done. Your keys are in")
+            recorder.wait_for("Next:")
             terminal.done()
-            recorder.capture(800)
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"
             # Prove this was an actual save in a temporary store, not an animated mockup.
             sys.path.insert(0, str(REPO / "lib"))
@@ -281,7 +282,7 @@ def main() -> None:
             recorder.write(args.output.resolve())
             if args.frames_dir:
                 args.frames_dir.mkdir(parents=True, exist_ok=True)
-                names = ["providers", "selected", "prompt", "masked", "saved", "finished"]
+                names = ["home", "providers", "selected", "prompt", "masked", "saved", "home-after"]
                 for name, frame in zip(names, recorder.frames, strict=True):
                     frame.save(args.frames_dir / f"{name}.png")
         finally:

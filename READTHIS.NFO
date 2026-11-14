@@ -1,74 +1,16 @@
-+--[ godmode ]-----------------------------------------------------------+
-| version .. 0.12.0                                                     |
-| source ... https://github.com/lofimichael/godmode-cli                   |
-+-----------------------------------------------------------------------+
++--[ godmode ]---------------------------------------------------------+
+| version .. 0.13.0                                                    |
+| source ... https://github.com/lofimichael/godmode-cli                |
++----------------------------------------------------------------------+
 
-  Godmode onboards optional profile facts, provider keys and credential JSON.
-  Run godmode for details, credentials and a one-time agent hint. Agents save keys
-  with godmode set and use them through godmode run. New files are sealed;
-  older plain files stay plain until migrated. See godmode help.
+  Godmode keeps your business profile and API keys in one local place
+  for your coding agents. Agents read godmode help and use keys through
+  godmode run.
 
-[ installation ]
+[ install ]
 
-  Run install.sh without arguments. It selects a release for this machine,
-  checks the download and starts setup. Private releases use your existing
-  GitHub CLI login; see the one-command installation in README.md.
-  Run godmodeup to fetch updates. It replaces only a managed executable;
-  an unrelated or modified binary needs an explicit --force.
-
-  New installs use ~/.godmode/bin/godmode, with keys and state under the
-  same ~/.godmode home. Plain-text keys in ~/.config/godmode are found and
-  setup offers to move them to ~/.godmode and seal them; nothing moves
-  unless you choose it, and rules never move. The README install uses --path
-  to add one shell entry; omit it to manage PATH yourself.
-
-[ interactive setup ]
-
-  Run godmode for the six-page welcome and optional setup menu. Enter
-  continues, Esc goes back. Replay the welcome with godmode intro.
-  Completion saves only an empty intro.seen preference, not permission
-  for agents to act. See docs/INTRO.md and docs/REMOTE.md.
-
-  Run godmode setup. Move through the providers with the arrow keys, or
-  type a name, and press Enter. Each key gets one screen: what to create,
-  the page to create it on, and three steps at most. Enter opens that page.
-  Paste the credential. It shows up masked, sk_*****123 style, and the
-  line above it shows what will be executed on your machine: the printf
-  (or sed, for a key you already saved) with that value filled in, and
-  the file it goes to. In a sealed file the value reads sealed(sk_*****123):
-  Godmode writes it encrypted, so that line illustrates the edit rather
-  than being one to run. Godmode makes the edit itself; no shell runs.
-  Enter saves, Esc goes back, Ctrl-C quits. Pasting again replaces what
-  you pasted.
-  Colors follow your terminal, with restrained accents; NO_COLOR opts out.
-
-  godmode setup github goes straight to GitHub. Use godmode edit for nano,
-  or godmode path to print the file location.
-  A fresh setup shows the warning before creating the file; type GODMODE
-  to continue. There is no separate setup state. Browser links open only when you ask.
-
-[ before adding keys ]
-
-  A provider will accept whatever operations the key permits. It won't
-  distinguish between a useful deployment and an agent misunderstanding
-  which project you meant. Check the account and permissions before adding
-  the key. You don't need to fill in every provider in the list.
-
-  The file is sealed, mode 0600: reading it shows names, never keys
-  (an older plain ~/.config/godmode file stays plain until you move it);
-  programs running as you can still ask godmode for one. It does not sandbox
-  those programs or impose a spending limit. Saving a live key does not
-  authorize charges or public actions.
-
-  Agents run commands with keys via godmode run NAME -- command.
-  Saved means stored, not verified. Official provider tools handle refresh.
-  If a credential expires or is revoked, the agent guides official sign-in
-  or replacement and saves the result with godmode set NAME. For JSON:
-    godmode set ACME_AUTH_JSON --stdin < credential.json
-  A permissions policy is not a login. Use the type your tool expects.
-  Godmode has no provider login, refresh manager or background service.
-  Keep the file out of Git, shell history and bug reports.
-  Revoke exposed keys at the provider; deleting the file won't revoke them.
+  url=https://github.com/lofimichael/godmode-cli/releases/latest/download
+  curl -fsSL "$url/install.sh" | sh -s -- --path
 
 [ picard ]
 
@@ -76,20 +18,16 @@
   godmode picard open     open it in a browser
   godmode picard show     show its image in the terminal
   godmode picard play     loop the original audio excerpt
-  godmode picard stop     stop this state directory's player
+  godmode picard stop     stop the player
 
-  Picture and audio are separate requests. Nothing plays on startup.
-  The first request downloads the relevant asset from YTMND into a local
-  cache. Neither asset is included in this archive. Use the same --state-dir
-  when stopping a player that was started with an override.
+  Nothing plays on its own. The first request downloads the asset from
+  YTMND into a local cache; neither asset is in this archive.
 
-[ notes ]
+[ credits ]
 
-  The lettering is original. The language and presentation sources are
-  discussed in docs/CULTURE.md, including the Usenet post preserved at
+  Picard: https://picard.ytmnd.com/ ; music by DarkMateria. The MIT
+  license does not cover the source image or recording. The lettering
+  is original; the voice follows the Usenet post preserved at
   https://www.nongnu.org/ratpoison/inspiration.html .
 
-  Picard: https://picard.ytmnd.com/ ; music by DarkMateria.
-  This project's MIT license does not cover the source image or recording.
-
-+-----------------------------------------------------------------------+
++----------------------------------------------------------------------+

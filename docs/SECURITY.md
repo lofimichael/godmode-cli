@@ -1,54 +1,49 @@
-# What happens to a pasted value
+# How Godmode handles keys
 
-Profile fields are separate: their input is visible and saved as private plain
-JSON. They are for ordinary operator/business facts, not credentials. Terminal
-control characters are escaped while entering text and rejected in saved known
-fields (mailing addresses allow line breaks). The profile writer preserves manual
-extensions and refuses unsafe or concurrent edits. See [profile details](PROFILE.md).
-`godmode agents` prints a discovery hint and does not edit agent configuration.
+Values are encrypted in .env.godmode with a random key in seal.key.
+Reading the file shows names, never values.
+Any program running as you can still ask godmode for a key.
+Anyone with both files has every key.
+Godmode sends nothing over the network.
 
-Menus are chosen with the arrow keys and never take a value: a paste into a menu is ignored and not shown. The terminal does not echo for the whole setup session, so text that arrives between two screens is dropped unseen. A paste that is too large or holds a NUL byte is read to its end before it is refused, so none of it can reach your shell.
+To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
-1. The terminal reads it with echo disabled. A value pasted into an empty field is shown as its first and last three characters around five dots (`sk_•••••123`); values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Pasting again replaces the value rather than appending to it. Typed or edited values show one dot per character and no ends, because otherwise each character would pass through the visible end while you type. A bracketed paste does not save until you press Enter.
-2. Above the input, a preview titled "What will be executed on your machine" shows the edit as a shell command, updated as you paste: `printf '%s\n' 'KEY=…' >> ~/.godmode/.env.godmode` for a new key (with a leading line break when the file lacks a final one, and CRLF when the file uses it), `sed -i 's/^KEY=.*/KEY=…/' …` for a key saved on one ordinary line, and a line-numbered `sed` that also deletes extra lines when the key is indented, exported or listed more than once. The kind of command depends only on the file, never on the value, so it reveals nothing about hidden characters. Notes say when a line is rewritten, duplicates are removed, or a line keeps a CRLF ending. For a plain-text file, the command run with the real value produces the same bytes as Godmode; the test suite checks that for LF files. For a sealed file the preview shows `sealed(…)` where Godmode writes the encrypted token it computes, so that command only illustrates the edit: do not run it with a real value. Godmode makes the edit itself; no shell runs and nothing is sent. If the value cannot be saved (for example multiline text that is not JSON), the preview says why and Enter does nothing. After a successful save the screen is erased and one receipt line stays: `Saved KEY=sk_•••••123`. A few keys have a paste rule in providers.json: spaces are removed from a Gmail app password, and a Higgsfield key copied as `ID:SECRET` is split between its two entries. The preview always shows the value after the rule, as it will be stored. The rules follow the key at any prompt; `godmode set KEY --stdin` saves its input as given. Keys marked `"secret": false` in providers.json, such as the Gmail address, are shown as you type them; a paste into them is still masked, and the prompt for a custom key's name ignores pastes, so a secret pasted into the wrong field is never displayed in full.
-3. The storage helper validates the key name, seals the value (or quotes it in a plain-text file), and replaces that key's assignment in `.env.godmode`.
-4. A private temporary file is atomically renamed over the original. Unrelated lines are preserved.
+## The key file
 
-That is the credential flow. No provider login, remote verification, telemetry, synchronization, database or daemon participates. The installed script is readable Python source; its file writer is [godmode_store.py](../lib/godmode_store.py), and its input handling is [godmode_terminal.py](../lib/godmode_terminal.py). Readability helps inspection; it is not a security guarantee.
+- Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag. `seal.key` holds a random 32-byte key; each value gets a fresh nonce, and the key's name is bound into the tag, so a value cannot be moved to another name. The code is in [godmode_store.py](../lib/godmode_store.py).
+- Sealing keeps values out of anything that reads the file as text: `cat`, `grep`, editors, agent transcripts and copies of the file alone. It is not a lock, and it does not sandbox programs or limit spending.
+- `.env.godmode`, `seal.key` and `profile.json` must be regular files you own with mode 0600, in a directory you own that others cannot write. Godmode refuses a symlink at the home or any of these files, and checks ownership, type and mode before every read and write. New directories are 0700.
+- The key file is limited to 1 MiB.
+- A save reads the file again, takes a directory lock, writes a private temporary file and renames it over the original. Unrelated lines are kept, and a file changed by another program aborts the save.
+- A Git checkout that holds the home must ignore `.env.godmode` and `seal.key` and must not track them.
+- The file starts with a short header naming the commands to use. `STOP_AND_READ_ME_FOR_KEYS.md` beside it says the same to an agent that lists the folder; Godmode writes it once and never overwrites it.
+- A sealed file keeps no comments or other text. `godmode migrate` seals a plain value added by hand and names any other line for you to delete; `godmode help` says how many remain.
+- `godmode edit` opens the file in nano. A sealed file shows names and ciphertext there; use `godmode set` to change a value.
+- Older plain-text files are covered in [Upgrading from 0.9 or earlier](INSTALLATION.md#upgrading-from-09-or-earlier).
 
-## The file and how agents reach it
+## Entering a key
 
-New files are sealed. Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag, using a random 32-byte key in `seal.key` beside the file (mode 0600), a fresh nonce per value, and the key's name bound into the tag so a value cannot be moved to another name. The file starts with a short header saying how to use it, so anyone who opens it learns the commands instead of finding values. Beside it, `STOP_AND_READ_ME_FOR_KEYS.md` says the same for an agent that lists the folder before opening anything; Godmode writes it once, never overwrites it, and never adds it to a Git checkout. The code is in [godmode_store.py](../lib/godmode_store.py).
+- The terminal reads it with echo off. A pasted value shows as its first and last three characters around five dots (`sk_•••••123`). Values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Typed values show one dot per character. Pasting again replaces the value.
+- Menus ignore pastes, and text that arrives between screens is dropped. A paste that is too large or holds a NUL byte is read to its end and refused, so none of it reaches your shell.
+- **What will change on your machine** shows the edit as a `printf` command for a new key or a `sed` command for a saved one, with the value masked. The kind of command depends on the file, never on the value. For a plain file, that command run with the real value produces the same bytes; the tests check this. For a sealed file, `sealed(…)` stands for the encrypted value, so the command only illustrates the edit. Godmode makes the edit itself; no shell runs.
+- If a value cannot be saved, for example multiline text that is not JSON, the preview says why and Enter does nothing. After a save, one receipt line stays: `✓ Saved NAME=sealed(sk_•••••123)`.
+- Some keys have a paste rule in providers.json: spaces are removed from a Gmail app password, and a Higgsfield key copied as `ID:SECRET` is split between its two entries. The preview shows the value after the rule. `godmode set NAME --stdin` saves its input as given.
+- Keys marked `"secret": false`, such as the Gmail address, show typed input; a paste into them is still masked. The prompt for a custom key's name ignores pastes.
+- A pasted multiline JSON object is compacted to one line. Names ending in `_JSON` require an object and accept a dragged file. Godmode reads one snapshot of that file and validates, previews and saves the same snapshot, and leaves the file in place; delete a downloaded key when no tool needs it.
+- JSON gets syntax checks only. The two Google service-account keys also check Google's file shape (`"type": "service_account"`, `project_id`, `private_key_id`, a PEM `private_key`, a `…gserviceaccount.com` `client_email` and Google's `token_uri`).
+- Values cannot contain control characters, and no value is evaluated as shell code. Keys are never accepted as command-line arguments.
+- Python cannot guarantee that every copy of a value is erased from memory.
 
-Sealing keeps values out of everything that reads the file as text: `cat`, `grep`, editors, agent transcripts, and copies of the file on their own. It is not a lock. Programs running as you can ask godmode for a key, and anything that reads both the file and `seal.key` can unseal it, including a backup that holds both.
-
-Agents use credentials through these commands:
+## How agents reach keys
 
 - `godmode list` prints the names of saved keys, never values.
-- `godmode run NAME... -- command` replaces itself with the command, adding only the named keys to its environment and their names to `GODMODE_KEYS`. Nothing is printed. A missing or unreadable key stops it before the command starts, naming the key only. The exit status is the command's own.
-- `godmode set NAME` saves or replaces a credential behind a mask. `godmode set NAME --stdin` accepts a secure pipe or file redirection, never a value in a command argument.
-- `godmode help` prints the guide: credential types, agent-led re-onboarding, and never to echo, `printenv`, `env` or `set -x` around a key.
+- `godmode run NAME... -- command` replaces itself with the command, adding only the named keys to its environment and their names to `GODMODE_KEYS`. It prints nothing. A missing or unreadable key stops it before the command starts, naming the key only. The exit status is the command's own.
+- `godmode set NAME --stdin` saves a key from a pipe or file redirection.
 
-Saved means stored, not verified with the provider. Official provider tools handle ordinary refresh. Agents distinguish invalid credentials from outages, quota or permission failures, guide official OAuth or replacement when needed, save through the same setter, and verify the intended operation. If a tool returns a replacement refresh credential, it must explicitly save it; `run` does not collect changes. The CLI neither owns provider sessions nor adds a refresh service.
+## Other actions
 
-A plain-text file (the format before sealing, still common in `~/.config/godmode`) keeps working: `list` and `run` read it the same way, setup offers to move it to `~/.godmode` and seal it, and `godmode migrate` does that without the menu. Moving refuses a file it cannot carry exactly, naming line numbers and key names but never values: a key saved twice, a value with unquoted spaces, a comment after a value, a line that is not `NAME=value`, or a known key's `NAME=` inside another value (two lines run together). It changes nothing until every value reads back identically from the sealed copy. Keys already in `~/.godmode` stay; a name in both files must hold the same value, so a move that was cut off finishes when run again. The old file is then rewritten to say where the keys went, followed by its own `#` comment lines, which never go into the sealed file; Godmode says how many stayed so you can delete any old key written in one. A plain value added to a sealed file by hand is sealed where it is by `godmode migrate`; a sealed file keeps no comments or other text, so `migrate` names any such line for you to delete, and `godmode help` says how many remain.
-
-Before sealing, update programs that read plaintext credentials to use `godmode run NAME -- command`. Migration checks local credential files; it does not run rules scripts or contact another machine.
-
-No value is evaluated as shell code. Ownership, mode 0600, regular-file type and symlink checks apply before reads or writes. New directories are private. Git checkouts must ignore the key file and `seal.key` and must not track them. A new key file always starts in `~/.godmode`. `~/.config/godmode` is used only while its old file still assigns a value; until those keys are moved, keys saved there stay plain text. An existing file is read again before saving; a directory lock coordinates cooperating CLI writers, and a changed file aborts the save. `set KEY --stdin` is an explicit noninteractive write; credentials are never accepted as positional arguments.
-
-The file is limited to 1 MiB. A pasted multiline JSON object is compacted to one line; names ending in `_JSON` also require an object and support dragging a file into the prompt. Godmode imports one snapshot per entered path; validation, preview and saving use that same snapshot. Generic JSON receives syntax checks, not provider authorization checks. A permissions policy is not an authentication credential.
-
-The two built-in Google service-account keys additionally check Google's file shape (`"type": "service_account"`, `project_id`, `private_key_id`, a PEM `private_key`, a `…gserviceaccount.com` `client_email` and Google's `token_uri`). An OAuth client or authorized-user grant belongs under the distinct name expected by its consumer. Displayed service-account metadata cannot contain control characters. Other values cannot contain control characters. Imported source files are left intact; remove a secret-bearing download when no tool needs it.
-
-Python does not guarantee erasing every copy of a value from process memory. Use appropriate provider scopes and revoke exposed keys with the provider.
-
-## Optional external actions
-
-A provider page opens only when you press Enter on an empty key prompt; with a value entered, Enter saves instead. The browser opener is started in the background, so a slow browser cannot hold the prompt. The browser and nano receive a small ordinary process environment, not a loaded credential inventory. In a sealed file nano shows names and ciphertext; in a plain file it shows values.
-
-Picard is a separate, explicitly requested media feature. Its code never opens the credential file. It downloads only its pinned image/audio assets and starts only its own foreground player. See [Picard](PICARD.md).
-
-The updater downloads release code and verifies its checksum. It updates only managed files unless replacement is explicitly requested. A checksum checks bytes against the published digest; it cannot protect against a compromised publisher. Shell-profile changes require `--path`. Credentials, operating rules and OAuth grants are never migrated by an update.
-
-For a problem report, use synthetic keys. Do not include real credentials, OAuth grants or unredacted recordings. The MIT license is in [LICENSE](../LICENSE).
+- Profile input is visible and saved as plain JSON. Terminal control characters are escaped while you type and refused in saved fields; the mailing address allows line breaks.
+- A provider page opens only when you press Enter on an empty key prompt. The browser opener runs in the background with a small ordinary environment, not your keys; nano gets the same.
+- `godmode picard` downloads its pinned image and audio from YTMND only when asked, and never opens the key file. See [Picard](PICARD.md).
+- The installer and `godmodeup` check each download's SHA-256 against `SHA256SUMS` and replace only files they installed. A checksum cannot protect against a compromised publisher. Shell startup files change only with `--path`, and updates never touch your profile or keys.
+- In a problem report, use synthetic keys. Never include real keys, OAuth grants or unredacted recordings. Deleting a key here does not revoke it; revoke an exposed key at the provider.

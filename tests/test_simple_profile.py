@@ -198,11 +198,17 @@ class ProfileTests(unittest.TestCase):
         os.mkfifo(self.profile.path, mode=0o600)
         with self.assertRaises(ValueError):
             self.profile.read()
+        # A symlink above the home is the system's business and is resolved; the home itself
+        # must be a real directory, so nothing is ever written through a linked home.
         alias = self.root / "alias"
         alias.symlink_to(self.profile.home, target_is_directory=True)
-        with self.assertRaises(ValueError):
-            Profile(alias / "new").write({"operator_name": "New"})
-        self.assertFalse((self.profile.home / "new").exists())
+        self.assertTrue(Profile(alias / "new").write({"operator_name": "New"}))
+        self.assertTrue((self.profile.home / "new" / "profile.json").is_file())
+        linked = self.root / "linked-home"
+        linked.symlink_to(self.profile.home / "new", target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "is a symlink or not a directory"):
+            Profile(linked).write({"operator_name": "Other"})
+        self.assertEqual(json.loads((self.profile.home / "new" / "profile.json").read_text()), {"operator_name": "New"})
 
     def test_git_checkout_requires_ignored_untracked_profile(self):
         self.profile.home.mkdir(mode=0o700)

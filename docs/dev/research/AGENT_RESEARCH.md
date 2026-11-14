@@ -1,5 +1,7 @@
 # Agent integration: evidence and design decision
 
+Historical research, not current behaviour.
+
 Research snapshot: 2026-11-13. Scope: major local coding-agent conventions, shared
 formats, empirical instruction-file research, and this CLI's existing behavior.
 This is design evidence for maintainers; agents do not need to load it during use.
@@ -18,7 +20,7 @@ format guarantees an agent will notice an otherwise unknown local executable.
 
 ## What the major clients actually do
 
-The [setup table](AGENT_SETUP.md) gives the current native locations. Several
+The [setup table](../../AGENT_SETUP.md) gives the current native locations. Several
 details rule out a single universal installer target or import syntax:
 
 - Codex checks global `AGENTS.override.md` before `AGENTS.md`, then discovers
@@ -135,8 +137,8 @@ repeating onboarding or making up capabilities.
 Routine token renewal belongs to official provider tools/libraries. Underlying
 credential failure calls for diagnosis, official reauthorization/replacement,
 `godmode set`, then a relevant verification. Saving a key does not update a
-deployment or another host. See [provider guidance](PROVIDERS.md) and
-[Google's credential types](GOOGLE.md) for the concrete lifecycle.
+deployment or another host. See [provider guidance](../../PROVIDERS.md) and
+[Google's credential types](../../GOOGLE.md) for the concrete lifecycle.
 
 The current legacy-key selector uses credential/rules/catalog markers in the new
 home. Creating a new `AGENTS.md` there could hide old keys from discovery. This

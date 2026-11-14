@@ -22,6 +22,7 @@ STORE_HEADER = (STORE_SEALED + "\n"
                 "#   godmode run NAME -- command     run a command with that key in its environment\n"
                 "#   godmode help                    how to use keys without exposing them\n")
 SEAL_PREFIX = "sealed:v1:"
+STORE_KEY_PROVIDERS = {}  # Catalog key name -> provider slug, filled in by the command line.
 STORE_GUIDE_NAME = "STOP_AND_READ_ME_FOR_KEYS.md"
 STORE_GUIDE = """# Looking for a credential? Stop here.
 
@@ -33,7 +34,7 @@ Use the godmode command instead:
     godmode list                                   names of the saved keys
     godmode run GH_TOKEN -- gh repo list           a command with that key in its environment
     godmode run GMAIL_USER GMAIL_APP_PASSWORD -- python3 check_inbox.py
-    godmode set NAME                              save or replace a credential
+    godmode set NAME                               save or replace a key
     godmode set ACME_AUTH_JSON --stdin < credential.json
     godmode help                                   the whole guide
 
@@ -43,12 +44,7 @@ A name missing from godmode list is not saved. Saved means stored, not verified.
 Keys, passwords and provider credential JSON use the same set/run commands.
 Choose the JSON type the consuming tool expects; a permissions policy is not a login.
 
-The official provider tool handles normal token refresh. When the underlying
-credential fails, distinguish revocation/expiry from outages or missing permissions.
-Guide the owner through official OAuth or key replacement, save the replacement
-with godmode set (use --stdin for a secure pipe/file), then verify the intended work.
-Save any returned replacement refresh credential the same way; run has no writeback.
-Godmode does not sign in, refresh credentials or run background services.
+If a key is rejected or has expired, run godmode help: it explains how to replace it.
 """
 
 
@@ -168,15 +164,24 @@ def _store_stamp(info):
 
 
 def _store_directories(path, create=False):
+    # Symlinks above the home (a linked /home, macOS /var and /tmp) belong to the system and
+    # are resolved. The home and everything Godmode creates must be real directories.
+    path = Path(os.path.realpath(path.parent)) / path.name
     for directory in reversed((path,) + tuple(path.parents)):
         if create and not os.path.lexists(directory):
             directory.mkdir(mode=0o700)
         if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
-            raise ValueError("Godmode paths must not contain symlinks or non-directories.")
+            raise ValueError(_store_shown(directory) + " is a symlink or not a directory; Godmode needs a "
+                             "real directory there. Use --home with the real path.")
     if path.exists():
         info = path.stat()
         if info.st_uid != os.geteuid() or info.st_mode & 0o022:
             raise ValueError("The Godmode directory must be yours and not writable by other users.")
+
+
+def _store_shown(path):
+    home, text = os.path.expanduser("~").rstrip(os.sep), str(path)
+    return "~" + text[len(home):] if text.startswith(home + os.sep) else text
 
 
 def _holds_values(path):
@@ -319,8 +324,18 @@ class Store:
             else:
                 result[name] = words[0]
         if problems:
-            raise ValueError("; ".join(problems) + ". See: godmode list")
+            raise ValueError("; ".join(problems) + ". " + self._next(names, found))
         return result
+
+    def _next(self, names, found):
+        """One next step for a failed lookup: the provider to set up, a near name, or the list."""
+        missing = [name for name in names if name not in found]
+        saved = {name.casefold(): name for name in self.names()} if missing else {}
+        for name in missing:
+            if name.casefold() in saved:
+                return "Did you mean " + saved[name.casefold()] + "?"
+        slug = STORE_KEY_PROVIDERS.get(missing[0]) if missing else None
+        return ("Ask the user to run: godmode setup " + slug) if slug else "See: godmode list"
 
     def names(self):
         """Names of the keys that have a value, sorted. Never values."""

@@ -44,6 +44,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p 'test_simple*.py'
           sh -n install.sh
+          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh tests/install.sh tests/install-update.sh; fi
           sh tests/install.sh
           sh tests/install-update.sh
           python3 scripts/build.py --output target/godmode
@@ -51,9 +52,11 @@ jobs:
       - name: Package universal script and migration aliases
         shell: bash
         run: |
-          mkdir -p package dist
+          mkdir -p package/docs dist
           cp target/godmode LICENSE README.md READTHIS.NFO install.sh package/
-          cp -R docs package/
+          # User docs only; docs/dev stays in the repository.
+          cp docs/*.md package/docs/
+          cp -R docs/images package/docs/
           mkdir package/lib
           cp lib/*.py package/lib/
           cp godmode.py providers.json VERSION package/
@@ -65,8 +68,20 @@ jobs:
           for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
             cp "dist/godmode-$RELEASE_TAG-unix.tar.gz" "dist/godmode-$RELEASE_TAG-$target.tar.gz"
           done
+          # The README pipes this asset into sh; SHA256SUMS lists it for manual checks.
+          cp install.sh dist/
           cd dist
-          sha256sum ./*.tar.gz | sed 's#  ./#  #' > SHA256SUMS
+          sha256sum ./*.tar.gz ./install.sh | sed 's#  ./#  #' > SHA256SUMS
+      - name: Install the packaged archive
+        run: |
+          home=$(mktemp -d)
+          HOME="$home" SHELL=/bin/sh sh dist/install.sh --archive "dist/godmode-$RELEASE_TAG-unix.tar.gz" --checksum dist/SHA256SUMS --path
+          test "$("$home/.godmode/bin/godmode" --version)" = "godmode ${RELEASE_TAG#v}"
+          cmp install.sh "$home/.godmode/bin/godmodeup"
+          if tar -tzf "dist/godmode-$RELEASE_TAG-unix.tar.gz" | grep -q '^docs/dev'; then
+            echo 'docs/dev must not be packaged' >&2
+            exit 1
+          fi
       - name: Create draft release
         working-directory: dist
         env:
@@ -77,5 +92,5 @@ jobs:
             echo 'Release already exists; inspect it before retrying.' >&2
             exit 1
           fi
-          gh release create "$RELEASE_TAG" ./*.tar.gz SHA256SUMS \
+          gh release create "$RELEASE_TAG" ./*.tar.gz install.sh SHA256SUMS \
             --verify-tag --draft --title "Godmode $RELEASE_TAG" --generate-notes

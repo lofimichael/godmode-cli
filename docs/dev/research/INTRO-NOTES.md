@@ -1,33 +1,8 @@
-# The welcome
+# Intro notes
 
-`godmode` opens six short pages before its first setup menu: welcome, agent power,
-consequences, commitment, reusable details and local storage. `godmode intro`
-replays them. The authoritative copy lives in `INTRO_PAGES` in `godmode.py`.
+Historical research, not current behaviour.
 
-Each page advances on Enter. Esc goes back; Esc on page one or Ctrl-C exits.
-Typing or pasting does not enter text or advance the page. The commitment page
-acknowledges the explanation; it grants no provider access, spending authority or
-agent permission. Those still come from credentials, provider capabilities and the
-user's instructions.
-
-The presentation borrows familiar terminal conventions: a small wordmark, numbered
-steps, a single accent color, an amber risk/commitment moment, generous spacing and
-explicit keyboard hints. It follows the terminal's colors and supports `NO_COLOR`
-and plain-character fallback. There are no animations, sound effects or new runtime
-dependencies. On small terminals, decoration collapses first; if the required copy
-cannot fit, Enter waits until the terminal is enlarged.
-
-Only the final Enter records completion: an empty `intro.seen` file, mode 0600,
-inside the profile's home. Cancelling earlier creates nothing. This is a local UI
-preference so optional setup can be skipped without repeating the welcome next
-time. It is not an authorization record. Existing profiles, keys, rules and OAuth
-state are untouched. An unexpected marker file is refused rather than replaced.
-Direct profile, credential and machine-readable commands do not load the intro.
-
-The longer explanations belong in the [profile](PROFILE.md), [provider](PROVIDERS.md),
-[agent setup](AGENT_SETUP.md), [remote development](REMOTE.md) and
-[security](SECURITY.md) guides. The intro supplies orientation and then gets out of
-the way.
+These notes were written for the 0.12 first-run welcome.
 
 ## The domain-to-payments example
 
@@ -53,8 +28,8 @@ confusing ordinary payment integration with the separate Stripe Connect product.
 
 Claude Code's official quickstart moves from setup toward a first useful task, then
 routes to deeper guidance. Its terminal documentation supports theme-aware,
-keyboard-oriented interaction; these pages do not establish an exact six-screen
-visual design to reproduce. [Quickstart](https://code.claude.com/docs/en/quickstart),
+keyboard-oriented interaction; these pages do not establish an exact visual design
+to reproduce. [Quickstart](https://code.claude.com/docs/en/quickstart),
 [terminal configuration](https://code.claude.com/docs/en/terminal-config).
 
 Executor's documentation provides a clear opening definition, short first-use
@@ -66,7 +41,7 @@ a rendered browser audit was not available. [Executor docs](https://executor.sh/
 
 The recommendation is a maintained **Docs** section at `godmode.build/docs`, with
 the existing Markdown and provider catalog as its source. That is a proposed public
-destination, not a live site shipped by this change. Keep the structure small:
+destination, not a live site. Keep the structure small:
 
 | Section | Pages |
 | --- | --- |
@@ -80,5 +55,4 @@ Use a readable left navigation, copyable commands, stable page links and Markdow
 available to agents. Reuse the CLI's wordmark and restrained accent colors.
 Publish a static site from the same reviewed source when the public launch is
 ready. A separate CMS, accounts system or community-editable wiki is unnecessary
-for this manual. Search can follow when the page count warrants it. No website,
-DNS or repository visibility changes are part of this release.
+for this manual. Search can follow when the page count warrants it.

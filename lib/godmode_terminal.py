@@ -36,11 +36,26 @@ def color_enabled(stream=None):
 
 
 def style(text, role="accent"):
+    # dim is faint (SGR 2), not bright black (SGR 90), which some themes draw in the background color.
     codes = {"title": "1", "heading": "1", "accent": "36", "link": "4;36", "secret": "1;36",
-             "success": "32", "warning": "33", "error": "31"}
-    if not color_enabled() or role not in codes:
+             "success": "32", "warning": "33", "error": "31", "dim": "2", "brand": "1;36", "risk": "1;33"}
+    if not color_enabled() or role not in codes or not str(text):
         return str(text)
     return "\033[" + codes[role] + "m" + str(text) + "\033[0m"
+
+
+def meter(points, total, width):
+    """A progress bar of width cells for points out of total, never fuller than it is.
+
+    Color draws a heavy line on a faint one, green when full. Without color, solid blocks
+    on shaded ones keep the two parts apart; without Unicode, # on -.
+    """
+    filled = width * max(0, min(points, total)) // total if total else 0
+    if not glyph("u", ""):
+        return "#" * filled + "-" * (width - filled)
+    if not color_enabled():
+        return "\u2588" * filled + "\u2591" * (width - filled)
+    return style("\u2501" * filled, "success" if points >= total else "accent") + style("\u2500" * (width - filled), "dim")
 
 
 def glyph(fancy, plain):
@@ -118,9 +133,10 @@ class Prompt:
 
     def render(self, value, width, reveal=True):
         shown = mask(value, reveal) if self.hidden else value
-        rows = textwrap.wrap(self.label, max(1, width - 1)) or [""]
-        entry = glyph("› ", "> ")
-        return rows[:-1] + [style(rows[-1], "accent"), entry + fit(shown, width - cells(entry))[-1]]
+        rows = textwrap.wrap(self.label, max(1, width - 3)) or [""]
+        entry = "  " + glyph("› ", "> ")
+        return ["  " + row for row in rows[:-1]] + ["  " + style(rows[-1], "dim"),
+                                                     entry + fit(shown, width - cells(entry))[-1]]
 
     def enter(self, value):
         """What Enter does: True submits, False refuses, a list of rows is printed above the prompt."""
@@ -441,31 +457,52 @@ def read_page(render):
             _draw([], drawn)
 
 
-def read_menu(items, start=0, hint="", title="", gap=False):
+def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_width=0, abouts=False):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 
     items are (name, status, about) rows; None leaves a gap that cannot be chosen.
-    The status shows on every row, the description only on the row the pointer is on.
-    Typing letters jumps to the first name that starts with them, and the same letter
-    again moves to the next such name. gap adds a blank row above. The menu erases
-    itself when it ends, so the caller decides what stays on screen.
+    A status is text or (text, role) and shows on every row in one column. The
+    description shows on the row the pointer is on, or faintly on every row with
+    abouts. Typing letters jumps to the first name that starts with them, and the same
+    letter again moves to the next such name. header(width) returns rows drawn above
+    the title, the first thing dropped in a short window; gap adds a blank row above
+    everything. The title's words after " · " are faint. The menu erases itself when it
+    ends, so the caller decides what stays on screen.
     """
     choices = [index for index, item in enumerate(items) if item]
     at = start if start in choices else choices[0]
     typed, drawn = "", []
     pointer, more = glyph("❯ ", "> "), glyph("  ⋮", "  :")
+    dot = glyph(" · ", " | ")
+
+    def status(item):
+        mark = item[1]
+        return (mark, None) if isinstance(mark, str) else (mark[0], mark[1])
     # Columns are sized by the rows that have something to show beside their name.
-    names = max([cells(items[i][0]) for i in choices if items[i][1] or items[i][2]] or [0]) + 2
-    marks = max(cells(items[index][1]) for index in choices)
+    names = max([cells(items[i][0]) for i in choices if status(items[i])[0] or items[i][2] or status_width] or [0]) + 2
+    marks = max([status_width] + [cells(status(items[index])[0]) for index in choices])
     marks += 2 if marks else 0
 
     def starting(letters):
         return [index for index in choices if items[index][0].casefold().startswith(letters)]
 
+    def heading(width):
+        if not title:
+            return []
+        rows = []
+        for row in textwrap.wrap(title, max(1, width - 3), break_on_hyphens=False):
+            lead, sep, rest = row.partition(dot) if not rows else ("", "", row)
+            rows.append("  " + (style(lead, "title") + style(sep + rest, "dim") if lead else style(rest, "dim")))
+        return rows
+
     def render():
         width = columns()
-        above = ([""] if gap else []) + [style(row, "title") for row in (textwrap.wrap(title, max(1, width - 1)) if title else [])]
-        below = [""] + [style(row, "accent") for row in textwrap.wrap(hint, max(1, width - 1))] if hint else []
+        top_rows = list(header(width)) if header else []
+        titled = heading(width)
+        below = [""] + ["  " + style(row, "dim") for row in textwrap.wrap(hint, max(1, width - 3))] if hint else []
+        above = ([""] if gap else []) + top_rows + ([""] if top_rows else []) + titled + ([""] if titled else [])
+        if top_rows and len(above) + len(items) + len(below) > screen_rows() - 1:
+            above = ([""] if gap else []) + titled + ([""] if titled else [])  # A short window drops the header first.
         room = max(3, screen_rows() - 1 - len(above) - len(below))
         top = 0 if len(items) <= room else min(max(0, at - room // 2), len(items) - room)
         rows = []
@@ -475,12 +512,19 @@ def read_menu(items, start=0, hint="", title="", gap=False):
             elif not items[index]:
                 rows.append("")
             else:
-                name, mark, about = items[index]
-                row = name.ljust(names) + mark.ljust(marks) + (about if index == at else "")
-                row = fit(row, width - 2)[0].rstrip()
-                if index == at:
-                    row = style(row[:len(name)], "title") + row[len(name):]
-                rows.append((style(pointer, "accent") if index == at else "  ") + row)
+                name, about = items[index][0], items[index][2]
+                mark, role = status(items[index])
+                focus = index == at
+                note = about if (focus or abouts) else ""
+                room_left = width - 3 - names - marks
+                if note and cells(note) > room_left:
+                    note = fit(note, room_left)[0].rstrip() + glyph("…", "") if room_left > 4 else ""
+                row = style(name, "title") if focus else name
+                if mark or note:
+                    row += " " * (names - cells(name)) + (style(mark, role) if role else mark)
+                if note:
+                    row += " " * (marks - cells(mark)) + (note if focus else style(note, "dim"))
+                rows.append((style(pointer, "accent") if focus else "  ") + row)
         return above + rows + below
 
     with _Keyboard() as keyboard:

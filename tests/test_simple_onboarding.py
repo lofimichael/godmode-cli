@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from pty_support import Screen, Terminal
+from pty_support import Screen, Terminal, plain
 from test_simple_intro import complete_intro
 
 
@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 FIELDS = ("operator_name", "business_name", "legal_name", "website",
           "public_email", "business_mailing_address")
 LABELS = ("Your name", "Business name", "Legal name", "Website",
-          "Public contact email", "Business mailing address")
+          "Public email", "Mailing address")
 FACTS = ("Zoë Example", "Example Studio", "Example LLC", "https://example.test",
          "hello@example.test", "123 Example Street\nExample City")
 
@@ -89,11 +89,16 @@ class ModularOnboardingTests(unittest.TestCase):
         session.wait(lambda: any(row.startswith("❯ " + label)
                                 for row in Screen(110).feed(session.capture).lines()))
 
+    def prompt(self, session, mark, label):
+        """Wait for a field prompt: its label above the visible input row."""
+        session.wait(lambda: any(row.strip() == label for row in Screen(110).feed(session.capture).lines())
+                     and "› " in plain(session.capture[mark:]))
+
     def open_choice(self, session, label):
         self.choice(session, label)
         mark = len(session.capture)
         session.send(b"\r")
-        session.after(mark, "Enter saves")
+        self.prompt(session, mark, label)
 
     def seed(self, path, contents):
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -110,21 +115,27 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
         complete_intro(session)
-        self.choice(session, "Your details")
+        self.choice(session, "Profile")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Your details", "Credentials", "Agent instructions", "Done"):
+        for label in ("Profile", "Providers", "Agents", "Done", "0%", "0 of 6", "none yet"):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
-        for label in LABELS:
-            self.open_choice(session, label)
+        self.open_choice(session, LABELS[0])
+        # Enter on an empty field skips it and opens the next empty one: one Enter per field.
+        for index, label in enumerate(LABELS):
+            mark = len(session.capture)
+            self.assertIn("Enter skips", plain(session.capture))
             session.send(b"\r")
-        # Finishing the sixth field must select Done, not a separator or the first field.
-        self.choice(session, "Done")
+            if index + 1 < len(LABELS):
+                self.prompt(session, mark, LABELS[index + 1])
+        # After the sixth field the pointer rests on Back, not a separator or the first field.
+        self.choice(session, "Back")
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
-        self.choice(session, "Your details")
+        self.choice(session, "Providers")  # Home moves on to the next row.
         session.send(b"\x1b")
+        session.expect("Godmode is 0% set up")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
 
@@ -139,19 +150,26 @@ class ModularOnboardingTests(unittest.TestCase):
         session.send(b"\r")
         session.after(mark, "contains control characters")
         self.assertFalse(self.profile.exists())
-        self.open_choice(session, "Your name")
+        self.prompt(session, mark, "Your name")  # The same field opens again.
         mark = len(session.capture)
         session.send(FACTS[0].encode())
         session.after(mark, FACTS[0])  # Facts are visible while entered, unlike credentials.
         self.assertFalse(self.profile.exists())
         session.send(b"\r")
-        self.choice(session, "Business name")
+        self.prompt(session, mark, "Business name")  # Saving opens the next empty field.
         self.assertEqual(json.loads(self.profile.read_text()), {FIELDS[0]: FACTS[0]})
+        session.send(b"\x1b")
+        self.choice(session, "Business name")
+        screen = "\n".join(Screen(110).feed(session.capture).lines())
+        self.assertIn(FACTS[0], screen)  # The list shows saved values.
         session.send(b"\x1b[B" * 4)
-        self.open_choice(session, "Business mailing address")
+        self.open_choice(session, "Mailing address")
+        mark = len(session.capture)
         session.paste("123 Example Street\r\nExample City\r\n")
+        session.after(mark, "123 Example Street ↵ Example City")
         session.send(b"\r")
         self.choice(session, "Done")
+        self.assertIn("123 Example Street, Example City", "\n".join(Screen(110).feed(session.capture).lines()))
         session.send(b"\r")
         session.done()
         self.assertEqual(json.loads(self.profile.read_text()),
@@ -161,7 +179,7 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
         complete_intro(session)
-        self.choice(session, "Your details")
+        self.choice(session, "Profile")
         session.send(b"\x1b")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
@@ -269,11 +287,122 @@ class ModularOnboardingTests(unittest.TestCase):
         self.seed(self.home / "seal.key", "not a real key\n")
         before = self.snapshot()
         output = self.okay("agents", guidance=True)
-        self.assertIn("godmode help", output)
-        self.assertIn("profile get", output)
-        self.assertIn("Keep existing text", output)
+        self.assertTrue(output.startswith("<!-- godmode:start -->\n"))
+        self.assertTrue(output.endswith("<!-- godmode:end -->\n"))
+        self.assertIn("`godmode help`", output)
+        self.assertIn("`godmode run`", output)
         self.assertNotIn("synthetic_fixture", output)
         self.assertEqual(self.snapshot(), before)
+
+    def seen(self):
+        self.home.mkdir(mode=0o700, exist_ok=True)
+        os.close(os.open(self.home / "intro.seen", os.O_WRONLY | os.O_CREAT, 0o600))
+
+    def test_clearing_a_profile_value_and_saved_values_in_the_form(self):
+        self.okay("profile", "set", "website", "--stdin", input=FACTS[3])
+        session = self.terminal("profile")
+        self.choice(session, "Your name")  # The first empty field.
+        self.assertIn(FACTS[3], "\n".join(Screen(110).feed(session.capture).lines()))
+        session.send(b"\x1b[B" * 3)
+        self.open_choice(session, "Website")
+        self.assertIn("Saved: " + FACTS[3], plain(session.capture))
+        self.assertIn("Enter keeps it · /clear removes", plain(session.capture))
+        mark = len(session.capture)
+        session.send(b"/clear")
+        session.after(mark, "Enter removes it")
+        session.send(b"\r")
+        self.prompt(session, mark, "Public email")
+        session.send(b"\x1b")
+        self.choice(session, "Public email")
+        session.send(b"\x1b")
+        session.done()
+        self.assertEqual(json.loads(self.profile.read_text()), {})
+
+    def test_agents_screen_adds_the_previewed_note_and_keeps_existing_text(self):
+        self.seen()
+        (self.root / ".claude").mkdir()
+        codex = self.root / ".codex"
+        codex.mkdir()
+        dotfiles = self.root / "dotfiles"
+        dotfiles.mkdir()
+        (dotfiles / "AGENTS.md").write_bytes(b"# My rules\nno trailing newline")
+        (codex / "AGENTS.md").symlink_to(dotfiles / "AGENTS.md")
+        (self.root / ".gemini").mkdir()
+        (self.root / ".gemini" / "GEMINI.md").write_text("Run godmode help when you need keys.\n")
+        note = self.okay("agents")
+        session = self.terminal("agents")
+        session.expect("Add to Claude Code and Codex")
+        screen = plain(session.capture)
+        for text in ("new file", "~/.claude/rules/godmode.md", "end of file", "~/.codex/AGENTS.md",
+                     "✓ added", "~/.gemini/GEMINI.md", "<!-- godmode:start -->"):
+            self.assertIn(text, screen)
+        self.assertNotIn("I added it", screen)
+        session.send(b"\r")
+        session.expect("sessions will read it")
+        session.done()
+        self.assertEqual((self.root / ".claude/rules/godmode.md").read_text(), note)
+        self.assertTrue((codex / "AGENTS.md").is_symlink())
+        self.assertEqual((dotfiles / "AGENTS.md").read_text(), "# My rules\nno trailing newline\n\n" + note)
+        self.assertEqual((self.root / ".gemini/GEMINI.md").read_text(), "Run godmode help when you need keys.\n")
+        before = self.snapshot()
+        again = self.terminal("agents")
+        again.expect("Godmode is in these agents' instructions.")
+        self.assertNotIn("Add to", plain(again.capture))
+        again.send(b"\x1b")
+        again.done()
+        self.assertEqual(self.snapshot(), before)
+        # A non-empty override is the file Codex reads, so it is the target.
+        (codex / "AGENTS.override.md").write_text("# Override\n")
+        override = self.terminal("agents")
+        override.expect("Add to Codex")
+        self.assertIn("~/.codex/AGENTS.override.md", plain(override.capture))
+        override.send(b"\x1b")
+        override.done()
+        self.assertEqual((codex / "AGENTS.override.md").read_text(), "# Override\n")
+
+    def test_agents_screen_without_agent_folders_marks_by_hand_and_esc_writes_nothing(self):
+        self.seen()
+        stub = self.root / "stub"
+        stub.mkdir()
+        env = dict(self.env, PATH=str(stub))  # No pbcopy, wl-copy or xclip: the item prints the note instead.
+        session = Terminal([sys.executable, str(self.script), "agents"], env)
+        self.addCleanup(session.close)
+        session.expect("I added it")
+        self.assertIn("Print the note", plain(session.capture))
+        before = self.snapshot()
+        session.send(b"\x1b")
+        session.done()
+        self.assertEqual(self.snapshot(), before)
+        marked = Terminal([sys.executable, str(self.script), "agents"], env)
+        self.addCleanup(marked.close)
+        marked.expect("I added it")
+        marked.send(b"\x1b[B\r")
+        marked.expect("Marked as added")
+        marked.done()
+        marker = self.home / "agent.added"
+        self.assertEqual((marker.read_bytes(), stat.S_IMODE(marker.stat().st_mode)), (b"", 0o600))
+
+    def test_a_home_reached_through_a_symlink_works_and_a_symlinked_home_is_refused(self):
+        real = self.root / "real"
+        real.mkdir()
+        linked = self.root / "linked"
+        linked.symlink_to(real)
+        env = dict(self.env, HOME=str(linked))
+        self.okay("set", "LINKED_TOKEN", "--stdin", input="synthetic_linked", env=env)
+        self.okay("profile", "set", "business_name", "--stdin", input="Example", env=env)
+        self.assertEqual(self.okay("list", env=env), "LINKED_TOKEN\n")
+        self.assertEqual(json.loads(self.okay("profile", "show", env=env)), {"business_name": "Example"})
+        self.assertTrue((real / ".godmode" / ".env.godmode").is_file())
+        target = self.root / "elsewhere"
+        target.mkdir(mode=0o700)
+        pointed = self.root / "pointed-home"
+        pointed.symlink_to(target)
+        for args in (("set", "POINTED_TOKEN", "--stdin"), ("profile", "show")):
+            with self.subTest(args=args):
+                result = self.cli("--home", str(pointed), *args, input="synthetic_pointed")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("is a symlink or not a directory", result.stderr)
+        self.assertEqual(list(target.iterdir()), [])
 
     def test_provider_catalog_specific_guide_and_unknown_slug_never_access_keys(self):
         self.seed(self.home / ".env.godmode", "DO_NOT_READ='synthetic_fixture'\n")

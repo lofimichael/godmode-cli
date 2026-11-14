@@ -1,58 +1,48 @@
 # Godmode
 
-Enter your details and credentials once so your agents can use them. Godmode is a local onboarder: **Your details**, **Credentials**, **Agent instructions**, **Done**. Everything is optional.
+Godmode puts your business profile and API keys in one local place that your coding agents can use.
 
-The first run opens a short, six-screen welcome. Enter continues, Esc goes back,
-and the risk acknowledgement changes no agent permissions. Replay it with
-`godmode intro`.
+For example, an agent in Claude Code, Codex or Cursor can buy and register a domain on Cloudflare, deploy a Workers app to it and connect Stripe for payments.
 
-![First-run welcome, recorded from the CLI](docs/images/intro.gif)
-
-Your name, business and contact facts live in a small editable `profile.json`. Pick a provider with the arrow keys, follow its short instructions, and paste a key or drag a credential JSON file behind a mask. Before saving, the CLI shows the intended credential-file edit with your value masked as `sealed(sk_•••••123)`. New credentials are sealed; older plain files stay plain until you choose to seal them.
-
-One readable Python command, local files, no service or synchronization. The provider defaults intentionally favor broad useful access for trusted agents. Your task and existing project rules define how they use it.
-
-Agents use keys through it, one command at a time:
-
-```sh
-godmode list                                  # key names
-godmode set NAME                              # onboard or replace a credential
-godmode set ACME_AUTH_JSON --stdin < credential.json
-godmode run CLOUDFLARE_API_TOKEN -- npx wrangler whoami
-godmode help                                  # the guide agents need
-godmode profile                               # optional personal/business details
-godmode profile get business_name             # read one saved fact
-godmode provider google                       # setup, access, verification and recovery
-godmode agents                                # one-time agent discovery hint
-godmode intro                                 # replay the welcome
-```
-
-**Saved means stored, not verified.** Use only the credentials your task needs; the provider list is a catalog, not a checklist of required keys. Any name ending in `_JSON` accepts a JSON object, including a reusable OAuth grant exported by an official provider tool. Credential files, OAuth client configuration and permissions policies are different; use the type your consuming tool expects. See [Google's examples](docs/GOOGLE.md).
-
-For everyday discovery, copy the short `godmode agents` hint once into your agent's normal user instructions. The CLI prints the locations and preserves existing rules. Agents fetch current help and the relevant provider guide when needed. No personal facts are templated into agent rules. See [agent setup and conventions](docs/AGENT_SETUP.md) and [profile fields](docs/PROFILE.md).
-
-The consuming provider tool handles ordinary token refresh. If a credential is revoked or expired, the agent guides the provider's official OAuth or key-replacement flow, saves the replacement through `godmode set`, and verifies the intended operation. Outages, quotas and missing permissions need their own remedies. A returned replacement refresh credential must also be saved; `run` does not write updates back. Godmode does not implement provider login, refresh, health checks or background services.
-
-Plain-text keys in `~/.config/godmode/.env.godmode` are detected at setup, with an offer to move them to `~/.godmode` and seal them (`godmode migrate` does the same).
-
-![Interactive setup using a synthetic key](docs/images/setup.gif)
+![Setup: choose a provider, follow its steps, paste the key](docs/images/setup.gif)
 
 ## Install
 
-macOS/Linux, Python 3.9+. Requires [GitHub CLI](https://cli.github.com/) signed in with access to this private repo.
+macOS or Linux with Python 3.9 or newer. Nothing else is installed.
 
 ```sh
-gh api -H 'Accept: application/vnd.github.raw+json' \
-  repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+curl -fsSL https://github.com/lofimichael/godmode-cli/releases/latest/download/install.sh | sh -s -- --path
 ```
 
-Installs into `~/.godmode/`, adds its commands to your shell, and starts setup. Existing `~/.config/godmode/` keys stay where they are until you choose to move them.
+Setup starts when the install finishes. Pick a provider with the arrow keys, press Enter to open its key page, paste the key and press Enter to save. Everything is optional. `godmode` shows how far you are: profile fields filled, providers saved and agents that know about Godmode. Run `godmode` any time to continue.
 
-Update and run from a new terminal:
+## Connect your agent
 
-```sh
-godmodeup
-godmode
-```
+In `godmode`, choose **Agents**. Godmode shows the short note it will add for Claude Code, Codex, Gemini CLI, Copilot CLI or OpenCode, and writes it when you press Enter. For Cursor and other agents, copy the note into their instructions. In a new session, the agent runs `godmode help` when a task needs a key or a profile field.
 
-[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agent setup](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote development](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Picard](docs/PICARD.md) · [Development](docs/RELEASING.md)
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `godmode` | Set up your profile, providers and agents |
+| `godmode setup [PROVIDER]` | Add or replace a provider's keys |
+| `godmode list` | Names of saved keys, never values |
+| `godmode run NAME... -- CMD` | Run CMD with those keys in its environment |
+| `godmode set NAME` | Save or replace a key behind a mask (`--stdin` to pipe one in) |
+| `godmode profile get FIELD` | Print one profile field, such as `business_name` |
+| `godmode provider [PROVIDER]` | Setup, verification and recovery guide for a provider |
+| `godmode help` | The guide your agent reads, with what is saved |
+
+## Files
+
+| Path | Contents |
+| --- | --- |
+| `~/.godmode/profile.json` | Your profile, plain JSON, readable only by you |
+| `~/.godmode/.env.godmode` | Your keys, each value encrypted |
+| `~/.godmode/seal.key` | Decrypts them. Anyone with both files has your keys. |
+
+Nothing is sent anywhere. Godmode does not sign in to providers or check that a key works; saved means stored, not verified.
+
+Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes your keys too) and remove the two `# Godmode` lines from your shell startup file. Deleting a key here does not revoke it; revoke it at the provider.
+
+[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agents](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote machines](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Picard](docs/PICARD.md)
