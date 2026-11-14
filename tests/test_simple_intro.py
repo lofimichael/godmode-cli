@@ -16,15 +16,14 @@ from pty_support import Screen, Terminal, plain
 
 
 REPO = Path(__file__).resolve().parents[1]
-WELCOME = "Welcome to Godmode."
+WELCOME = "Agents use these keys as you."
 MENU = "Esc quit"  # Only the home screen offers to quit.
 
 
 def complete_intro(session):
-    """Advance only after each page is visible, just like three separate keypresses."""
-    for page in range(1, 4):
-        session.expect("%d / 3" % page)
-        session.send(b"\r")
+    """Accept once after the complete account-access statement is visible."""
+    session.expect("Enter accept")
+    session.send(b"\r")
 
 
 class ModularIntroTests(unittest.TestCase):
@@ -79,12 +78,12 @@ class ModularIntroTests(unittest.TestCase):
 
     def assert_no_intro(self, session):
         self.assertNotIn(WELCOME, plain(session.capture))
-        self.assertNotIn("1 / 3", plain(session.capture))
+        self.assertNotIn("Enter accept", plain(session.capture))
 
     def leave_menu(self, session):
         session.expect(MENU)
         session.send(b"\x1b")
-        session.expect("Godmode is 0% set up")
+        session.expect("Setup 0%")
         session.done()
 
     def test_default_and_init_finish_once_without_creating_optional_files(self):
@@ -93,12 +92,11 @@ class ModularIntroTests(unittest.TestCase):
                 home = self.root / (route[0] if route else "default")
                 prefix = ("--home", str(home))
                 session = self.terminal(*prefix, *route)
-                for page in range(1, 4):
-                    session.expect("%d / 3" % page)
-                    self.assertFalse(home.exists())
-                    session.send(b"\r")
+                session.expect("Enter accept and set up")
+                self.assertFalse(home.exists())
+                session.send(b"\r")
                 session.expect(MENU)
-                self.assertIn('Enter set up', plain(session.capture))
+                self.assertIn('Enter accept and set up', plain(session.capture))
                 self.assert_only_marker(home)
                 self.leave_menu(session)
                 repeated = self.terminal(*prefix, *route)
@@ -111,8 +109,8 @@ class ModularIntroTests(unittest.TestCase):
         first = self.terminal("intro")
         complete_intro(first)
         first.done()
-        self.assertIn('Enter finish', plain(first.capture))
-        self.assertNotIn('Enter set up', plain(first.capture))
+        self.assertIn('Enter accept', plain(first.capture))
+        self.assertNotIn('accept and set up', plain(first.capture))
         self.assert_only_marker()
         before = self.marker.stat()
         replay = self.terminal("intro")
@@ -132,14 +130,9 @@ class ModularIntroTests(unittest.TestCase):
         self.assert_no_intro(following)
         self.leave_menu(following)
 
-    def test_escape_goes_back_then_exits_without_files(self):
+    def test_escape_exits_without_files(self):
         session = self.terminal()
-        session.expect("1 / 3")
-        session.send(b"\r")
-        session.expect("2 / 3")
-        mark = len(session.capture)
-        session.send(b"\x1b")
-        session.after(mark, WELCOME)
+        session.expect("Enter accept and set up")
         mark = len(session.capture)
         session.send(b"\x1b")
         session.done()  # Esc on the first page of setup leaves quietly: exit 0, nothing printed or saved.
@@ -147,14 +140,11 @@ class ModularIntroTests(unittest.TestCase):
         self.assertNotIn("set up", plain(session.capture[mark:]))
         self.assertEqual(list(self.root.iterdir()), [])
 
-    def test_cancelling_after_commit_and_on_last_page_never_marks_completed(self):
-        for last_page, cancel in ((2, b"\x03"), (3, b"\x04")):
-            with self.subTest(last_page=last_page):
+    def test_cancelling_before_acceptance_never_marks_completed(self):
+        for cancel in (b"\x03", b"\x04"):
+            with self.subTest(cancel=cancel):
                 session = self.terminal("intro")
-                for page in range(1, last_page):
-                    session.expect("%d / 3" % page)
-                    session.send(b"\r")
-                session.expect("%d / 3" % last_page)
+                session.expect("Enter accept")
                 self.assertEqual(list(self.root.iterdir()), [])
                 session.send(cancel)
                 session.done(130)
@@ -163,19 +153,16 @@ class ModularIntroTests(unittest.TestCase):
     def test_typed_and_pasted_secrets_are_never_echoed_or_used_to_advance(self):
         session = self.terminal("intro")
         secret = b"synthetic_SECRET_never_echo_98765"
-        for page in range(1, 4):
-            session.expect("%d / 3" % page)
-            mark = len(session.capture)
-            session.send(secret)
-            session.send(b"\x1b[20")
-            session.send(b"0~" + secret + b"\r\nGODMODE\r\n\x1b[201")
-            session.send(b"~")
-            session.settle(.04)
-            self.assertNotIn(secret, session.capture)
-            self.assertNotIn("%d / 3" % (page + 1), plain(session.capture[mark:]))
-            self.assertIsNone(session.process.poll())
-            self.assertFalse(self.marker.exists())
-            session.send(b"\r")
+        session.expect("Enter accept")
+        session.send(secret)
+        session.send(b"\x1b[20")
+        session.send(b"0~" + secret + b"\r\nGODMODE\r\n\x1b[201")
+        session.send(b"~")
+        session.settle(.04)
+        self.assertNotIn(secret, session.capture)
+        self.assertIsNone(session.process.poll())
+        self.assertFalse(self.marker.exists())
+        session.send(b"\r")
         session.done()
         self.assert_only_marker()
 
@@ -196,8 +183,8 @@ class ModularIntroTests(unittest.TestCase):
                 session.send(b"\x1b[B\r")  # Profile is first; Providers is the next row.
                 session.after(mark, "GitHub")
                 output = plain(session.capture[mark:])
-                self.assertNotIn("Enter commit", output)
-                self.assertNotIn("powerful and dangerous", output)
+                self.assertNotIn("Enter accept", output)
+                self.assertNotIn(WELCOME, output)
                 mark = len(session.capture)
                 session.send(b"\x1b")
                 session.after(mark, MENU)
@@ -210,9 +197,8 @@ class ModularIntroTests(unittest.TestCase):
         for route in (("setup",), ("set", "DEMO_TOKEN")):
             with self.subTest(route=route):
                 session = self.terminal(*route)
-                session.expect("Enter commit · Esc cancel")
-                self.assertIn("powerful and dangerous", plain(session.capture))
-                self.assert_no_intro(session)
+                session.expect("Enter accept · Esc cancel")
+                self.assertIn("delete data", plain(session.capture))
                 session.send(b"\x1b")
                 session.done(130)
                 self.assertEqual(list(self.root.iterdir()), [])
@@ -232,18 +218,18 @@ class ModularIntroTests(unittest.TestCase):
 
     def test_fresh_setup_shows_the_one_consent_and_godmode_then_opens_home(self):
         session = self.terminal("setup")
-        session.expect("Enter commit · Esc cancel")
+        session.expect("Enter accept · Esc cancel")
         self.assertFalse(self.home.exists())
         session.send(b"\r")
         session.expect("Another key")
         self.assertTrue(self.marker.exists())
         session.send(b"\x1b")
-        session.expect("Godmode is 0% set up")
+        session.expect("Setup 0%")
         session.done()
         following = self.terminal()
         following.expect(MENU)
         self.assert_no_intro(following)
-        self.assertNotIn("Enter commit", plain(following.capture))
+        self.assertNotIn("Enter accept", plain(following.capture))
         self.leave_menu(following)
 
     def test_home_shows_the_meter_and_rows_in_every_terminal_mode(self):
@@ -257,16 +243,16 @@ class ModularIntroTests(unittest.TestCase):
                 session.settle(.1)
                 rows = Screen(80).feed(session.capture).lines()
                 screen = "\n".join(rows)
-                for text in ("Profile", "Providers", "Agents", "Done", "0%", "~/.godmode", "none yet"):
+                for text in ("Profile", "Providers", "Agents", "Done", "Setup 0%", "~/.godmode", "0 saved", "0 added"):
                     self.assertIn(text, screen)
                 self.assertTrue(all(len(row.rstrip()) <= 79 for row in rows))
                 self.assertIsNone(re.search(rb"\x1b\[[0-9;]*m", session.capture))
                 if label != "no color":
                     self.assertTrue(all(byte < 128 for byte in session.capture))
-                    self.assertIn("G O D M O D E", screen)
-                    self.assertIn("-" * 36, screen)
+                    self.assertIn("Godmode", screen)
+                    self.assertIn("-" * 6, screen)
                 else:
-                    self.assertIn("\u2591" * 36, screen)
+                    self.assertIn("\u2591" * 6, screen)
                 self.leave_menu(session)
 
     def test_legacy_keys_remain_untouched_and_intro_uses_profile_home(self):
@@ -286,6 +272,18 @@ class ModularIntroTests(unittest.TestCase):
         self.assertEqual(key.stat().st_mtime_ns, before.st_mtime_ns)
         self.assertFalse((legacy / "intro.seen").exists())
         self.assertEqual(self.okay("path").strip(), str(key))
+
+    def test_small_home_keeps_setup_count_and_all_three_components(self):
+        self.home.mkdir(mode=0o700)
+        os.close(os.open(self.marker, os.O_WRONLY | os.O_CREAT, 0o600))
+        session = self.terminal(cols=40, rows=12)
+        session.expect(MENU)
+        screen = "\n".join(Screen(40).feed(session.capture).lines())
+        for text in ("Setup 0%", "Profile", "Providers", "Agents"):
+            self.assertIn(text, screen)
+        self.assertTrue(all(len(row) <= 39 for row in screen.splitlines()))
+        session.send(b"\x1b")
+        session.done()
 
     def test_home_options_select_marker_and_explicit_home_wins(self):
         for variable in ("GODMODE_HOME", "GODMODE_CONFIG_DIR"):
@@ -335,16 +333,14 @@ class ModularIntroTests(unittest.TestCase):
         session.expect("Enlarge")
         session.send(b"\r")
         session.settle(.05)
-        self.assertNotIn("2 / 3", plain(session.capture))
+        self.assertNotIn("Enter accept", plain(session.capture))
         self.assertFalse(self.home.exists())
         mark = len(session.capture)
         fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         session.after(mark, WELCOME)
         session.send(b"\r")
-        session.expect("2 / 3")
-        session.send(b"\x03")
-        session.done(130)
-        self.assertFalse(self.home.exists())
+        session.done()
+        self.assert_only_marker()
 
     def test_no_color_ascii_fallback_and_terminal_restoration(self):
         env = dict(self.env, PYTHONIOENCODING="ascii", PYTHONUTF8="0", LC_ALL="C")
@@ -359,24 +355,27 @@ class ModularIntroTests(unittest.TestCase):
         self.assertIn(b"\x1b[?25h", session.capture)
         self.assert_only_marker()
 
-    def test_redirected_and_dumb_terminals_fail_without_state(self):
+    def test_redirected_fails_and_dumb_terminal_uses_plain_acceptance(self):
         for route in (("intro",), (), ("init",)):
             with self.subTest(route=route):
                 result = self.cli(*route)
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("needs a terminal", result.stderr)
         session = self.terminal("intro", env=dict(self.env, TERM="dumb"))
-        session.expect("This terminal cannot redraw")
-        session.wait(lambda: session.process.poll() is not None)
-        self.assertEqual(session.process.returncode, 2)
-        self.assertEqual(list(self.root.iterdir()), [])
+        session.expect("Enter accept")
+        self.assertFalse(self.home.exists())
+        session.send(b"\r")
+        session.done()
+        self.assertNotIn(b"\x1b[?25", session.capture)
+        self.assertNotIn(b"\x1b[J", session.capture)
+        self.assert_only_marker()
 
     def test_termination_signal_restores_terminal_without_marking_complete(self):
         harness = ("import os,runpy,sys; print('INTRO_CHILD_PID=%d' % os.getpid(), flush=True); "
                    "sys.argv = [sys.argv[1], 'intro']; runpy.run_path(sys.argv[0], run_name='__main__')")
         session = Terminal([sys.executable, "-c", harness, str(self.script)], self.env)
         self.addCleanup(session.close)
-        session.expect("1 / 3")
+        session.expect("Enter accept")
         child = re.search(rb"INTRO_CHILD_PID=(\d+)", session.capture)
         self.assertIsNotNone(child)
         os.kill(int(child[1]), signal.SIGTERM)

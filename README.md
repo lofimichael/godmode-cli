@@ -1,30 +1,43 @@
 # Godmode
 
-Godmode puts your business profile and API keys in one local place that your coding agents can use.
+Godmode stores your business profile and API keys on this machine. Coding agents read profile fields and run commands with selected keys.
 
-For example, an agent in Claude Code, Codex or Cursor can buy and register a domain on Cloudflare, deploy a Workers app to it and connect Stripe for payments.
+```text
+Profile + API keys → Godmode → commands
+```
 
-![Setup: choose a provider, follow its steps, paste the key](docs/images/setup.gif)
+![Godmode setup](docs/images/setup.gif)
 
 ## Install
 
-macOS or Linux with Python 3.9 or newer. Nothing else is installed.
+macOS or Linux with Python 3.9 or newer. Private downloads use a GitHub CLI login with repository access. Godmode installs no Python packages.
 
 ```sh
-curl -fsSL https://github.com/lofimichael/godmode-cli/releases/latest/download/install.sh | sh -s -- --path
+gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
 ```
 
-Setup starts when the install finishes. Pick a provider with the arrow keys, press Enter to open its key page, paste the key and press Enter to save. Everything is optional. `godmode` shows how far you are: profile fields filled, providers saved and agents that know about Godmode. Run `godmode` any time to continue.
+`godmode` opens **Profile**, **Providers**, and **Agents**, with a completion meter for each. Six profile fields, one saved provider, and one agent note fill the setup meter. Every field and provider remains optional.
+
+| Key | Action |
+| --- | --- |
+| ↑ ↓ | Select a row |
+| Enter | Open a row or save a field |
+| `/` | Search providers |
+| Tab | Open details |
+| Esc | Go back |
+
+`godmode --plain` uses static text and numbered choices. `GODMODE_PLAIN=1` keeps that mode for later commands. Key entry stays hidden; Enter shows the proposed edit, and a second Enter saves it.
 
 ## Connect your agent
 
-In `godmode`, choose **Agents**. Godmode shows the short note it will add for Claude Code, Codex, Gemini CLI, Copilot CLI or OpenCode, and writes it when you press Enter. For Cursor and other agents, copy the note into their instructions. In a new session, the agent runs `godmode help` when a task needs a key or a profile field.
+**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. It shows the exact note and destination files; Enter on **Add to…** writes the note. Other agents use the copied note. New agent sessions run `godmode help` when a task needs a key or profile field.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `godmode` | Set up your profile, providers and agents |
+| `godmode --plain` | Static text and numbered choices |
 | `godmode setup [PROVIDER]` | Add or replace a provider's keys |
 | `godmode list` | Names of saved keys, never values |
 | `godmode run NAME... -- CMD` | Run CMD with those keys in its environment |
@@ -41,7 +54,7 @@ In `godmode`, choose **Agents**. Godmode shows the short note it will add for Cl
 | `~/.godmode/.env.godmode` | Your keys, each value encrypted |
 | `~/.godmode/seal.key` | Decrypts them. Anyone with both files has your keys. |
 
-Nothing is sent anywhere. Godmode does not sign in to providers or check that a key works; saved means stored, not verified.
+Keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine.
 
 Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes your keys too) and remove the two `# Godmode` lines from your shell startup file. Deleting a key here does not revoke it; revoke it at the provider.
 

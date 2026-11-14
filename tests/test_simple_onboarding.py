@@ -1,11 +1,14 @@
 """Public onboarding commands, with isolated homes and synthetic facts/keys only."""
+import fcntl
 import json
 import os
 from pathlib import Path
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
+import termios
 import unittest
 
 from pty_support import Screen, Terminal, plain
@@ -117,7 +120,7 @@ class ModularOnboardingTests(unittest.TestCase):
         complete_intro(session)
         self.choice(session, "Profile")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Profile", "Providers", "Agents", "Done", "0%", "0 of 6", "none yet"):
+        for label in ("Profile", "Providers", "Agents", "Done", "Setup 0%", "0/6", "0 saved", "0 added"):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
@@ -135,7 +138,7 @@ class ModularOnboardingTests(unittest.TestCase):
         session.send(b"\r")
         self.choice(session, "Providers")  # Home moves on to the next row.
         session.send(b"\x1b")
-        session.expect("Godmode is 0% set up")
+        session.expect("Setup 0%")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
 
@@ -333,12 +336,12 @@ class ModularOnboardingTests(unittest.TestCase):
         session = self.terminal("agents")
         session.expect("Add to Claude Code and Codex")
         screen = plain(session.capture)
-        for text in ("new file", "~/.claude/rules/godmode.md", "end of file", "~/.codex/AGENTS.md",
+        for text in ("+ create", "~/.claude/rules/godmode.md", "+ append", "~/.codex/AGENTS.md",
                      "✓ added", "~/.gemini/GEMINI.md", "<!-- godmode:start -->"):
             self.assertIn(text, screen)
         self.assertNotIn("I added it", screen)
         session.send(b"\r")
-        session.expect("sessions will read it")
+        session.expect("New agent sessions read the note.")
         session.done()
         self.assertEqual((self.root / ".claude/rules/godmode.md").read_text(), note)
         self.assertTrue((codex / "AGENTS.md").is_symlink())
@@ -346,7 +349,7 @@ class ModularOnboardingTests(unittest.TestCase):
         self.assertEqual((self.root / ".gemini/GEMINI.md").read_text(), "Run godmode help when you need keys.\n")
         before = self.snapshot()
         again = self.terminal("agents")
-        again.expect("Godmode is in these agents' instructions.")
+        again.expect("✓ added")
         self.assertNotIn("Add to", plain(again.capture))
         again.send(b"\x1b")
         again.done()
@@ -359,6 +362,97 @@ class ModularOnboardingTests(unittest.TestCase):
         override.send(b"\x1b")
         override.done()
         self.assertEqual((codex / "AGENTS.override.md").read_text(), "# Override\n")
+
+    def test_long_saved_profile_value_remains_available_in_details_and_plain_output(self):
+        value = "https://example.test/" + "long-path-segment/" * 10 + "final-value"
+        self.okay("profile", "set", "website", "--stdin", input=value)
+        before = self.snapshot()
+        visual = Terminal([sys.executable, str(self.script), "profile"], self.env, cols=80, rows=20)
+        self.addCleanup(visual.close)
+        visual.expect("Your name")
+        visual.send(b"w")
+        visual.expect("Tab details")
+        mark = len(visual.capture)
+        visual.send(b"\t")
+        visual.after(mark, "final-value")
+        self.assertIn(value, "".join(plain(visual.capture[mark:]).split()))
+        visual.send(b"\t\x1b")
+        visual.done()
+        for route in (("profile",), ("profile", "set", "website")):
+            with self.subTest(route=route):
+                session = Terminal([sys.executable, str(self.script), "--plain", *route],
+                                   self.env, cols=40, rows=12)
+                self.addCleanup(session.close)
+                session.wait(lambda: value in "".join(plain(session.capture).split()))
+                self.assertIn(value, "".join(plain(session.capture).split()))
+                session.send(b"\x1b")
+                session.done(130 if "set" in route else 0)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_profile_save_waits_for_readable_form_after_tiny_resize(self):
+        original = 'https://before.example.test'
+        replacement = 'https://after.example.test'
+        self.okay('profile', 'set', 'website', '--stdin', input=original)
+        before = self.snapshot()
+        session = Terminal([sys.executable, str(self.script), 'profile', 'set', 'website'],
+                           self.env, cols=80, rows=24)
+        self.addCleanup(session.close)
+        session.expect('Enter keeps it')
+        session.send(replacement.encode())
+        session.expect(replacement)
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 2, 0, 0))
+        session.wait(lambda: b'\x1b[J' in session.capture[mark:])
+        session.send(b'\r')
+        session.settle(.1)
+        self.assertIsNone(session.process.poll())
+        self.assertNotIn('Traceback', plain(session.capture))
+        self.assertEqual(self.snapshot(), before)
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+        session.after(mark, 'Enter saves')
+        session.after(mark, replacement)
+        session.send(b'\r')
+        session.done()
+        self.assertEqual(self.okay('profile', 'get', 'website'), replacement + '\n')
+
+    def test_agent_write_requires_readable_preview_after_resize(self):
+        self.seen()
+        (self.root / ".claude").mkdir()
+        target = self.root / ".claude/rules/godmode.md"
+        session = Terminal([sys.executable, str(self.script), "agents"], self.env, cols=40, rows=12)
+        self.addCleanup(session.close)
+        session.expect("Enlarge the terminal")
+        session.send(b"\r")
+        session.settle(.1)
+        self.assertFalse(target.exists())
+        self.assertIsNone(session.process.poll())
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 80, 0, 0))
+        session.after(mark, "Add to Claude Code")
+        screen = "\n".join(Screen(80).feed(session.capture[mark:]).lines())
+        self.assertIn("~/.claude/rules/godmode.md", screen)
+        self.assertIn("<!-- godmode:start -->", screen)
+        self.assertIn("<!-- godmode:end -->", screen)
+        self.assertFalse(target.exists())
+        session.send(b"\r")
+        session.done()
+        self.assertEqual(target.read_text(), self.okay("agents"))
+
+    def test_all_agent_targets_and_full_note_fit_standard_terminal(self):
+        for folder in (".claude", ".codex", ".gemini", ".copilot", ".config/opencode"):
+            (self.root / folder).mkdir(parents=True, exist_ok=True)
+        session = Terminal([sys.executable, str(self.script), "agents"], self.env, cols=80, rows=24)
+        self.addCleanup(session.close)
+        session.expect("Add to 5 agents")
+        screen = "\n".join(Screen(80).feed(session.capture).lines())
+        for name in ("~/.claude/rules/godmode.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md",
+                     "~/.copilot/copilot-instructions.md", "~/.config/opencode/AGENTS.md",
+                     "<!-- godmode:start -->", "<!-- godmode:end -->"):
+            self.assertIn(name, screen)
+        session.send(b"\x1b")
+        session.done()
+        self.assertFalse((self.root / ".claude/rules/godmode.md").exists())
 
     def test_agents_screen_without_agent_folders_marks_by_hand_and_esc_writes_nothing(self):
         self.seen()

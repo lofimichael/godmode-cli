@@ -78,7 +78,7 @@ def font_path(explicit: Path | None) -> Path:
 
 class Recorder:
     def __init__(self, terminal: Terminal, cols: int, rows: int, font: Path, theme: str = "dark",
-                 caption: str = "Interactive setup · synthetic credentials"):
+                 caption: str = "Godmode CLI · 2026-11-14"):
         self.terminal = terminal
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.Stream(self.screen)
@@ -193,13 +193,12 @@ class Recorder:
 
 def record_intro(binary, config, env, font, args):
     terminal = Terminal([str(binary)], env, cols=80, rows=22)
-    recorder = Recorder(terminal, 80, 22, font, args.theme, "Godmode · first-run welcome")
-    names = ["welcome", "risk", "profile", "home"]
+    recorder = Recorder(terminal, 80, 22, font, args.theme)
+    names = ["welcome", "home"]
     try:
-        for number in range(1, 4):
-            recorder.wait_for("%d / 3" % number)
-            recorder.capture(1800)
-            terminal.send(b"\r")
+        recorder.wait_for("Enter accept and set up")
+        recorder.capture(4500)
+        terminal.send(b"\r")
         recorder.wait_for("Esc quit")
         recorder.capture(1600)
         terminal.send(b"\x1b")
@@ -218,7 +217,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=REPO / "target/godmode")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--intro", action="store_true", help="record the three-page welcome and the home screen instead of a first key")
+    parser.add_argument("--intro", action="store_true", help="record the welcome and home instead of a first key")
     parser.add_argument("--font", type=Path)
     parser.add_argument("--theme", choices=THEMES, default="dark", help="terminal palette for the recording")
     parser.add_argument("--frames-dir", type=Path, help="also save readable PNGs of the recorded states")
@@ -254,7 +253,7 @@ def main() -> None:
             recorder.wait_for("❯ Cloudflare")
             recorder.capture(700)
             terminal.send(b"\r")
-            recorder.wait_for("Create a Cloudflare API token")
+            recorder.wait_for("Cloudflare · API token")
             recorder.wait_for("CLOUDFLARE_API_TOKEN=sealed(…)")
             recorder.capture(1900)
             terminal.paste(SYNTHETIC)
@@ -264,13 +263,13 @@ def main() -> None:
             assert not (config / ".env.godmode").exists() or SYNTHETIC not in (config / ".env.godmode").read_text()
             terminal.send(b"\r")
             recorder.wait_for("Saved CLOUDFLARE_API_TOKEN=sealed(cf_•••••d8f)")
-            recorder.wait_for("❯ Vercel")
+            recorder.wait_for("❯ Back")
             recorder.capture(1100)
             terminal.send(b"\x1b")
-            recorder.wait_for("11%")
+            recorder.wait_for("33%")
             recorder.capture(1700)
             terminal.send(b"\x1b")
-            recorder.wait_for("Next:")
+            recorder.wait_for("godmode agents")
             terminal.done()
             assert SYNTHETIC.encode() not in terminal.capture, "PTY output exposed synthetic input"
             # Prove this was an actual save in a temporary store, not an animated mockup.

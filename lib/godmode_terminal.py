@@ -28,9 +28,18 @@ class Back(Cancelled):
     """Escape: leave this prompt for the previous menu, saving nothing."""
 
 
+def plain_enabled():
+    """Sequential prompts for screen readers and terminals without cursor controls."""
+    return (os.environ.get("GODMODE_PLAIN", "").lower() not in ("", "0", "false", "no")
+            or os.environ.get("TERM", "dumb") in ("", "dumb"))
+
+
+plain_mode = plain_enabled
+
+
 def color_enabled(stream=None):
     stream = sys.stdout if stream is None else stream
-    return (stream.isatty() and "NO_COLOR" not in os.environ
+    return (stream.isatty() and not plain_enabled() and "NO_COLOR" not in os.environ
             and os.environ.get("CLICOLOR") != "0"
             and os.environ.get("TERM", "dumb") not in ("", "dumb"))
 
@@ -61,7 +70,7 @@ def meter(points, total, width):
 def glyph(fancy, plain):
     """Use a Unicode symbol only when the terminal can show it (the Linux console font cannot)."""
     unicode = "utf" in (getattr(sys.stdout, "encoding", "") or "").lower() and os.environ.get("TERM") != "linux"
-    return fancy if unicode else plain
+    return fancy if unicode and not plain_enabled() else plain
 
 
 def mask(value, reveal=True):
@@ -118,6 +127,11 @@ def columns():
     return size.columns if size.columns > 0 else 80
 
 
+def plain_columns():
+    """Static output wraps in scrollback; it does not need to fit the viewport."""
+    return max(40, columns())
+
+
 def screen_rows():
     size = shutil.get_terminal_size((80, 24))
     return size.lines if size.lines > 0 else 24
@@ -127,6 +141,7 @@ class Prompt:
     """What a text prompt draws. The last rendered row is the input line, where the cursor rests."""
     pastes = True  # False for a field shown as typed, so a secret pasted there by mistake never appears.
     pasted = False  # read_secret sets this while the field holds any pasted text.
+    reviewing = False  # Static mode has displayed the value and awaits confirmation.
 
     def __init__(self, label, hidden=True):
         self.label, self.hidden = label, hidden
@@ -141,6 +156,10 @@ class Prompt:
     def enter(self, value):
         """What Enter does: True submits, False refuses, a list of rows is printed above the prompt."""
         return True
+
+    def toggle(self):
+        """Tab may disclose detail without changing the field or submitting it."""
+        return False
 
     def final(self, value, width, reveal, submitted):
         """Rows left on screen once the prompt ends."""
@@ -217,8 +236,6 @@ class _Keyboard:
     def __enter__(self):
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise ValueError("This prompt needs a terminal.")
-        if os.environ.get("TERM", "dumb") in ("", "dumb"):
-            raise ValueError("This terminal cannot redraw. Pipe a value to godmode set KEY --stdin")
         self.fd = sys.stdin.fileno()
         self.saved = termios.tcgetattr(self.fd)
         self.events, self.pending, self.paste, self.rejected = [], bytearray(), None, False
@@ -251,7 +268,7 @@ class _Keyboard:
             signal.signal(number, previous)
         os.close(self.wake)
         os.close(self.wake_write)
-        sys.stdout.write("\033[?2004l\033[?25h")
+        sys.stdout.write("\033[?2004l" + ("" if plain_enabled() else "\033[?25h"))
         sys.stdout.flush()
 
     def read(self):
@@ -333,6 +350,8 @@ class _Keyboard:
 def read_secret(prompt):
     """Return a hidden value. Pasting never submits; only Enter does."""
     prompt = prompt if isinstance(prompt, Prompt) else Prompt(prompt)
+    if plain_enabled():
+        return _plain_secret(prompt)
     value, drawn, submitted = bytearray(), [], False
     # Ends are shown only for a value pasted into an empty field. Typing or deleting
     # would otherwise reveal every character as it passes through the visible end.
@@ -375,6 +394,8 @@ def read_secret(prompt):
                     reveal = False
                 elif key == "clear":
                     clear()
+                elif kind == "key" and key == "tab":
+                    prompt.toggle()
                 elif key == "esc":
                     raise Back()
                 elif key == "enter":
@@ -401,8 +422,136 @@ def read_secret(prompt):
             sys.stdout.write("\r\n" if left else "")
 
 
+def _plain_rows(rows):
+    """Append static rows without terminal drawing or color sequences."""
+    sys.stdout.write("\r\n".join(TERM_STYLE.sub("", str(row)) for row in rows) + "\r\n")
+    sys.stdout.flush()
+
+
+def _plain_secret(prompt):
+    """Hidden input followed by a static review; a separate Enter submits it.
+
+    Bracketed paste remains enabled, so pasted newlines never act as Enter keys.
+    This mode emits no cursor movement, erase codes, color, or per-key redraws.
+    """
+    value, submitted, reviewed, paste_only = bytearray(), False, False, True
+
+    def text():
+        return value.decode("utf-8", "ignore")
+
+    with _Keyboard() as keyboard:
+        try:
+            _plain_rows(prompt.render("", plain_columns(), False))
+            _plain_rows(["  Input hidden. Enter reviews."])
+            while True:
+                kind, key = keyboard.read()
+                if kind == "reject":
+                    raise ValueError("Input is too large or contains a NUL byte; nothing saved.")
+                if kind == "paste" and not prompt.pastes:
+                    _plain_rows(["  Paste ignored. Type the name."])
+                    continue
+                if kind in ("text", "paste"):
+                    if kind == "paste" and paste_only:
+                        value[:] = b"\0" * len(value)
+                        value.clear()
+                    if len(value) + len(key) > TERM_MAX_INPUT:
+                        raise ValueError("Input is too large; nothing saved.")
+                    value.extend(key)
+                    prompt.pasted = kind == "paste" or prompt.pasted
+                    reviewed = False
+                    if kind == "text":
+                        paste_only = False
+                elif kind == "key" and key == "backspace":
+                    if value:
+                        start = len(value) - 1
+                        while start > 0 and (value[start] & 0xc0) == 0x80:
+                            start -= 1
+                        del value[start:]
+                    reviewed = False
+                    paste_only = False
+                elif kind == "key" and key == "clear":
+                    value[:] = b"\0" * len(value)
+                    value.clear()
+                    reviewed = False
+                elif kind == "key" and key == "tab":
+                    prompt.toggle()
+                    prompt.reviewing = reviewed
+                    _plain_rows(prompt.render(text(), plain_columns(), False))
+                elif kind == "key" and key == "esc":
+                    raise Back()
+                elif kind == "key" and key == "enter":
+                    try:
+                        answer = value.decode("utf-8")
+                    except UnicodeDecodeError:
+                        raise ValueError("Input is not valid UTF-8; nothing saved.") from None
+                    if answer and not reviewed:
+                        prompt.reviewing = True
+                        _plain_rows(prompt.render(answer, plain_columns(), False))
+                        if not hasattr(prompt, "hint"):
+                            _plain_rows(["  Enter confirms. Ctrl-U clears. Esc back."])
+                        reviewed = True
+                        continue
+                    outcome = prompt.enter(answer)
+                    if outcome is True:
+                        submitted = True
+                        return answer
+                    if outcome is False:
+                        prompt.reviewing = False
+                        _plain_rows(prompt.render(answer, plain_columns(), False))
+                    else:
+                        _plain_rows(outcome)
+                        prompt.reviewing = False
+                        _plain_rows(prompt.render(answer, plain_columns(), False))
+                    reviewed = False
+                if not value:
+                    prompt.pasted = False
+                    paste_only = True
+                prompt.reviewing = reviewed
+        finally:
+            prompt.final(text(), plain_columns(), False, submitted)
+            value[:] = b"\0" * len(value)
+            value.clear()
+            sys.stdout.write("\r\n")
+
+
+def _plain_choice(label, choices, keyboard=None):
+    options = {str(choice).casefold(): str(choice) for choice in choices}
+    value = bytearray()
+    with (_Keyboard() if keyboard is None else contextlib.nullcontext(keyboard)) as keyboard:
+        _plain_rows([label])
+        while True:
+            kind, key = keyboard.read()
+            if kind == "text":
+                # Input stays hidden. Validate the whole choice on Enter: dropping
+                # an invalid digit could turn "12" into "1", or "9" into a default.
+                if len(value) + len(key) > TERM_MAX_INPUT:
+                    raise ValueError("Input is too large; no choice selected.")
+                value.extend(key)
+            elif kind == "key" and key == "backspace":
+                if value:
+                    start = len(value) - 1
+                    while start > 0 and (value[start] & 0xc0) == 0x80:
+                        start -= 1
+                    del value[start:]
+            elif kind == "key" and key == "clear":
+                value.clear()
+            elif kind == "key" and key == "esc":
+                raise Back()
+            elif kind == "key" and key == "enter":
+                try:
+                    answer = value.decode("utf-8").casefold()
+                except UnicodeDecodeError:
+                    answer = None
+                if answer in options:
+                    _plain_rows([options[answer]])
+                    return options[answer]
+                _plain_rows(["  Invalid choice. Ctrl-U clears. Type a listed choice, then Enter."])
+
+
 def read_choice(label, choices):
     """Return a listed choice typed in full; never echo an unexpected pasted value."""
+    if plain_enabled():
+        return _plain_choice(label, choices)
     options = {str(choice).casefold(): str(choice) for choice in choices}
     prompt, value, drawn = Prompt(label, hidden=False), bytearray(), []
 
@@ -441,6 +590,19 @@ def read_choice(label, choices):
 
 def read_page(render):
     """An Enter-paced page. Text and pastes are ignored; Esc goes back."""
+    if plain_enabled():
+        with _Keyboard() as keyboard:
+            rows, ready = render(plain_columns(), 1000000)
+            _plain_rows(rows)
+            while True:
+                kind, key = keyboard.read()
+                if kind == "key" and key == "esc":
+                    raise Back()
+                if kind == "key" and key == "enter" and ready:
+                    return
+                if kind == "resize" and not ready:
+                    rows, ready = render(plain_columns(), 1000000)
+                    _plain_rows(rows)
     drawn = []
     with _Keyboard() as keyboard:
         try:
@@ -457,21 +619,28 @@ def read_page(render):
             _draw([], drawn)
 
 
-def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_width=0, abouts=False):
+def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_width=0, abouts=False,
+              searchable=False, header_required=False):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 
     items are (name, status, about) rows; None leaves a gap that cannot be chosen.
     A status is text or (text, role) and shows on every row in one column. The
     description shows on the row the pointer is on, or faintly on every row with
     abouts. Typing letters jumps to the first name that starts with them, and the same
-    letter again moves to the next such name. header(width) returns rows drawn above
-    the title, the first thing dropped in a short window; gap adds a blank row above
-    everything. The title's words after " · " are faint. The menu erases itself when it
-    ends, so the caller decides what stays on screen.
+    letter again moves to the next such name. searchable adds a slash filter; pastes
+    never enter a search. Tab opens the full selected row when its text is clipped.
+    header(width) returns rows above the title. A required header blocks selection
+    until it fits; optional headers may collapse. Plain mode prints every row and
+    accepts a number. Visual menus erase their own region when they end.
     """
     choices = [index for index, item in enumerate(items) if item]
+    if not choices:
+        raise ValueError("This menu has no choices.")
+    if plain_enabled():
+        return _plain_menu(items, start, title, header)
     at = start if start in choices else choices[0]
     typed, drawn = "", []
+    filtering, query, blocked, details, detail_offset = False, "", False, False, 0
     pointer, more = glyph("❯ ", "> "), glyph("  ⋮", "  :")
     dot = glyph(" · ", " | ")
 
@@ -486,6 +655,16 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
     def starting(letters):
         return [index for index in choices if items[index][0].casefold().startswith(letters)]
 
+    def matches():
+        return [i for i in choices if query.casefold() in (items[i][0] + " " + items[i][2]).casefold()] if query else choices
+
+    def short(text, size):
+        text = TERM_STYLE.sub("", text)
+        if cells(text) <= size:
+            return text
+        end = glyph("…", "...")
+        return fit(text, max(2, size - cells(end) + 1))[0] + end if size > cells(end) else ""
+
     def heading(width):
         if not title:
             return []
@@ -496,18 +675,48 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
         return rows
 
     def render():
+        nonlocal blocked, detail_offset
         width = columns()
+        if details:
+            name, about = items[at][0], items[at][2]
+            mark = TERM_STYLE.sub("", status(items[at])[0])
+            full = []
+            for text in (name, mark, about):
+                if text:
+                    full += ["  " + row for row in textwrap.wrap(TERM_STYLE.sub("", text), max(1, width - 3))]
+            room = max(1, screen_rows() - 4)
+            detail_offset = min(detail_offset, max(0, len(full) - room))
+            return full[detail_offset:detail_offset + room] + ["", "  " + short("Up/Down scroll | Tab back", width - 3)]
         top_rows = list(header(width)) if header else []
         titled = heading(width)
-        below = [""] + ["  " + style(row, "dim") for row in textwrap.wrap(hint, max(1, width - 3))] if hint else []
+        selected_name, selected_about = items[at][0], items[at][2]
+        selected_mark = status(items[at])[0]
+        available = max(1, width - 3)
+        mark_width = min(marks, max(0, available // 2))
+        name_width = min(names, max(1, available - mark_width)) if selected_mark or selected_about else available
+        name_limit = max(1, name_width - 2) if selected_mark or selected_about else available
+        cut = (cells(selected_name) > name_limit or cells(selected_mark) > max(0, mark_width - 2)
+               or cells(selected_about) > max(0, available - name_width - mark_width))
+        help_text = hint + ("  / search" if searchable else "") + ("  Tab details" if cut else "")
+        below = [""] + ["  " + style(row, "dim") for row in textwrap.wrap(help_text, max(1, width - 3))] if help_text else []
         above = ([""] if gap else []) + top_rows + ([""] if top_rows else []) + titled + ([""] if titled else [])
-        if top_rows and len(above) + len(items) + len(below) > screen_rows() - 1:
+        blocked = header_required and drawn_height(above + below, width) + min(3, len(items)) > screen_rows() - 1
+        if blocked:
+            return ["  " + row for row in textwrap.wrap("Enlarge the terminal to review all changes. Esc back.", max(1, width - 3))]
+        if top_rows and not header_required and len(above) + len(items) + len(below) > screen_rows() - 1:
             above = ([""] if gap else []) + titled + ([""] if titled else [])  # A short window drops the header first.
+        if filtering:
+            above += ["  / " + (short(query, max(1, width - 5)) if matches() else "No matches"), ""]
         room = max(3, screen_rows() - 1 - len(above) - len(below))
-        top = 0 if len(items) <= room else min(max(0, at - room // 2), len(items) - room)
+        indices = matches() if filtering else list(range(len(items)))
+        if not indices:
+            return above + ["  No matches"] + below
+        position = indices.index(at) if at in indices else 0
+        top = 0 if len(indices) <= room else min(max(0, position - room // 2), len(indices) - room)
         rows = []
-        for index in range(top, min(len(items), top + room)):
-            if (index == top and top > 0) or (index == top + room - 1 and index < len(items) - 1):
+        for slot in range(top, min(len(indices), top + room)):
+            index = indices[slot]
+            if (slot == top and top > 0) or (slot == top + room - 1 and slot < len(indices) - 1):
                 rows.append(more)  # The list is taller than the window and continues.
             elif not items[index]:
                 rows.append("")
@@ -516,14 +725,21 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
                 mark, role = status(items[index])
                 focus = index == at
                 note = about if (focus or abouts) else ""
-                room_left = width - 3 - names - marks
+                available = max(1, width - 3)
+                mark_width = min(marks, max(0, available // 2))
+                name_width = min(names, max(1, available - mark_width)) if mark or note else available
+                name_limit = max(1, name_width - 2) if mark or note else available
+                name = short(name, name_limit) if cells(name) > name_limit else name
+                mark = short(mark, max(0, mark_width - 2)) if cells(mark) > max(0, mark_width - 2) else mark
+                room_left = available - name_width - mark_width
                 if note and cells(note) > room_left:
-                    note = fit(note, room_left)[0].rstrip() + glyph("…", "") if room_left > 4 else ""
+                    note = (fit(note, room_left)[0].rstrip() + glyph("…", "")
+                            if room_left > 4 and not note.startswith("godmode ") else "")
                 row = style(name, "title") if focus else name
                 if mark or note:
-                    row += " " * (names - cells(name)) + (style(mark, role) if role else mark)
+                    row += " " * max(0, name_width - cells(name)) + (style(mark, role) if role else mark)
                 if note:
-                    row += " " * (marks - cells(mark)) + (note if focus else style(note, "dim"))
+                    row += " " * max(0, mark_width - cells(mark)) + (note if focus else style(note, "dim"))
                 rows.append((style(pointer, "accent") if focus else "  ") + row)
         return above + rows + below
 
@@ -533,6 +749,43 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
             while True:
                 drawn = _draw(render(), drawn)
                 kind, key = keyboard.read()
+                if details:
+                    if kind == "key" and key in ("tab", "esc"):
+                        details, detail_offset = False, 0
+                    elif kind == "key" and key in ("up", "pageup"):
+                        detail_offset = max(0, detail_offset - (5 if key == "pageup" else 1))
+                    elif kind == "key" and key in ("down", "pagedown"):
+                        detail_offset += 5 if key == "pagedown" else 1
+                    continue
+                if blocked:
+                    if kind == "key" and key == "esc":
+                        raise Back()
+                    continue
+                if kind == "key" and key == "tab":
+                    details, detail_offset = True, 0
+                    continue
+                if searchable and kind == "text" and key == b"/" and not filtering:
+                    filtering, query, typed = True, "", ""
+                    continue
+                if filtering:
+                    if kind == "text" and len(query) < 64:
+                        letter = key.decode("ascii", "ignore")
+                        if letter and letter.isprintable():
+                            query += letter
+                    elif kind == "key" and key == "backspace":
+                        query = query[:-1]
+                    elif kind == "key" and key == "clear":
+                        query = ""
+                    elif kind == "key" and key == "esc":
+                        filtering, query = False, ""
+                        continue
+                    found = matches()
+                    if found and at not in found:
+                        at = found[0]
+                    if kind != "key" or key not in ("up", "down", "pageup", "pagedown", "home", "end", "enter"):
+                        continue
+                    if not found:
+                        continue
                 if kind == "text":
                     letter = key.decode("utf-8", "ignore").casefold()
                     if not letter:
@@ -548,16 +801,36 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
                     at = found[0] if found else at
                     continue
                 typed = ""
+                active = matches() if filtering else choices
                 step = {"up": -1, "down": 1, "pageup": -5, "pagedown": 5}.get(key) if kind == "key" else None
                 if step in (-1, 1):
-                    at = choices[(choices.index(at) + step) % len(choices)]  # Wraps around.
+                    at = active[(active.index(at) + step) % len(active)]  # Wraps around.
                 elif step:
-                    at = choices[min(max(0, choices.index(at) + step), len(choices) - 1)]
+                    at = active[min(max(0, active.index(at) + step), len(active) - 1)]
                 elif key in ("home", "end"):
-                    at = choices[0 if key == "home" else -1]
+                    at = active[0 if key == "home" else -1]
                 elif key == "enter":
                     return at
                 elif key == "esc":
                     raise Back()
         finally:
             _draw([], drawn)
+
+
+def _plain_menu(items, start, title, header):
+    choices = [i for i, item in enumerate(items) if item]
+    rows = list(header(plain_columns())) if header else []
+    if title:
+        rows += [title]
+    for number, index in enumerate(choices, 1):
+        name, mark, about = items[index]
+        mark = mark if isinstance(mark, str) else mark[0]
+        rows.append("%d. %s%s" % (number, name, ": " + TERM_STYLE.sub("", mark) if mark else ""))
+        if about:
+            rows.append("   " + about)
+    default = choices.index(start) + 1 if start in choices else 1
+    with _Keyboard() as keyboard:
+        _plain_rows(rows)
+        answer = _plain_choice("Number, then Enter (%d). Esc back." % default,
+                               [""] + [str(i) for i in range(1, len(choices) + 1)], keyboard)
+    return choices[int(answer or default) - 1]

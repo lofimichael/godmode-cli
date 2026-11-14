@@ -2,8 +2,8 @@
 
 The README animation is made from a scripted session of the actual readable script
 in a pseudo-terminal. It shows choosing a provider with the arrow keys, the
-key's three steps, the "What will change on your machine" preview filling
-in as a masked key is pasted, and saving it. `pyte` interprets the ANSI
+key's steps, the file and masked value preview, and the saved result. Tab
+reveals the shell equivalent. `pyte` interprets the ANSI
 output, including its colors and emphasis; Pillow draws the resulting terminal
 cells. The frame holds are chosen for readability and total at most ten
 seconds. It is not a desktop recording or a mock interface.
@@ -15,9 +15,13 @@ target/demo-venv/bin/python -m pip install -r scripts/demo-requirements.txt
 target/demo-venv/bin/python scripts/record-demo.py
 ```
 
-Add `--intro` and an `--output` path to record the three-page welcome and the
+Add `--intro` and an `--output` path to record the single welcome and the
 home screen instead. This uses a separate empty temporary home, writes only
 `intro.seen`, and checks that no profile or keys were created.
+
+`scripts/record-tour.py --output target/visual-tour` records the profile, full
+agent preview, provider search, narrow home, and key errors in light and dark
+palettes. It uses the same optional recording environment and synthetic data.
 
 The default output is `docs/images/setup.gif`. `--binary`, `--output` and `--font`
 can override the inputs/destination. On macOS the script uses the installed Menlo

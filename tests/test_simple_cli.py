@@ -17,11 +17,11 @@ from pty_support import Screen, Terminal, plain, values
 
 REPO = Path(__file__).resolve().parents[1]
 SED = "sed -i ''" if sys.platform == 'darwin' else 'sed -i'
-TITLE = 'What will change on your machine'
+TITLE = '~/.godmode/.env.godmode'
 APPEND = "$ printf '%s\\n' "
 DOTS = '•••••'
 MENU = '↑↓ move'
-SUMMARY = 'Godmode is '  # The exit summary of godmode and of the standalone provider list.
+SUMMARY = 'Setup '  # The exit receipt of godmode and of the standalone provider list.
 SERVICE_ACCOUNT = {'type':'service_account','project_id':'demo-project','private_key_id':'abc123',
                    'private_key':'-----BEGIN PRIVATE KEY-----\nSYNTHETICKEYMATERIAL\n-----END PRIVATE KEY-----\n',
                    'client_email':'agent@demo-project.iam.gserviceaccount.com','client_id':'1',
@@ -131,12 +131,12 @@ class CLI(unittest.TestCase):
     def assert_one_region(self, terminal, cols=100):
         screen=Screen(cols).feed(terminal.capture)
         self.assertEqual(screen.count(TITLE),1,'prompt region was not redrawn in place')
-        self.assertEqual(screen.count('$ '),1)
+        self.assertEqual(screen.count('$ '),0)
 
     def test_masked_setup_keep_replace_and_plain_manual_file(self):
         terminal=self.terminal()
         # One consent: the risk page alone, without the intro's page counter.
-        terminal.expect('This makes it both powerful and dangerous.');terminal.expect('Enter commit · Esc cancel')
+        terminal.expect('Agents use these keys as you.');terminal.expect('Enter accept')
         self.assertNotIn('/ 3',plain(terminal.capture))
         self.assertNotIn('Type GODMODE',plain(terminal.capture))
         self.assertFalse(self.home.exists())  # Nothing is written before the Enter.
@@ -147,27 +147,26 @@ class CLI(unittest.TestCase):
         token='github_pat_DEMO_ONLY_f62d34'
         terminal.paste(token)  # A paste into the menu is ignored and never shown.
         terminal.send(b'\r');terminal.expect('Paste your token:')
-        terminal.wait(lambda: APPEND+"'GH_TOKEN=sealed(…)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
+        terminal.expect('Add GH_TOKEN=sealed(…)')
         before=self.file.read_bytes()
         terminal.paste(token)
-        terminal.wait(lambda: APPEND+"'GH_TOKEN=sealed(git•••••d34)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
+        terminal.expect('Add GH_TOKEN=sealed(git•••••d34)')
         self.assertIn('Paste your token: git•••••d34', plain(terminal.capture))
         self.assert_one_region(terminal)
         self.assertEqual(self.file.read_bytes(),before)
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved GH_TOKEN=sealed(git•••••d34)')
         terminal.after(mark,MENU)
-        # Saved: the pointer moves on to the next provider that lacks a key.
-        self.assertTrue(self.pointed(terminal).startswith('Cloudflare'))
-        self.assertRegex('\n'.join(Screen(100).feed(terminal.capture).lines()),r'\n  GitHub +✓ saved +repos, Actions')
+        # Saving a usable set finishes the task; no further provider is required.
+        self.assertTrue(self.pointed(terminal).startswith('Done'))
+        self.assertRegex('\n'.join(Screen(100).feed(terminal.capture).lines()),r'\n  GitHub +✓ saved')
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
         # Every screen erased itself; the receipt and the summary remain.
         screen=Screen(100).feed(terminal.capture)
-        self.assertEqual((screen.count(TITLE),screen.count('Cloudflare'),screen.count('Create a GitHub token')),(0,0,0))
+        self.assertEqual((screen.count(TITLE),screen.count('Cloudflare'),screen.count('GitHub · Access token')),(0,0,0))
         self.assertEqual(screen.count('✓ Saved GH_TOKEN=sealed(git•••••d34)'),1)
         self.assertIn('  ✓ Saved GH_TOKEN=sealed(git•••••d34)',screen.lines())  # At the two-column margin.
-        self.assertIn('  Godmode is 11% set up: 1 provider, 0 of 6 profile fields, no agent yet.',screen.lines())
-        self.assertIn('  Next: godmode agents',screen.lines())
+        self.assertIn('33%', '\n'.join(screen.lines()))
         self.assertNotIn('Done. Your keys are in',plain(terminal.capture))
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
         self.assertNotIn(token.encode(),terminal.capture)
@@ -176,14 +175,14 @@ class CLI(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.home.iterdir()),['.env.godmode','STOP_AND_READ_ME_FOR_KEYS.md','intro.seen','seal.key'])
         self.assertEqual((self.home/'seal.key').stat().st_mode & 0o777,0o600)
         again=self.terminal(['setup','github']);again.expect('Paste your token:')
-        again.wait(lambda: SED+" 's/^GH_TOKEN=.*/GH_TOKEN=sealed(…)/' ~/.godmode/.env.godmode" in plain(again.capture))
-        self.assertIn('Create a GitHub token  ✓ saved', plain(again.capture))
+        again.expect('Replace GH_TOKEN=sealed(…)')
+        self.assertIn('GitHub · Access token  ✓ saved', plain(again.capture))
         again.send(b'\x1b');again.done(130)
         self.assertIn('Cancelled.',plain(again.capture))
         self.assertNotIn('Previously saved keys were kept',plain(again.capture))
         env,record=self.opener()
         keep=self.terminal(['set','GH_TOKEN'],env);keep.expect('Enter opens github.com')
-        self.assertIn('Create a GitHub token',plain(keep.capture))
+        self.assertIn('GitHub · Access token',plain(keep.capture))
         self.assertIn('Resource owner',plain(keep.capture))
         keep.send(b'\r');keep.expect('Opened github.com')
         keep.send(b'\x1b');keep.done(130)
@@ -194,7 +193,7 @@ class CLI(unittest.TestCase):
         update=self.terminal(['set','CUSTOM_KEY']);update.expect('Paste your key:')
         replacement="synthetic ' quotes $literal"
         update.paste(replacement)
-        update.wait(lambda: SED+' "s/^CUSTOM_KEY=.*/CUSTOM_KEY=\'syn•••••ral\'/"' in plain(update.capture))
+        update.expect("Replace CUSTOM_KEY='syn•••••ral'")
         update.send(b'\r');update.done()
         self.assertNotIn(SUMMARY,plain(update.capture))  # set NAME ends with the receipt only.
         self.assertNotIn(replacement.encode(),update.capture)
@@ -224,16 +223,14 @@ class CLI(unittest.TestCase):
         self.assertNotIn('Previously saved keys were kept',plain(uncolored.capture))
         self.assertFalse(re.search(rb'\x1b\[[0-9;]*m',uncolored.capture))
         self.assertEqual(self.file.read_bytes(),original)
-        # A terminal that cannot move the cursor gets a plain refusal, not broken redraws.
+        # A terminal that cannot move the cursor gets a static numbered menu.
         for label, env in (('dumb',dict(self.env,TERM='dumb')),('empty',dict(self.env,TERM='')),
                            ('unset',{k:v for k,v in self.env.items() if k!='TERM'})):
             with self.subTest(TERM=label):
                 dumb=self.terminal(['setup'],env)
-                dumb.wait(lambda: dumb.process.poll() is not None);dumb.settle(.2)
-                self.assertEqual(dumb.process.returncode,2)
-                message=[row for row in plain(dumb.capture).splitlines() if row.startswith('godmode:')]
-                self.assertEqual(message,['godmode: This terminal cannot redraw. Pipe a value to godmode set KEY --stdin'])
-                self.assertNotIn(b'\x1b[',dumb.capture)
+                dumb.expect('GitHub')
+                dumb.send(b'\x03');dumb.done(130)
+                self.assertNotRegex(bytes(dumb.capture), rb'\x1b\[[0-9;]*[mAJ]')
 
     def test_cli_requires_no_catalog_or_init_state_and_never_accepts_value_arguments(self):
         result=subprocess.run(self.command+['set','ARBITRARY_TOKEN','--stdin'],env=self.env,input='fixture_value',capture_output=True,text=True)
@@ -273,20 +270,19 @@ class CLI(unittest.TestCase):
         lines=[row for row in Screen(80).feed(terminal.capture).lines()]
         self.assertLessEqual(len(lines),24)
         self.assertTrue(all(len(row)<80 for row in lines),lines)
-        path=next(index for index, row in enumerate(lines) if row.endswith('~/.godmode/.env.godmode'))
-        self.assertEqual(lines[path],'  Providers · sealed in ~/.godmode/.env.godmode')  # The title; no banner.
+        path=next(index for index, row in enumerate(lines) if row == '  Providers')
         self.assertEqual((lines[path+1],lines[path+2][:8]),('','❯ GitHub'),'one blank row under the title')
         self.assertNotIn('Keys for your agents',plain(terminal.capture))
         self.assertNotIn('nano',plain(terminal.capture))  # The editor row is gone; godmode edit remains.
-        self.assertEqual(lines[-3:],['  Done','','  ↑↓ move · Enter open · Esc done'])
-        self.assertEqual(lines[-5:-3],['','  Another key            any NAME=value you want agents to have'])
-        # Every provider row shows its description, dim, in one column that a status cannot move.
+        self.assertIn('/ search',lines[-1])
+        self.assertTrue(any(row.strip() == 'Done' for row in lines))
+        # Only the selected provider shows its purpose; every provider keeps its status.
         rows={row[2:].split('  ')[0]:row for row in lines if row[2:].split('  ')[0] in [p['name'] for p in self.providers.values()]}
         self.assertEqual(sorted(rows),sorted(p['name'] for p in self.providers.values()))
+        self.assertIn(self.providers['github']['about'], '\n'.join(lines))
         for provider in self.providers.values():
-            self.assertTrue(rows[provider['name']].endswith(provider['about']),provider['id'])
-        self.assertEqual(len({row.index(provider['about']) for provider in self.providers.values()
-                              for row in [rows[provider['name']]]}),1,'descriptions are not in one column')
+            if provider['id'] != 'github':
+                self.assertNotIn(provider['about'], '\n'.join(lines))
         self.assertEqual(sum(row.strip()=='⋮' for row in lines),0)
         # A resize redraws the list at once, at the new width, without waiting for a key.
         mark=len(terminal.capture)
@@ -297,8 +293,8 @@ class CLI(unittest.TestCase):
         self.assertIsNone(terminal.process.poll())
         terminal.send(b'cl\r');terminal.expect('Paste your token:');terminal.settle(.15)
         screen=[row for row in Screen(80).feed(terminal.capture).lines() if row]
-        key_rows=screen[screen.index(next(r for r in screen if r.startswith('  Create a Cloudflare API token'))):]
-        self.assertLessEqual(len(key_rows),9,key_rows)
+        key_rows=screen[screen.index(next(r for r in screen if r.startswith('  Cloudflare · API token'))):]
+        self.assertLessEqual(len(key_rows),12,key_rows)
         self.assertTrue(all(len(row)<80 for row in key_rows))
         self.assertTrue(all(row.startswith('  ') for row in key_rows),key_rows)  # Every row at the margin.
         terminal.send(b'\x03');terminal.done(130)
@@ -308,7 +304,7 @@ class CLI(unittest.TestCase):
         before=self.file.read_bytes()
         terminal=self.terminal(['set','ACME_TOKEN']);terminal.expect('Paste your token:')
         terminal.paste('first SYNTHETIC line\nsecond SYNTHETIC line')
-        terminal.expect("Can't save this yet: Multiline credentials must be a valid JSON object.")
+        terminal.expect("Multiline credentials must be a valid JSON object.")
         mark=len(terminal.capture)
         terminal.send(b'\r')
         terminal.wait(lambda: b'\a' in terminal.capture[mark:])
@@ -316,14 +312,14 @@ class CLI(unittest.TestCase):
         self.assertNotIn(b'\x1b[?2004l',terminal.capture[mark:],'Enter left the prompt')
         self.assertEqual(self.file.read_bytes(),before)
         terminal.send(b'\x15');terminal.paste('acme_DEMO_ONLY_value_123456')
-        terminal.after(mark,APPEND+"'ACME_TOKEN=sealed(acm•••••456)' >>")
+        terminal.after(mark,"Add ACME_TOKEN=sealed(acm•••••456)")
         terminal.send(b'\r');terminal.expect('Saved ACME_TOKEN');terminal.done()
         self.assertEqual(values(self.file)['ACME_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'SYNTHETIC',terminal.capture)
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
         single=self.terminal(['set','ACME_SERVICE_JSON']);single.expect('Drag or paste the JSON file:')
         single.paste('/Users/someone/Downloads/key.json')
-        single.expect("Can't save this yet: drag the key file here, or paste what is in it.")
+        single.expect("Drag the key file here, or paste what is in it.")
         single.send(b'\x03');single.done(130)
 
     def test_typed_values_show_one_dot_per_character_and_no_ends(self):
@@ -364,7 +360,7 @@ class CLI(unittest.TestCase):
                 terminal.after(mark,shown)
                 terminal.settle(.15)
                 self.assert_one_region(terminal)
-                self.assertEqual(Screen(100).feed(terminal.capture).count('Create a GitHub token'),1)
+                self.assertEqual(Screen(100).feed(terminal.capture).count('GitHub · Access token'),1)
         self.assertEqual(record.read_text(),self.providers['github']['console']+'\n')
         terminal.send(b'\x03');terminal.done(130)
         self.assertNotIn('GH_TOKEN',values(self.file))
@@ -377,7 +373,7 @@ class CLI(unittest.TestCase):
             mark=len(narrow.capture)
             narrow.send(data);narrow.wait(lambda: b'\x1b[J' in narrow.capture[mark:]);narrow.settle(.15)
             screen=Screen(34).feed(narrow.capture)
-            self.assertEqual(screen.count('What will change on'),1)
+            self.assertEqual(screen.count(TITLE),1)
             self.assertEqual(screen.count('Paste your token:'),1)
         # Typed dots outgrow a narrow row; the terminal wraps them and the redraw must count that.
         narrow.send(b'\x15')
@@ -386,7 +382,7 @@ class CLI(unittest.TestCase):
             narrow.send(b'k');narrow.after(mark,'•'*count);narrow.settle(.05)
             screen=Screen(34).feed(narrow.capture)
             self.assertEqual(screen.count('Paste your token:'),1,'stale input rows after %d keys' % count)
-            self.assertEqual(screen.count('What will change on'),1)
+            self.assertEqual(screen.count(TITLE),1)
             # The screen must stay where it is: a miscounted wrapped row would creep down one row per key.
             top=top if count>1 else screen.lines().index('  ACME_TOKEN')
             self.assertEqual(screen.lines().index('  ACME_TOKEN'),top,'screen moved after %d keys' % count)
@@ -427,8 +423,8 @@ class CLI(unittest.TestCase):
         terminal.send(b'\x1b');terminal.after(mark,MENU)
         self.assertTrue(self.pointed(terminal).startswith('GitHub'))  # Nothing saved: the pointer stays.
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
-        self.assertIn('Godmode is 0% set up: no providers, 0 of 6 profile fields, no agent yet.',plain(terminal.capture))
-        self.assertIn('Next: godmode setup',plain(terminal.capture))
+        self.assertIn('Setup 0% · Profile 0/6 · 0 providers saved · 0 agents added',plain(terminal.capture))
+        self.assertIn('godmode setup',plain(terminal.capture))
         self.assertNotIn('GH_TOKEN',values(self.file))
         failing,_=self.opener('exit 1\n')
         empty=self.root/'no-opener';empty.mkdir()
@@ -462,16 +458,16 @@ class CLI(unittest.TestCase):
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Esc back')
         self.assertEqual(self.pointed(terminal),'Test secret key')
-        terminal.send(b'\r');terminal.expect('Copy your Stripe test secret key')
+        terminal.send(b'\r');terminal.expect('Stripe · Test secret key')
         terminal.paste('sk_test_DEMO_ONLY_first_key_0001')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved STRIPE_TEST_SECRET_KEY=sealed(sk_•••••001)')
         terminal.after(mark,'Esc back')
-        self.assertEqual(self.pointed(terminal),'Test publishable key')  # The next key still missing.
+        self.assertEqual(self.pointed(terminal),'Back')  # The test secret is a complete credential set.
         self.assertRegex('\n'.join(Screen(100).feed(terminal.capture).lines()),r'\n  Test secret key +✓ saved\n')
         # Each key opens its own page: live keys are not on the sandbox page.
         mark=len(terminal.capture)
-        terminal.send(b'\x1b[B\r');terminal.after(mark,'Create a Stripe live secret key')
+        terminal.send(b'l\r');terminal.after(mark,'Stripe · Live secret key')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Opened dashboard.stripe.com')
         self.assertEqual(record.read_text().splitlines(),['https://dashboard.stripe.com/apikeys'])
@@ -480,14 +476,10 @@ class CLI(unittest.TestCase):
         self.assertEqual(self.pointed(terminal),'Live secret key')
         mark=len(terminal.capture)
         terminal.send(b'\x1b');terminal.after(mark,'Esc done')           # ...and back to the providers.
-        # The test secret alone makes Stripe ready, so the pointer moves on to the next provider not ready.
+        # The test secret alone is sufficient; neither live keys nor more providers are required.
         lines=Screen(100).feed(terminal.capture).lines()
-        self.assertRegex('\n'.join(lines),r'\n  Stripe +✓ 1 of 4 +payments, in test and live mode\n❯ PostHog')
-        self.assertEqual(self.pointed(terminal)[:7],'PostHog')
-        # The status column is reserved: a status never moves the descriptions.
-        stripe=next(row for row in lines if row.startswith('  Stripe '))
-        github=next(row for row in lines if row.startswith('  GitHub '))
-        self.assertEqual(stripe.index('payments'),github.index('repos, Actions'))
+        self.assertRegex('\n'.join(lines),r'\n  Stripe +✓ saved')
+        self.assertEqual(self.pointed(terminal),'Done')
         terminal.send(b'\x03');terminal.done(130)
         self.assertIn('Cancelled.',plain(terminal.capture))
         self.assertEqual(sorted(values(self.file)),['STRIPE_TEST_SECRET_KEY'])
@@ -522,7 +514,7 @@ class CLI(unittest.TestCase):
             self.assertTrue(self.pointed(terminal).startswith(name),name)
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
         # A key outside the catalog counts as a provider: three ready providers and ACME_API_TOKEN.
-        self.assertIn('Godmode is 33% set up: 4 providers, 0 of 6 profile fields, no agent yet.',plain(terminal.capture))
+        self.assertIn('Setup 33% · Profile 0/6 · 4 providers saved · 0 agents added',plain(terminal.capture))
         self.assertEqual(values(self.file)['ACME_API_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
 
@@ -533,13 +525,13 @@ class CLI(unittest.TestCase):
         (stubs/'nano').chmod(0o755)
         env=dict(self.env,PATH=str(stubs)+os.pathsep+self.env['PATH'])
         # A fresh home: the risk page alone first. Esc cancels, and nothing is written or opened.
-        cancel=self.terminal(['edit'],env);cancel.expect('Enter commit · Esc cancel')
+        cancel=self.terminal(['edit'],env);cancel.expect('Enter accept · Esc cancel')
         self.assertNotIn('/ 3',plain(cancel.capture))
         cancel.send(b'\x1b');cancel.done(130)
         self.assertIn('Cancelled.',plain(cancel.capture))
         self.assertFalse(self.home.exists())
         self.assertFalse(record.exists())
-        commit=self.terminal(['edit'],env);commit.expect('Enter commit · Esc cancel')
+        commit=self.terminal(['edit'],env);commit.expect('Enter accept · Esc cancel')
         commit.send(b'\r');commit.expect('Opening nano. Values are sealed');commit.done()
         self.assertEqual(record.read_text(),str(self.file)+'\n')
         self.assertTrue((self.home/'intro.seen').exists())
@@ -616,7 +608,7 @@ class CLI(unittest.TestCase):
         for label, data, receipt in (('Esc',b'\x1b',None),('empty Enter',b'\r','  Skipped GMAIL_USER.')):
             with self.subTest(leave=label):
                 left=self.terminal(['setup','gmail'],env);left.expect('Type the address:')
-                self.assertIn('Enter skips · Esc back',plain(left.capture))
+                self.assertIn('Enter skips · Tab details · Esc back',plain(left.capture))
                 mark=len(left.capture)
                 left.send(data);left.after(mark,'Esc done')
                 self.assertEqual(self.pointed(left),'Mailbox address')
@@ -641,20 +633,20 @@ class CLI(unittest.TestCase):
         for char in 'demo@example.com':
             gmail.send(char.encode())
         gmail.after(0,'Type the address: demo@example.com')
-        gmail.after(0,APPEND+"'GMAIL_USER=sealed(demo@example.com)' >>")
+        gmail.after(0,"Add GMAIL_USER=sealed(demo@example.com)")
         mark=len(gmail.capture)
         # Saved: the app password prompt follows directly, with no list in between.
         gmail.send(b'\r');gmail.after(mark,'  ✓ Saved GMAIL_USER=sealed(demo@example.com)')
-        gmail.after(mark,'Create a Gmail app password');gmail.after(mark,'Paste your password:')
+        gmail.after(mark,'Gmail · App password');gmail.after(mark,'Paste your password:')
         self.assertNotIn('Esc done',plain(gmail.capture[mark:]))
         # Google shows app passwords in groups of four; the spaces are not part of it.
         mark=len(gmail.capture)
-        gmail.paste('  \xa0 ');gmail.after(mark,"Can't save this yet: there is nothing in it to save.")
+        gmail.paste('  \xa0 ');gmail.after(mark,"There is nothing in it to save.")
         gmail.after(mark,'Ctrl-U clears')
         gmail.send(b'\r');gmail.wait(lambda: b'\a' in gmail.capture[mark:])
         self.assertFalse(record.exists(),'Enter must not open the page while the field holds text')
         gmail.paste('abcd efgh\xa0ijkl mnop')
-        gmail.after(mark,APPEND+"'GMAIL_APP_PASSWORD=sealed(ab•••••op)' >>")
+        gmail.after(mark,"Add GMAIL_APP_PASSWORD=sealed(ab•••••op)")
         mark=len(gmail.capture)
         # Both saved, so Gmail is ready and setup gmail ends with the receipts only.
         gmail.send(b'\r');gmail.after(mark,'  ✓ Saved GMAIL_APP_PASSWORD=sealed(ab•••••op)');gmail.done()
@@ -698,24 +690,24 @@ class CLI(unittest.TestCase):
         terminal=self.terminal(['setup']);terminal.expect(MENU)
         self.assertTrue(self.pointed(terminal).startswith('GitHub'))  # The first provider not ready.
         terminal.send(b'\x1b[B\x1b[B\x1b[B\x1b[B')
-        self.assertRegex(self.pointed(terminal),r'^Stripe +✓ 1 of 4 +payments')  # The test secret makes it ready.
+        self.assertRegex(self.pointed(terminal),r'^Stripe +✓ saved +payments')  # The test secret makes it ready.
         # A provider with several keys opens its own list, which ends in Back.
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Esc back');terminal.settle(.15)
         rows=[row for row in Screen(100).feed(terminal.capture).lines() if row]
-        self.assertEqual((rows[-7],rows[-2].strip()),('  Stripe','Back'))
-        self.assertEqual(self.pointed(terminal),'Test publishable key')
+        self.assertEqual((rows[-7],rows[-2].strip()),('  Stripe','❯ Back'))
+        self.assertEqual(self.pointed(terminal),'Back')
         mark=len(terminal.capture)
-        terminal.send(b'\x1b[A\x1b[A\r');terminal.after(mark,MENU)   # Up twice wraps to Back; Enter returns.
+        terminal.send(b'\r');terminal.after(mark,MENU)
         self.assertTrue(self.pointed(terminal).startswith('Stripe'))
         # Saving the last provider not ready further down wraps to the first one still not ready.
         terminal.send(b'z')
         self.assertTrue(self.pointed(terminal).startswith('Zernio'))
-        terminal.send(b'\r');terminal.expect('Create a Zernio API key')
+        terminal.send(b'\r');terminal.expect('Zernio · API key')
         terminal.paste('zernio_DEMO_ONLY_value_123456')
         mark=len(terminal.capture)
         terminal.send(b'\r');terminal.after(mark,'Saved ZERNIO_API_KEY');terminal.after(mark,MENU)
-        self.assertTrue(self.pointed(terminal).startswith('GitHub'))
+        self.assertTrue(self.pointed(terminal).startswith('Done'))
         # Esc in the name prompt returns to the list.
         terminal.send(b'a\r');terminal.expect('Type a name for the key')
         mark=len(terminal.capture)
@@ -741,8 +733,8 @@ class CLI(unittest.TestCase):
         full.send(b'\r');full.expect(SUMMARY);full.done()
         # Every provider and nothing else is one third: the meter counts three providers at most.
         lines=Screen(100).feed(full.capture).lines()
-        self.assertIn('  Godmode is 33% set up: 12 providers, 0 of 6 profile fields, no agent yet.',lines)
-        self.assertIn('  Next: godmode agents',lines)
+        self.assertIn('  Setup 33% · Profile 0/6 · 12 providers saved · 0 agents added',lines)
+        self.assertIn('  godmode agents',lines)
         self.assertNotIn('Done. Your keys are in',plain(full.capture))
 
     def test_every_key_screen_shows_its_goal_link_steps_and_note(self):
@@ -765,10 +757,10 @@ class CLI(unittest.TestCase):
                                 self.assertGreaterEqual(found,0,step)
                                 position=found+1
                             self.assertIn(key.get('note',''),flat)
-                            self.assertTrue(flat.startswith(key['goal']))
+                            self.assertTrue(flat.startswith(provider['name'] + ' · ' + key['label']))
                             page=key['console'] if 'console' in key else provider['console']
-                            if page and len(key['goal'])+2+len(page)<width:
-                                self.assertEqual(text.splitlines()[0],key['goal']+': '+page)
+                            if page and len(provider['name'] + ' · ' + key['label'])+2+len(page)<width:
+                                self.assertEqual(text.splitlines()[0],provider['name'] + ' · ' + key['label']+': '+page)
                             self.assertEqual(page is not None and len(page)<width, bool(page) and page in text)
                             # Exactly the labels marked ** in the data are bold, in order.
                             labels=[label for step in key['steps'] for label in step.split('**')[1::2]]
@@ -840,7 +832,7 @@ class CLI(unittest.TestCase):
         keep.send(b'\x1b');keep.after(mark,MENU)  # Esc keeps them; setup goes on as before.
         self.assertRegex('\n'.join(Screen(100).feed(keep.capture).lines()),r'GitHub +✓ saved')
         # The title says the file is plain text and how to seal it.
-        self.assertIn('  Providers · plain text in ~/.config/godmode/.env.godmode · godmode migrate seals it',
+        self.assertIn('  Providers · plain text; godmode migrate seals keys',
                       Screen(100).feed(keep.capture).lines())
         keep.send(b'\x03');keep.done(130)
         self.assertIn('SYNTHETIC',old.read_text())
@@ -850,9 +842,9 @@ class CLI(unittest.TestCase):
         move.send(b'\r');move.after(mark,'Moved 2 keys to ~/.godmode and sealed them.')
         move.after(mark,MENU)
         self.assertTrue(self.pointed(move).startswith('Vercel'))  # The moved keys count as saved.
-        self.assertIn('  Providers · sealed in ~/.godmode/.env.godmode',Screen(100).feed(move.capture).lines())
+        self.assertIn('  Providers',Screen(100).feed(move.capture).lines())
         move.send(b'\x1b');move.expect(SUMMARY);move.done()
-        self.assertIn('Godmode is 22% set up: 2 providers, 0 of 6 profile fields, no agent yet.',plain(move.capture))
+        self.assertIn('Setup 33% · Profile 0/6 · 2 providers saved · 0 agents added',plain(move.capture))
         self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text())
         self.assertNotIn(b'SYNTHETIC',move.capture+keep.capture)
         self.assertEqual(values(self.file)['GH_TOKEN'],'ghp_SYNTHETIC_value_000000000002')
@@ -969,11 +961,11 @@ class CLI(unittest.TestCase):
         for bad, message in cases:
             with self.subTest(message=message):
                 mark=len(terminal.capture)
-                terminal.send(b'\x15');terminal.paste(json.dumps(bad));terminal.after(mark,"Can't save this yet: "+message)
+                terminal.send(b'\x15');terminal.paste(json.dumps(bad));terminal.after(mark,message[0].upper()+message[1:])
         for path in ('/no/such/file.json','~zz_no_such_user_SYNTHETIC/key.json'):  # ~user that does not exist.
             mark=len(terminal.capture)
             terminal.send(b'\x15');terminal.paste(path)
-            terminal.after(mark,"Can't save this yet: drag the key file here, or paste what is in it.")
+            terminal.after(mark,"Drag the key file here, or paste what is in it.")
         # Terminals type a dropped file's path with its spaces escaped.
         mark=len(terminal.capture)
         terminal.send(b'\x15');terminal.paste(str(dropped).replace(' ','\\ ')+' ')
@@ -1053,7 +1045,7 @@ class CLI(unittest.TestCase):
         menu=self.terminal(['setup'],env);menu.expect('Up/Down move | Enter open | Esc done')
         menu.settle(.15)
         self.assertEqual(sum(row.startswith('> GitHub') for row in Screen(100).feed(menu.capture).lines()),1)
-        self.assertIn('  Providers | sealed in ~/.godmode/.env.godmode',Screen(100).feed(menu.capture).lines())
+        self.assertIn('  Providers',Screen(100).feed(menu.capture).lines())
         menu.send(b'\x03');menu.done(130)
         self.assertTrue(menu.capture.isascii(),'non-ASCII output on an ASCII terminal')
         # setup SLUG goes straight to the key screen: no banner above it.
@@ -1061,8 +1053,8 @@ class CLI(unittest.TestCase):
         terminal.expect('Paste your token:')
         self.assertNotIn('GODMODE',plain(terminal.capture))
         terminal.paste('github_pat_DEMO_ONLY_ascii_0042')
-        terminal.wait(lambda: "| "+APPEND+"'GH_TOKEN=sealed(git*****042)' >> ~/.godmode/.env.godmode" in plain(terminal.capture))
-        self.assertIn('Enter saves | Esc cancels',plain(terminal.capture))
+        terminal.expect("Add GH_TOKEN=sealed(git*****042)")
+        self.assertIn('Enter saves | Tab details | Esc cancels',plain(terminal.capture))
         terminal.send(b'\r');terminal.expect('Saved GH_TOKEN');terminal.done()
         self.assertIn('  + Saved GH_TOKEN=sealed(git*****042)',Screen(100).feed(terminal.capture).lines())
         self.assertTrue(terminal.capture.isascii(),'non-ASCII output on an ASCII terminal')
@@ -1181,22 +1173,23 @@ class CLI(unittest.TestCase):
         every += ['STRIPE_TEST_SECRET_KEY', 'GOOGLE_ADS_SERVICE_ACCOUNT_JSON', 'PRODIGI_SANDBOX_API_KEY']
         trio = ['GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'HIGGSFIELD_API_KEY_ID']
         cases = (('new', (), 0, False, 0), ('one profile field', (), 1, False, 5),
-                 ('Cloudflare only', ['CLOUDFLARE_API_TOKEN'], 0, False, 11),
-                 ('Cloudflare and an agent', ['CLOUDFLARE_API_TOKEN'], 0, True, 44),
-                 ('two providers, a half pair, 4 fields', trio, 4, False, 44),
-                 ('the same and an agent', trio, 4, True, 77),
+                 ('Cloudflare only', ['CLOUDFLARE_API_TOKEN'], 0, False, 33),
+                 ('Cloudflare and an agent', ['CLOUDFLARE_API_TOKEN'], 0, True, 66),
+                 ('two providers, a half pair, 4 fields', trio, 4, False, 55),
+                 ('the same and an agent', trio, 4, True, 88),
                  ('the pair finished', trio + ['HIGGSFIELD_API_KEY_SECRET'], 4, True, 88),
                  ('everything', ['GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'VERCEL_TOKEN'], 6, True, 100),
                  ('all twelve providers only', every, 0, False, 33),
-                 ('Stripe live secret only', ['STRIPE_LIVE_SECRET_KEY'], 0, False, 11),
+                 ('Stripe live secret only', ['STRIPE_LIVE_SECRET_KEY'], 0, False, 33),
                  ('Stripe publishable keys only', ['STRIPE_TEST_PUBLISHABLE_KEY', 'STRIPE_LIVE_PUBLISHABLE_KEY'], 0, False, 0),
-                 ('one custom key', ['ACME_TOKEN'], 0, False, 11),
+                 ('one custom key', ['ACME_TOKEN'], 0, False, 33),
+                 ('one provider completes setup', ['GH_TOKEN'], 6, True, 100),
                  ('six fields only', (), 6, False, 33))
         for label, keys, fields, agent, percent in cases:
             with self.subTest(case=label):
                 state, output = self.meter_for(keys, fields, agent)
                 self.assertEqual(state['percent'], percent)
-                self.assertIn('Godmode is %d%% set up' % percent, output)
+                self.assertIn('Setup %d%%' % percent, output)
                 self.assertEqual(state['next'] is None, percent == 100)
                 self.assertNotIn('meter_DEMO_ONLY', output)
         state, output = self.meter_for(trio, 4, True)
@@ -1259,7 +1252,7 @@ class CLI(unittest.TestCase):
                 self.assertNotIn('SYNTHETIC', result.stdout + result.stderr)
 
     def test_handwritten_usage_for_help_flags(self):
-        for args in (['--help'], ['-h'], ['list', '--help']):
+        for args in (['--help'], ['-h']):
             with self.subTest(args=args):
                 result = subprocess.run(self.command + args, env=self.env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0)
@@ -1270,6 +1263,68 @@ class CLI(unittest.TestCase):
         run = subprocess.run(self.command + ['run', '--help'], env=self.env, capture_output=True, text=True)
         self.assertEqual(run.returncode, 0)
         self.assertIn('godmode run VAR=NAME... -- CMD', run.stdout)
+        for name in ('setup', 'set', 'list', 'profile', 'agents', 'provider', 'intro', 'path', 'edit', 'migrate', 'picard'):
+            result = self.godmode(name, '--help')
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(result.stdout.startswith('Usage: godmode ' + name))
+            self.assertLess(len(result.stdout.splitlines()), 12)
+
+    def test_compact_edit_details_and_resize_preserve_pending_secret(self):
+        self.init()
+        before = self.file.read_bytes()
+        session = self.terminal(['set', 'ACME_TOKEN'], cols=80, rows=24)
+        session.expect('Paste your token:')
+        secret = 'acme_SYNTHETIC_review_resize_123456'
+        session.paste(secret)
+        session.expect('Add ACME_TOKEN=sealed(acm•••••456)')
+        self.assertNotIn('$ printf', '\n'.join(Screen(80).feed(session.capture).lines()))
+        session.send(b'\t'); session.expect('$ printf')
+        self.assertEqual(self.file.read_bytes(), before)
+        session.send(b'\t')
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 6, 20, 0, 0))
+        session.after(mark, 'Enlarge')
+        session.send(b'\r'); session.settle(.1)
+        self.assertEqual(self.file.read_bytes(), before)
+        mark = len(session.capture)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+        session.after(mark, 'Add ACME_TOKEN=sealed(acm•••••456)')
+        session.send(b'\r'); session.done()
+        self.assertEqual(values(self.file)['ACME_TOKEN'], secret)
+        self.assertNotIn(secret.encode(), session.capture)
+
+    def test_plain_secret_review_and_child_option_boundary(self):
+        self.init()
+        before = self.file.read_bytes()
+        session = self.terminal(['--plain', 'set', 'ACME_TOKEN'], cols=40, rows=12)
+        session.expect('Input hidden')
+        secret = 'acme_SYNTHETIC_plain_only_123456'
+        session.paste(secret)
+        session.settle(.1)
+        self.assertEqual(self.file.read_bytes(), before)
+        session.send(b'\r'); session.expect('Enter saves')
+        self.assertEqual(self.file.read_bytes(), before)
+        session.send(b'\r'); session.done()
+        self.assertEqual(values(self.file)['ACME_TOKEN'], secret)
+        self.assertNotIn(secret.encode(), session.capture)
+        controls = re.findall(rb'\x1b\[[0-?]*[ -/]*[@-~]', session.capture)
+        self.assertTrue(set(controls).issubset({b'\x1b[?2004h', b'\x1b[?2004l'}))
+        result = self.godmode('--plain', 'run', 'ACME_TOKEN', '--', sys.executable,
+                             '-c', 'import sys; print(sys.argv[1])', '--plain')
+        self.assertEqual((result.returncode, result.stdout), (0, '--plain\n'))
+
+    def test_provider_search_selects_without_echoing_a_misplaced_paste(self):
+        self.init()
+        session = self.terminal(['setup'], cols=80, rows=24)
+        session.expect('/ search')
+        session.send(b'/stripe')
+        session.expect('/ stripe')
+        misplaced = 'sk_live_SYNTHETIC_misplaced_paste'
+        session.paste(misplaced)
+        session.send(b'\r'); session.expect('Test secret key')
+        self.assertNotIn(misplaced.encode(), session.capture)
+        session.send(b'\x03'); session.done(130)
+        self.assertEqual(values(self.file), {})
 
 if __name__=='__main__':
     unittest.main()

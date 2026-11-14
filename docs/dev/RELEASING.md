@@ -41,4 +41,5 @@ Tests use synthetic keys and temporary homes. Never run them against a real key 
 
 4. Install it with `~/.godmode/bin/godmodeup --version vX.Y.Z`. A draft is visible only to a GitHub CLI login with access to the repository. godmodeup keeps the previous executable as `~/.godmode/bin/godmode.previous`.
 
-The README's `curl` install works only after a release with `install.sh` attached is published.
+The README uses authenticated GitHub CLI downloads for the private repository.
+Public HTTPS downloads require a published release with `install.sh` attached.

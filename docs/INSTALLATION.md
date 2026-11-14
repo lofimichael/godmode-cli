@@ -3,7 +3,7 @@
 Godmode needs macOS or Linux and Python 3.9 or newer. It installs no Python packages and needs no root access.
 
 ```sh
-curl -fsSL https://github.com/lofimichael/godmode-cli/releases/latest/download/install.sh | sh -s -- --path
+gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
 ```
 
 The installer checks the release's SHA-256, installs `~/.godmode/bin/godmode` and `godmodeup`, and starts setup. Options go after `--`:
@@ -17,15 +17,7 @@ The installer checks the release's SHA-256, installs `~/.godmode/bin/godmode` an
 
 `sh install.sh --help` lists every option.
 
-## Before the public release
-
-The repository and its releases are private for now. With a [GitHub CLI](https://cli.github.com/) login that has access to the repository, run:
-
-```sh
-gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
-```
-
-The installer and `godmodeup` then download private releases through that login.
+The repository is private. The installer and `godmodeup` use a [GitHub CLI](https://cli.github.com/) login with repository access to download releases.
 
 ## Update
 
@@ -66,6 +58,8 @@ The installed file is ordinary Python source: read it with `less ~/.godmode/bin/
 ```
 
 `--home DIR` or `GODMODE_HOME` selects another home. `godmode path` and `godmode profile path` print where the key file and profile are.
+
+`godmode --plain` uses static text and numbered choices. `GODMODE_PLAIN=1` selects the same mode for later commands; `TERM=dumb` selects it automatically. `NO_COLOR` or `CLICOLOR=0` removes color while keeping the arrow-key interface.
 
 ## Uninstall
 

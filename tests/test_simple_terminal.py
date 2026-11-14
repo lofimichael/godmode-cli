@@ -9,6 +9,7 @@ import struct
 import subprocess
 import sys
 import termios
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -16,7 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import godmode_terminal as terminal
-from pty_support import Screen
+from pty_support import Screen, Terminal
 
 DOT = "•".encode()
 DOTS = DOT * 5
@@ -30,6 +31,13 @@ class Strict(Prompt):
     def enter(self, value):
         return ['ROWS_PRINTED_ABOVE'] if not value else value != 'not yet'
 
+class Disclosure(Prompt):
+    def toggle(self):
+        self.open = not getattr(self, 'open', False)
+    def render(self, value, width, reveal=True):
+        rows = super().render(value, width, reveal)
+        return (['DETAILS_VISIBLE'] if getattr(self, 'open', False) else []) + rows
+
 ITEMS = [('Alpha', 'saved', 'ABOUT_ALPHA'), ('Beta', '', 'ABOUT_BETA'), ('Bravo', 'saved', ''), None, ('Gamma', '', ''), ('Done', '', '')]
 
 godmode_terminal.TERM_MAX_INPUT = int(os.environ.get("MAX_FIELD_SIZE", 1024 * 1024))
@@ -41,6 +49,14 @@ try:
         value = str(read_menu(ITEMS, int(os.environ.get('MENU_START', 0)), 'MENU_HINT', 'MENU_TITLE'))
     elif os.environ['PROMPT_MODE'] == 'longmenu':
         value = str(read_menu([('Item %02d' % n, '', '') for n in range(40)], 0, 'MENU_HINT'))
+    elif os.environ['PROMPT_MODE'] == 'searchmenu':
+        value = str(read_menu(ITEMS, 0, 'MENU_HINT', 'MENU_TITLE', searchable=True))
+    elif os.environ['PROMPT_MODE'] == 'requiredmenu':
+        value = str(read_menu([('Add', '', '')], 0, 'MENU_HINT', header=lambda width: ['REQUIRED_%02d' % n for n in range(30)], header_required=True))
+    elif os.environ['PROMPT_MODE'] == 'widemenu':
+        value = str(read_menu([('Very long provider name ' * 5, 'Saved status ' * 10, 'Entire details ' * 10)], 0, 'MENU_HINT', 'MENU_TITLE'))
+    elif os.environ['PROMPT_MODE'] == 'disclosure':
+        value = read_secret(Disclosure('Paste key (hidden; Enter saves):'))
     elif os.environ['PROMPT_MODE'] == 'quiet':
         with quiet():
             first = read_secret('Paste key (hidden; Enter saves):')
@@ -61,21 +77,25 @@ finally:
 
 
 class Session:
-    def __init__(self, mode="secret", limit=1024 * 1024, rows=24, start=0):
+    def __init__(self, mode="secret", limit=1024 * 1024, rows=24, start=0, plain=False, term="xterm-256color", width=80):
         self.master, self.slave = os.openpty()
         # A new PTY starts at 0x0. Give it a real terminal geometry instead of
         # depending on Python-version-specific get_terminal_size fallbacks.
-        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, 80, 0, 0))
+        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, width, 0, 0))
         os.set_blocking(self.master, False)
         self.output = bytearray()
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "lib"),
-               "TERM": "xterm-256color", "PROMPT_MODE": mode, "MAX_FIELD_SIZE": str(limit),
-               "MENU_START": str(start)}
+               "TERM": term, "PROMPT_MODE": mode, "MAX_FIELD_SIZE": str(limit),
+               "MENU_START": str(start), "GODMODE_PLAIN": "1" if plain else "0"}
         self.process = subprocess.Popen([sys.executable, "-c", TERM_HARNESS],
                                         stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env=env)
-        self.wait({"choice": b"Select provider:", "menu": b"MENU_HINT", "longmenu": b"MENU_HINT"}.get(mode, b"Paste key"))
+        marker = {"choice": b"Select provider:", "menu": b"MENU_HINT", "longmenu": b"MENU_HINT",
+                  "searchmenu": b"MENU_HINT", "widemenu": b"MENU_HINT", "requiredmenu": b"Enlarge"}.get(mode, b"Paste key")
+        if (plain or term == "dumb") and "menu" in mode:
+            marker = b"Number, then Enter"
+        self.wait(marker)
 
     def send(self, data):
         pending = memoryview(data)
@@ -433,6 +453,174 @@ class TerminalTests(unittest.TestCase):
             for name, value in (("NO_COLOR", ""), ("CLICOLOR", "0"), ("TERM", "dumb")):
                 with patch.dict(os.environ, {name: value}):
                     self.assertFalse(terminal.color_enabled(Output(True)))
+
+    def test_plain_secret_is_static_hidden_and_requires_review(self):
+        for options in ({"plain": True}, {"term": "dumb"}):
+            session = Session(**options)
+            self.addCleanup(session.close)
+            secret = "SYNTHETIC_PLAIN\nSECOND_LINE"
+            session.send(b"\x1b[200~" + secret.encode() + b"\x1b[201~")
+            session.drain()
+            self.assertNotIn(b"ACCEPTED", session.output)
+            self.assertNotIn(b"SYNTHETIC", session.output)
+            session.send(b"\r")
+            session.wait(b"Enter confirms")
+            self.assertNotIn(b"ACCEPTED", session.output)
+            session.send(b"\r")
+            session.accepted(secret)
+            clean = bytes(session.output).replace(b"\x1b[?2004h", b"").replace(b"\x1b[?2004l", b"")
+            self.assertNotIn(b"\x1b", clean)
+            self.assertNotIn(b"SYNTHETIC", clean)
+
+    def test_plain_menu_numbers_and_keeps_required_review(self):
+        session = Session("requiredmenu", rows=10, plain=True)
+        self.addCleanup(session.close)
+        self.assertIn(b"REQUIRED_00", session.output)
+        self.assertIn(b"REQUIRED_29", session.output)
+        self.assertIn(b"1. Add", session.output)
+        session.send(b"\x1b[200~1\rSYNTHETIC_MISPLACED\x1b[201~")
+        session.drain()
+        self.assertNotIn(b"ACCEPTED", session.output)
+        self.assertNotIn(b"SYNTHETIC", session.output)
+        session.send(b"1\r")
+        session.accepted("0")
+
+    def test_plain_menu_invalid_whole_choice_never_selects_default_or_prefix(self):
+        for entered in (b"9", b"12", b"1\xff", b"SYNTHETIC_TYPED_IN_WRONG_FIELD"):
+            with self.subTest(entered=entered):
+                session = Session("requiredmenu", rows=10, plain=True)
+                self.addCleanup(session.close)
+                session.send(entered + b"\r")
+                session.wait(b"Invalid choice")
+                self.assertIsNone(session.process.poll())
+                self.assertNotIn(b"ACCEPTED", session.output)
+                self.assertNotIn(b"SYNTHETIC", session.output)
+                session.send(b"\x15")
+                session.send(b"\x1b[200~SYNTHETIC_PASTED_SECRET\x1b[201~")
+                session.drain()
+                self.assertNotIn(b"SYNTHETIC", session.output)
+                session.send(b"1\r")
+                session.accepted("0")
+
+    def test_plain_secret_cancel_and_edit_restore_terminal(self):
+        for signal_number in (None, signal.SIGTERM):
+            session = Session(plain=True)
+            self.addCleanup(session.close)
+            session.send(b"SYNTHETIC_HIDDEN")
+            if signal_number:
+                os.kill(session.process.pid, signal_number)
+            else:
+                session.send(b"\x1b")
+            session.wait(b"RESTORED True")
+            self.assertIn(b"CANCELLED", session.output)
+            self.assertNotIn(b"SYNTHETIC", session.output)
+        session = Session(plain=True)
+        self.addCleanup(session.close)
+        session.send(b"\x1b[200~first\x1b[201~")
+        session.send(b"x\x1b[200~next\x1b[201~\r")
+        session.wait(b"Enter confirms")
+        session.send(b"\r")
+        session.accepted("firstxnext")
+
+    def test_plain_intro_and_key_review_work_in_eight_column_terminal(self):
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="godmode-tiny-plain-") as directory:
+            home = Path(directory) / ".godmode"
+            env = {"HOME": directory, "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                   "TERM": "xterm-256color"}
+            command = [sys.executable, str(repo / "godmode.py"), "--home", str(home), "--plain"]
+            intro = Terminal(command + ["intro"], env, cols=8, rows=12)
+            try:
+                intro.seen("can spend money")
+                intro.seen("delete data")
+                intro.seen("Enter accept")
+                self.assertNotIn(b"Enlarge", intro.capture)
+                intro.send(b"\r")
+                intro.done()
+                self.assertTrue((home / "intro.seen").exists())
+            finally:
+                intro.close()
+            entry = Terminal(command + ["set", "TINY_TOKEN"], env, cols=8, rows=12)
+            try:
+                entry.seen("Input hidden")
+                before = (home / ".env.godmode").read_bytes()
+                entry.paste("SYNTHETIC_TINY_SECRET_587141")
+                entry.send(b"\r")
+                entry.seen("Add TINY_TOKEN=sealed(")
+                entry.seen("Enter saves")
+                self.assertEqual((home / ".env.godmode").read_bytes(), before)
+                self.assertNotIn(b"Enlarge", entry.capture)
+                self.assertNotIn(b"SYNTHETIC_TINY_SECRET", entry.capture)
+                entry.send(b"\r")
+                entry.done()
+                saved = subprocess.run(command + ["list"], env=env, capture_output=True, text=True, check=True)
+                self.assertEqual(saved.stdout, "TINY_TOKEN\n")
+                clean = bytes(entry.capture).replace(b"\x1b[?2004h", b"").replace(b"\x1b[?2004l", b"")
+                self.assertNotIn(b"\x1b", clean)
+            finally:
+                entry.close()
+
+    def test_required_menu_refuses_enter_until_review_fits(self):
+        session = Session("requiredmenu", rows=10)
+        self.addCleanup(session.close)
+        session.send(b"\r")
+        session.drain()
+        self.assertNotIn(b"ACCEPTED", session.output)
+        fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 80, 0, 0))
+        os.kill(session.process.pid, signal.SIGWINCH)
+        session.wait(b"REQUIRED_29")
+        session.send(b"\r")
+        session.accepted("0")
+
+    def test_menu_search_filters_and_rejects_paste(self):
+        session = Session("searchmenu")
+        self.addCleanup(session.close)
+        session.send(b"/br")
+        session.drain()
+        screen = Screen(80).feed(session.output)
+        self.assertIn("Bravo", "\n".join(screen.lines()))
+        self.assertNotIn("Alpha", "\n".join(screen.lines()))
+        session.send(b"\x1b[200~SYNTHETIC_FILTER_SECRET\x1b[201~")
+        session.drain()
+        self.assertNotIn(b"SYNTHETIC", session.output)
+        session.send(b"\r")
+        session.accepted("2")
+
+    def test_menu_search_with_no_matches_cannot_submit(self):
+        session = Session("searchmenu")
+        self.addCleanup(session.close)
+        session.send(b"/zzzz\r")
+        session.wait(b"No matches")
+        self.assertNotIn(b"ACCEPTED", session.output)
+        session.send(b"\x1b")
+        session.drain()
+        session.send(b"\r")
+        session.accepted("0")
+
+    def test_tab_discloses_without_submitting_or_interpreting_paste(self):
+        session = Session("disclosure")
+        self.addCleanup(session.close)
+        session.send(b"\x1b[200~SYNTHETIC\tVALUE\x1b[201~")
+        session.drain()
+        self.assertNotIn(b"DETAILS_VISIBLE", session.output)
+        session.send(b"\t")
+        session.wait(b"DETAILS_VISIBLE")
+        self.assertNotIn(b"ACCEPTED", session.output)
+        session.send(b"\r")
+        session.accepted("SYNTHETIC\tVALUE")
+
+    def test_narrow_menu_keeps_rows_within_width_and_details_available(self):
+        session = Session("widemenu", width=40)
+        self.addCleanup(session.close)
+        session.drain()
+        rendered = bytes(session.output).split(b"\x1b[J")[-1].decode()
+        for row in rendered.split("\r\n"):
+            self.assertLess(terminal.cells(row), 40)
+        session.send(b"\t")
+        session.wait(b"Entire details")
+        self.assertNotIn(b"ACCEPTED", session.output)
+        session.send(b"\t\r")
+        session.accepted("0")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
 # Agents
 
-In `godmode`, choose **Agents**. Godmode lists the agents it found, shows the exact text and files, and writes them when you press Enter.
+**Agents** in `godmode` lists detected agents, the exact note, and destination files. Enter on **Add to…** writes the note.
 
-Godmode finds Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode by their folders. Claude Code gets a new file, `~/.claude/rules/godmode.md`. For the others, the text is appended as a block between `<!-- godmode:start -->` and `<!-- godmode:end -->`. Existing text in those files is never changed, and Godmode writes only after Enter on the preview. For Cursor and other agents, choose **Copy the text**, paste it into their instructions, then choose **I added it**. Piped, `godmode agents` prints the text, so `godmode agents | pbcopy` works. For one project only, paste it into that project's instruction file instead.
+Godmode finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode by their folders. Claude Code uses `~/.claude/rules/godmode.md`. The note is appended between `<!-- godmode:start -->` and `<!-- godmode:end -->`; existing instruction text stays intact. A short terminal blocks the write until the complete note and paths fit. `godmode --plain agents` prints the full preview in sequence.
+
+**Copy the note** supports Cursor and other agents. Paste it into the agent's instructions, then choose **I added it** when that action is available. Redirected output contains only the note, so `godmode agents | pbcopy` works. A project's instruction file limits the note to that project.
 
 The text tells the agent to run `godmode help` before work that needs a key or a profile field. `help` lists what is saved and explains `profile get`, `provider`, `list`, `set` and `run`. The text holds no profile values or key names, so it stays the same across updates. If `godmode` is not on the agent's PATH, the text gives the full path.
 

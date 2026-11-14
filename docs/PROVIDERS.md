@@ -4,6 +4,10 @@
 
 `godmode setup SLUG` opens one provider's keys. Each key has one screen with its page and at most three steps. Enter on the empty field opens the page; paste the key and press Enter to save it. Save only the keys your work uses; the list is a catalog, not a checklist.
 
+`godmode setup` lists every provider with its saved state. `/` filters names and descriptions. Escape clears the search; a second Escape leaves the list. Tab shows the selected row's full details. A key's default preview shows its destination file and masked assignment; Tab shows the shell equivalent.
+
+`godmode --plain setup` uses numbered choices. Enter reviews a typed or pasted value; a second Enter saves it. Provider instructions and validation are the same in both modes.
+
 The instructions come from [providers.json](../providers.json) ([schema](dev/CATALOG.md)) and were checked against each provider's public documentation on 2026-11-13. No signed-in account was tested. Follow the provider's current documentation where it differs.
 
 ## How agents use a provider

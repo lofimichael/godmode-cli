@@ -25,13 +25,14 @@ To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 - The terminal reads it with echo off. A pasted value shows as its first and last three characters around five dots (`sk_•••••123`). Values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Typed values show one dot per character. Pasting again replaces the value.
 - Menus ignore pastes, and text that arrives between screens is dropped. A paste that is too large or holds a NUL byte is read to its end and refused, so none of it reaches your shell.
-- **What will change on your machine** shows the edit as a `printf` command for a new key or a `sed` command for a saved one, with the value masked. The kind of command depends on the file, never on the value. For a plain file, that command run with the real value produces the same bytes; the tests check this. For a sealed file, `sealed(…)` stands for the encrypted value, so the command only illustrates the edit. Godmode makes the edit itself; no shell runs.
+- The save preview shows the destination file and `Add NAME=…` or `Replace NAME=…`, with the value masked. Tab opens the shell equivalent: `printf` for a new key or `sed` for a saved one. The command depends on the file, never on the value. For a plain file, that command with the real value produces the same bytes; the tests check this. For a sealed file, `sealed(…)` represents encrypted data. Godmode writes the file itself; no shell runs.
 - If a value cannot be saved, for example multiline text that is not JSON, the preview says why and Enter does nothing. After a save, one receipt line stays: `✓ Saved NAME=sealed(sk_•••••123)`.
 - Some keys have a paste rule in providers.json: spaces are removed from a Gmail app password, and a Higgsfield key copied as `ID:SECRET` is split between its two entries. The preview shows the value after the rule. `godmode set NAME --stdin` saves its input as given.
 - Keys marked `"secret": false`, such as the Gmail address, show typed input; a paste into them is still masked. The prompt for a custom key's name ignores pastes.
 - A pasted multiline JSON object is compacted to one line. Names ending in `_JSON` require an object and accept a dragged file. Godmode reads one snapshot of that file and validates, previews and saves the same snapshot, and leaves the file in place; delete a downloaded key when no tool needs it.
 - JSON gets syntax checks only. The two Google service-account keys also check Google's file shape (`"type": "service_account"`, `project_id`, `private_key_id`, a PEM `private_key`, a `…gserviceaccount.com` `client_email` and Google's `token_uri`).
 - Values cannot contain control characters, and no value is evaluated as shell code. Keys are never accepted as command-line arguments.
+- `--plain` or `GODMODE_PLAIN=1` uses static prompts. Input stays hidden until Enter displays a masked review; a second Enter submits it. Pasted newlines never submit a value.
 - Python cannot guarantee that every copy of a value is erased from memory.
 
 ## How agents reach keys
