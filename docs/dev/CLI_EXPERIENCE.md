@@ -159,7 +159,7 @@ The total uses integer flooring, so 100% requires all three portions. `Saved` de
 
 | v0.13 behavior | Revised behavior | Reduction |
 | --- | --- | --- |
-| Three welcome pages and three confirmations | One welcome and one confirmation | Two screens and two confirmations |
+| Three welcome pages and three Enter presses | One welcome and one Enter press | Two screens and two Enter presses |
 | 158 words in welcome titles and prose | 25 words in the title and prose | 84% fewer words; diagram and controls counted separately |
 | A three-provider target for the provider third | One usable saved provider fills that third | Two provider enrollments removed from the completion target |
 | One overall bar and text states | Three status rows with small bars and counts | Each component shows its own completion |

@@ -40,7 +40,7 @@ The screenshots contain output from the real program in a pseudo-terminal. `scri
 | --- | ---: | ---: |
 | Welcome screens | 3 | 1 |
 | Welcome titles and prose | 158 words | 25 words |
-| Welcome acknowledgments | 3 | 1 |
+| Enter presses in welcome | 3 | 1 |
 | Providers needed to fill the provider portion | 3 | 1 |
 | Runtime packages | 0 | 0 |
 

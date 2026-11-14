@@ -17,7 +17,7 @@ Tests use synthetic keys and temporary homes. Never run them against a real key 
 
 ## Package
 
-1. Set the version in the `VERSION` file and the `VERSION` constant in `godmode.py`, commit to main, then tag and push `vX.Y.Z`.
+1. Set the version in `VERSION`, the `VERSION` constant in `godmode.py`, and `READTHIS.NFO`. Commit to main, then tag and push `vX.Y.Z`.
 2. Build one universal archive and its checksum. `docs/dev` stays out of the archive.
 
    ```sh

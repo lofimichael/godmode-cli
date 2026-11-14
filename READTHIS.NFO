@@ -1,18 +1,16 @@
-+--[ godmode ]---------------------------------------------------------+
-| version .. 0.13.0                                                    |
-| source ... https://github.com/lofimichael/godmode-cli                |
-+----------------------------------------------------------------------+
+Godmode 0.14.0
+https://github.com/lofimichael/godmode-cli
 
   Godmode keeps your business profile and API keys in one local place
   for your coding agents. Agents read godmode help and use keys through
   godmode run.
 
-[ install ]
+Install
 
-  url=https://github.com/lofimichael/godmode-cli/releases/latest/download
-  curl -fsSL "$url/install.sh" | sh -s -- --path
+  gh api -H 'Accept: application/vnd.github.raw+json' \
+    repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
 
-[ picard ]
+Picard
 
   godmode picard link     print the original YTMND URL
   godmode picard open     open it in a browser
@@ -23,11 +21,10 @@
   Nothing plays on its own. The first request downloads the asset from
   YTMND into a local cache; neither asset is in this archive.
 
-[ credits ]
+Credits
 
   Picard: https://picard.ytmnd.com/ ; music by DarkMateria. The MIT
   license does not cover the source image or recording. The lettering
   is original; the voice follows the Usenet post preserved at
   https://www.nongnu.org/ratpoison/inspiration.html .
 
-+----------------------------------------------------------------------+
