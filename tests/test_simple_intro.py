@@ -51,13 +51,13 @@ class ModularIntroTests(unittest.TestCase):
                     "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"}
 
     def terminal(self, *args, env=None, cols=110, rows=36):
-        session = Terminal([sys.executable, str(self.script), *args],
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), *args],
                            self.env if env is None else env, cols=cols, rows=rows)
         self.addCleanup(session.close)
         return session
 
     def cli(self, *args, input=None, env=None):
-        return subprocess.run([sys.executable, str(self.script), *args],
+        return subprocess.run([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), *args],
                               input=input, text=True, capture_output=True,
                               env=self.env if env is None else env,
                               cwd=self.root, timeout=10)
@@ -372,8 +372,8 @@ class ModularIntroTests(unittest.TestCase):
 
     def test_termination_signal_restores_terminal_without_marking_complete(self):
         harness = ("import os,runpy,sys; print('INTRO_CHILD_PID=%d' % os.getpid(), flush=True); "
-                   "sys.argv = [sys.argv[1], 'intro']; runpy.run_path(sys.argv[0], run_name='__main__')")
-        session = Terminal([sys.executable, "-c", harness, str(self.script)], self.env)
+                   "sys.argv = [sys.argv[1], sys.argv[2], 'intro']; runpy.run_path(sys.argv[0], run_name='__main__')")
+        session = Terminal([sys.executable, "-c", harness, str(REPO / 'tests/engine_fixture.py'), str(self.script)], self.env)
         self.addCleanup(session.close)
         session.expect("Enter accept")
         child = re.search(rb"INTRO_CHILD_PID=(\d+)", session.capture)

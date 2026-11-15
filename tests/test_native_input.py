@@ -6,9 +6,10 @@ import time
 import unittest
 
 from test_native_cli import NativeTerminal
+from license_support import provision
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = Path(os.environ.get('GODMODE_TEST_BINARY', ROOT / 'target/godmode-native'))
+BINARY = Path(os.environ.get('GODMODE_TEST_NATIVE_BINARY', ROOT / 'target/godmode-native-test'))
 
 
 @unittest.skipUnless(BINARY.exists(), 'Build the native candidate first.')
@@ -18,6 +19,7 @@ class NativeInput(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.home = self.root / '.godmode'
         self.home.mkdir(mode=0o700)
+        provision(self.home)
         (self.home / 'intro.seen').touch(mode=0o600)
         self.env = {'HOME': str(self.root), 'PATH': os.environ['PATH'], 'TERM': 'xterm-256color',
                     'GODMODE_NO_MOTION': '1', 'CODEX_HOME': str(self.root / '.codex'),

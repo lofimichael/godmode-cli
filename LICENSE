@@ -1,21 +1,117 @@
-MIT License
+Godmode Commercial Source License
+Version 1.0
+15 November 2026
 
-Copyright (c) 2026 Michael Kirsanov
+Copyright (c) 2026 Michael Kirsanov.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This license governs the first-party Godmode materials supplied with it. Preview and test entitlements do not establish a paid purchase.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Software and licensor
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+"Godmode" means the first-party CLI, bundled playbook, documentation, and other first-party files supplied with this license. Michael Kirsanov is the licensor of those materials ("Licensor"). Third-party components retain their own licenses under section 10.
+
+"You" means the person receiving or using Godmode. A "Licensed User" is the named individual recorded on a valid paid Godmode license. An organization may purchase licenses for its people, but each person who uses Godmode needs a separate license.
+
+2. Source inspection
+
+You may read and inspect Godmode's source without buying a license. You may keep private copies reasonably needed for that inspection.
+
+Source access does not grant permission to operate Godmode without a license. An unlicensed copy may run the commands expressly made available without activation for source inspection, help, license activation or status, and removal.
+
+Licensor may separately issue a signed preview, evaluation, or test entitlement. That entitlement permits only the operational use, scope, and duration it expressly records. It does not establish a paid purchase or grant the perpetual paid license in section 3.
+
+Godmode is source-available commercial software. This license does not grant the unrestricted use or redistribution rights of an open-source license.
+
+3. Paid local license
+
+After the $100 USD one-time license price has been paid and a valid license has been issued, the Licensed User may:
+
+(a) install and run covered Godmode releases on computers they own or control;
+
+(b) use their own agents to operate those copies on their behalf;
+
+(c) inspect, build, and modify Godmode for their own authorized use;
+
+(d) use Godmode for personal projects, commercial projects, employment, and work performed for clients; and
+
+(e) keep private backup copies of Godmode and their license.
+
+The license is per person, not per computer, agent, provider credential, or project. Agents acting for a Licensed User do not need separate licenses. Other people using Godmode need their own licenses, including colleagues sharing a company account or machine.
+
+A license permits use of Godmode. It does not grant access to a cloud, model, payment, or other third-party service. You must supply credentials and authorization for those services and comply with their terms.
+
+4. Covered releases and duration
+
+The paid local license covers Godmode CLI releases from version 0.16 through version 1.x. Version 2 and later, including their prereleases, are outside this grant unless the purchase record expressly includes them.
+
+The right to use covered releases is perpetual, subject to compliance with this license. An annual renewal or recurring subscription is not required for that local use.
+
+Fixes and improvements that Licensor releases within the covered version range are included. This does not require Licensor to release a particular feature, maintain every earlier release, or follow a release schedule.
+
+The purchase does not include a hosted Godmode service, cloud or model usage, custom development, or a human support response-time or availability commitment.
+
+5. Your applications and client work
+
+You retain your rights in the applications, data, content, and other materials you supply or create. Using Godmode does not make those materials subject to this license.
+
+You may deploy and hand over applications for clients. App-specific configuration and deployment documentation created through authorized use may accompany those applications.
+
+Those permissions do not grant a right to distribute Godmode itself, copy the bundled playbook as a separate product, or give a client unlicensed access to Godmode. Each person who operates Godmode needs their own license.
+
+6. Restrictions
+
+Except where this license expressly permits it or mandatory law gives you a right that cannot be restricted, you may not:
+
+(a) redistribute, publish, sell, rent, sublicense, or transfer Godmode or its source to another person;
+
+(b) share, publish, sell, or transfer a license key or signed entitlement so another person can use it;
+
+(c) provide Godmode itself to others as a hosted, managed, or shared service;
+
+(d) bypass, disable, remove, or alter activation or license verification to enable use outside the entitlement granted;
+
+(e) create, alter, or use a forged license or misrepresent a test license as a paid purchase; or
+
+(f) remove or obscure copyright, license, or other proprietary notices.
+
+You may make the private modifications permitted by section 3 while preserving activation and the license's restrictions. A modified copy does not create an additional license or expand the rights granted.
+
+7. Activation and local use
+
+The standard activation service permits three active installations for a Licensed User. Deactivating an installation frees a slot. Godmode may verify a license during activation and issue a signed local entitlement. The entitlement records the rights granted; it does not replace these terms.
+
+Covered local use remains available without a continuing connection to a licensing server after valid activation. Loss of connectivity or a licensing-server outage does not, by itself, end a valid perpetual local license.
+
+Licensor may refuse fraudulent or unauthorized activation, replacement entitlements, downloads, or hosted benefits. A server-side refusal does not erase your provider credentials or take ownership of your deployed applications.
+
+8. Future hosted upgrade credit
+
+A verified, paid $100 USD local purchase is eligible for a one-time $100 USD credit toward a future paid Godmode hosted upgrade offered by Licensor. The original local license remains valid after that upgrade.
+
+The credit must be matched to the original paid purchase. It cannot be redeemed twice, transferred to another person, or exchanged for cash. A refunded or reversed purchase does not supply a paid-purchase credit.
+
+The hosted offering, its price, and the invoice against which the credit applies will be stated before an upgrade is purchased. This clause does not set a hosted launch date or include a hosted subscription in the local purchase.
+
+Preview, evaluation, complimentary, and test licenses have no purchase value or hosted upgrade credit unless a separate written grant expressly provides one.
+
+9. Ownership and rights retained
+
+Godmode's first-party copyright and other intellectual property remain with their owners. This license grants only the permissions stated here. It does not grant rights to Godmode's name or marks beyond identifying the software you use.
+
+Licensor does not acquire ownership of your original modifications merely because you make them. Those modifications remain subject to the restrictions that apply to the Godmode materials they contain. No contribution or intellectual-property assignment is implied.
+
+10. Third-party components
+
+Third-party components retain their own licenses. Nothing here limits rights independently granted by their owners. Required third-party notices must remain with the relevant components.
+
+11. Breach
+
+The permissions in this license depend on compliance with its terms. Licensor may give written notice of a material breach and end the permissions granted here if the breach is not corrected within 30 days after that notice. You must stop the prohibited conduct during that period.
+
+Termination for breach does not transfer your application data or provider accounts to Licensor. Any separate rights under earlier or third-party licenses remain governed by their own terms.
+
+12. Warranties and mandatory rights
+
+To the extent permitted by applicable law, Godmode is provided as is, without warranties of merchantability, fitness for a particular purpose, or non-infringement. The license does not guarantee a provider's availability or that every deployment will succeed.
+
+Nothing in these terms excludes or limits a right, remedy, warranty, or liability that applicable law does not allow the parties to exclude or limit.

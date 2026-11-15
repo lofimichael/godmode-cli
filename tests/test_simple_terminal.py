@@ -528,7 +528,7 @@ class TerminalTests(unittest.TestCase):
             home = Path(directory) / ".godmode"
             env = {"HOME": directory, "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                    "TERM": "xterm-256color"}
-            command = [sys.executable, str(repo / "godmode.py"), "--home", str(home), "--plain"]
+            command = [sys.executable, str(repo / "tests/engine_fixture.py"), str(repo / "godmode.py"), "--home", str(home), "--plain"]
             intro = Terminal(command + ["intro"], env, cols=8, rows=12)
             try:
                 intro.seen("can spend money")

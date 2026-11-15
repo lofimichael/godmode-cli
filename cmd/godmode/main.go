@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/lofimichael/godmode-cli/internal/core"
+	"github.com/lofimichael/godmode-cli/internal/license"
 	"github.com/lofimichael/godmode-cli/internal/ui"
 )
 
@@ -87,8 +88,9 @@ func buildInfo() {
 }
 
 func run(args []string) int {
-	if len(args) == 1 {
-		switch args[0] {
+	words := commandWords(args)
+	if len(words) == 1 {
+		switch words[0] {
 		case "source":
 			fmt.Print(core.Source())
 			return 0
@@ -98,6 +100,19 @@ func run(args []string) int {
 		}
 	}
 	r := selectRoute(args)
+	if words := commandWords(args); len(words) > 0 && words[0] == "license" {
+		return licenseCommand(args, r.home)
+	}
+	if !inspection(args) {
+		config, err := license.Default(r.home, version)
+		if err == nil {
+			_, _, err = config.Read()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "godmode:", err)
+			return 2
+		}
+	}
 	if !r.interactive || r.plain || os.Getenv("TERM") == "dumb" || os.Getenv("TERM") == "" ||
 		!term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 		return core.Run(args)

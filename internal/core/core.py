@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Godmode 0.15.1: readable source, no bundled interpreter or dependencies.
+# Godmode 0.16.0: readable source, no bundled interpreter or dependencies.
 import sys
 if sys.version_info < (3, 9):
     sys.exit("Godmode needs Python 3.9 or newer. No files changed.")
@@ -2888,7 +2888,7 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 
-VERSION = '0.15.1'
+VERSION = '0.16.0'
 MUSIC_INCLUDED = True
 PROVIDERS = [{'id': 'github',
   'name': 'GitHub',
@@ -4828,12 +4828,13 @@ def faq_entries(home=None):
         ('Where are my tokens?', [where,
             'godmode path prints this path. godmode list prints key names. godmode run passes '
             'selected keys to a command. seal.key sits beside the key file.']),
-        ('Where is the source code?', [SOURCE_URL,
+        ('Where is the source code?', ['https://godmode.build',
             'The Go interface and Python file engine ship with source. godmode source prints the embedded '
-            'file engine. The repository requires GitHub access.']),
+            'file engine. First-party code uses the Godmode Commercial Source License.']),
         ('Does Godmode make network calls?', [
             'Profile and key commands run locally. They make no network calls.',
-            'godmodeup downloads updates. Provider links open in your browser. Picard downloads media '
+            'License activation, deactivation and godmodeup contact godmode.build. Provider links open '
+            'in your browser. Picard downloads media '
             'on request. Commands launched with godmode run can use the network.',
             'Music uses your local Darunia installation and local song files.']),
         ('How do I inspect a release?', [
@@ -4845,7 +4846,7 @@ def faq_entries(home=None):
             'godmode build-info prints the compiler, dependencies and embedded engine hash.',
             'Checksums detect changed bytes. A checksum from the same download source cannot prove '
             'the publisher is trustworthy. Pin a reviewed commit before building.',
-            SOURCE_URL + '/blob/main/docs/SECURITY.md']),
+            'docs/SECURITY.md in the source archive covers verification and local files.']),
         ('Does Agents replace my instructions?', [
             'Agents adds its note at the end of each listed file. Your existing text stays unchanged.',
             'An existing Godmode note stays as written, including your edits. The preview lists new '
@@ -5002,6 +5003,7 @@ def run_with_keys(store, argv):
         valid_key(source)
     values = store.values([source for _, source in pairs])
     environment = dict(os.environ)
+    environment.pop('GODMODE_PREVIEW_PASSWORD', None)
     environment.update({variable: values[source] for variable, source in pairs})
     environment['GODMODE_KEYS'] = ','.join(variable for variable, _ in pairs)  # Which variables came through godmode.
     try:
@@ -5026,6 +5028,8 @@ For you
   godmode intro                replay the welcome
   godmode faq                  answers about files, keys and source
   godmode music                local music and visualizer
+  godmode license activate     activate your purchased license
+  godmode license status       inspect the saved license
 
 For agents
   godmode help                 the guide agents read, with what is saved
@@ -5048,7 +5052,7 @@ Options
   --no-motion                  disable animation
   --version                    print the version
 
-Update with godmodeup. Docs: https://github.com/lofimichael/godmode-cli"""
+Update with godmodeup. Downloads and source: https://godmode.build"""
 
 
 class Arguments(argparse.ArgumentParser):
@@ -5058,6 +5062,7 @@ class Arguments(argparse.ArgumentParser):
 
 
 COMMAND_HELP = {
+    'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
     'faq': 'Usage: godmode faq\n\nAnswers about keys, files, network use and source.',
     'music': 'Usage: godmode music [init DIR --songs DIR | list | play NAME | clear | status]\n\nLocal Darunia music with a visualizer. Rendered songs stay cached. clear removes the music cache.',
     'setup': "Usage: godmode setup [PROVIDER]\n\nArrow keys choose a provider; / searches. Enter opens its key page or saves\na pasted key. Tab shows the shell command. Esc returns.\n\n  godmode setup cloudflare\n  godmode --plain setup",
@@ -5074,6 +5079,35 @@ COMMAND_HELP = {
 }
 
 
+def require_license(argv, home):
+    """The embedded engine uses its native executable as the trusted verifier."""
+    before_child = argv[:argv.index('--')] if '--' in argv else argv
+    internal = argv[:1] == ['__ui']
+    if not internal and any(word in ('--help', '-h', '--version') for word in before_child):
+        return
+    if argv[:1] in (['help'], ['faq'], ['list'], ['path']):
+        return
+    for index, word in enumerate(before_child):
+        if word in ('--home', '--config-dir') and index + 1 < len(before_child):
+            home = before_child[index + 1]
+        elif word.startswith(('--home=', '--config-dir=')):
+            home = word.split('=', 1)[1]
+    executable = Path(__file__).resolve()
+    with executable.open('rb') as stream:
+        magic = stream.read(4)
+    if magic not in (b'\x7fELF', b'\xcf\xfa\xed\xfe'):
+        raise ValueError('Use the native Godmode command. Build it with scripts/build-native.sh, then run godmode license activate.')
+    command = [str(executable)]
+    if home:
+        command += ['--home', home]
+    command += ['license', 'check']
+    result = subprocess.run(command, input=b'', stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=15)
+    if result.returncode:
+        # Never repeat an external program's output; it may contain secrets.
+        raise ValueError('A Godmode license is required. Run godmode license activate.')
+
+
 def main():
     argv, home = sys.argv[1:], None
     # Global display options stop at --; a child command owns everything after it.
@@ -5087,6 +5121,14 @@ def main():
         home, argv = argv[1], argv[2:]
     elif argv and argv[0].startswith(('--home=', '--config-dir=')):
         home, argv = argv[0].split('=', 1)[1], argv[1:]
+    require_license(argv, home)
+    before_child = argv[:argv.index('--')] if '--' in argv else argv
+    if any(word in ('-h', '--help') for word in before_child):
+        print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
+        return 0
+    if '--version' in before_child:
+        print('godmode ' + VERSION)
+        return 0
     STORE_KEY_PROVIDERS.update({key['name']: p['id'] for p in catalog() for key in p['key']})
     if argv[:1] == ['__ui']:
         return ui_bridge(home, globals())

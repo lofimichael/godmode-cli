@@ -54,10 +54,10 @@ class ExperienceHelp(unittest.TestCase):
             home = Path(directory) / 'home'
             subprocess.run([sys.executable, str(ROOT / 'scripts/build.py'), '--without-music',
                             '--output', str(path)], check=True, capture_output=True)
-            result = subprocess.run([sys.executable, str(path), '--home', str(home), 'list'],
+            result = subprocess.run([sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(path), '--home', str(home), 'list'],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([sys.executable, str(path), '--home', str(home), 'music'],
+            result = subprocess.run([sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(path), '--home', str(home), 'music'],
                                     capture_output=True, text=True, cwd=directory)
             self.assertEqual(result.returncode, 2)
             self.assertIn('not included', result.stderr)

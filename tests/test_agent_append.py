@@ -197,7 +197,7 @@ class AgentDiffTerminalTests(unittest.TestCase):
         self.existing.write_bytes(b'# My rules\r\nKeep all of them.\r\n')
 
     def terminal(self, *args, **kwargs):
-        terminal = Terminal([sys.executable, str(REPO / 'godmode.py'), *args], self.env, **kwargs)
+        terminal = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(REPO / 'godmode.py'), *args], self.env, **kwargs)
         self.addCleanup(terminal.close)
         return terminal
 

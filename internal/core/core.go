@@ -54,7 +54,7 @@ func executable() string {
 func withExecutable(env []string) []string {
 	result := make([]string, 0, len(env)+1)
 	for _, item := range env {
-		if !strings.HasPrefix(item, "GODMODE_EXECUTABLE=") {
+		if !strings.HasPrefix(item, "GODMODE_EXECUTABLE=") && !strings.HasPrefix(item, "GODMODE_PREVIEW_PASSWORD=") {
 			result = append(result, item)
 		}
 	}

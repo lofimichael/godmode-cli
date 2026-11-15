@@ -25,7 +25,7 @@ FACTS = ("Zoë Example", "Example Studio", "Example LLC", "https://example.test"
 
 # Audit actual subprocess I/O rather than substituting a fake credential store.
 # Guidance commands should work even when opening credential files is forbidden.
-READ_ONLY_GUIDANCE = """
+READ_ONLY_GUIDANCE = r"""
 import os, runpy, sys
 script = sys.argv[1]
 sys.argv = sys.argv[1:]
@@ -41,7 +41,8 @@ def audit(event, args):
                  'os.link', 'os.symlink', 'os.truncate'):
         raise RuntimeError('guidance attempted a filesystem change')
 sys.addaudithook(audit)
-runpy.run_path(script, run_name='__main__')
+source = open(script).read().replace('    require_license(argv, home)\n', '    pass  # Test-only native license boundary.\n')
+exec(compile(source, script, 'exec'), {'__name__':'__main__','__file__':script})
 """
 
 
@@ -74,6 +75,8 @@ class ModularOnboardingTests(unittest.TestCase):
         prefix = [sys.executable]
         if guidance:
             prefix += ["-c", READ_ONLY_GUIDANCE]
+        else:
+            prefix += [str(REPO / 'tests/engine_fixture.py')]
         return subprocess.run(prefix + [str(self.script), *args], input=input,
                               env=self.env if env is None else env, cwd=self.root,
                               capture_output=True, text=True, timeout=10)
@@ -84,7 +87,7 @@ class ModularOnboardingTests(unittest.TestCase):
         return result.stdout
 
     def terminal(self, *args):
-        session = Terminal([sys.executable, str(self.script), *args], self.env)
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), *args], self.env)
         self.addCleanup(session.close)
         return session
 
@@ -368,7 +371,7 @@ class ModularOnboardingTests(unittest.TestCase):
         value = "https://example.test/" + "long-path-segment/" * 10 + "final-value"
         self.okay("profile", "set", "website", "--stdin", input=value)
         before = self.snapshot()
-        visual = Terminal([sys.executable, str(self.script), "profile"], self.env, cols=80, rows=20)
+        visual = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "profile"], self.env, cols=80, rows=20)
         self.addCleanup(visual.close)
         visual.expect("Your name")
         visual.send(b"w")
@@ -381,7 +384,7 @@ class ModularOnboardingTests(unittest.TestCase):
         visual.done()
         for route in (("profile",), ("profile", "set", "website")):
             with self.subTest(route=route):
-                session = Terminal([sys.executable, str(self.script), "--plain", *route],
+                session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "--plain", *route],
                                    self.env, cols=40, rows=12)
                 self.addCleanup(session.close)
                 session.wait(lambda: value in "".join(plain(session.capture).split()))
@@ -395,7 +398,7 @@ class ModularOnboardingTests(unittest.TestCase):
         replacement = 'https://after.example.test'
         self.okay('profile', 'set', 'website', '--stdin', input=original)
         before = self.snapshot()
-        session = Terminal([sys.executable, str(self.script), 'profile', 'set', 'website'],
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), 'profile', 'set', 'website'],
                            self.env, cols=80, rows=24)
         self.addCleanup(session.close)
         session.expect('Enter keeps it')
@@ -421,7 +424,7 @@ class ModularOnboardingTests(unittest.TestCase):
         self.seen()
         (self.root / ".claude").mkdir()
         target = self.root / ".claude/rules/godmode.md"
-        session = Terminal([sys.executable, str(self.script), "agents"], self.env, cols=40, rows=12)
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], self.env, cols=40, rows=12)
         self.addCleanup(session.close)
         session.expect("Enlarge the terminal")
         session.send(b"\r")
@@ -443,7 +446,7 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_all_agent_targets_and_full_note_fit_standard_terminal(self):
         for folder in (".claude", ".codex", ".gemini", ".copilot", ".config/opencode"):
             (self.root / folder).mkdir(parents=True, exist_ok=True)
-        session = Terminal([sys.executable, str(self.script), "agents"], self.env, cols=80, rows=24)
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], self.env, cols=80, rows=24)
         self.addCleanup(session.close)
         session.expect("Add to 5 agents")
         screen = "\n".join(Screen(80).feed(session.capture).lines())
@@ -460,7 +463,7 @@ class ModularOnboardingTests(unittest.TestCase):
         stub = self.root / "stub"
         stub.mkdir()
         env = dict(self.env, PATH=str(stub))  # No pbcopy, wl-copy or xclip: the item prints the note instead.
-        session = Terminal([sys.executable, str(self.script), "agents"], env)
+        session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], env)
         self.addCleanup(session.close)
         session.expect("I added it")
         self.assertIn("Print the note", plain(session.capture))
@@ -468,7 +471,7 @@ class ModularOnboardingTests(unittest.TestCase):
         session.send(b"\x1b")
         session.done()
         self.assertEqual(self.snapshot(), before)
-        marked = Terminal([sys.executable, str(self.script), "agents"], env)
+        marked = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], env)
         self.addCleanup(marked.close)
         marked.expect("I added it")
         marked.send(b"\x1b[B\r")

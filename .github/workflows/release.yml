@@ -59,6 +59,9 @@ jobs:
           sh tests/install-update.sh
           sh scripts/build-native.sh
           go test -mod=vendor ./...
+          sh scripts/build-license-test.sh
+          python3 -m unittest discover -s tests -p 'test_native_*.py'
+          python3 -m unittest discover -s tests -p 'test_license_*.py'
           test "$(target/godmode-native --version)" = "godmode ${RELEASE_TAG#v}"
           GODMODE_TEST_NATIVE_BINARY="$PWD/target/godmode-native" sh tests/install-update.sh
       - name: Package four native targets and complete source

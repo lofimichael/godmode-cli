@@ -14,6 +14,16 @@ import (
 	"time"
 )
 
+// The engine tests mock the native verifier boundary. Actual signature and
+// native-gate behavior is exercised by internal/license and licensed CLI tests.
+func TestMain(m *testing.M) {
+	args := os.Args[1:]
+	if len(args) >= 2 && args[len(args)-2] == "license" && args[len(args)-1] == "check" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func isolatedHome(t *testing.T) string {
 	t.Helper()
 	home, err := filepath.EvalSymlinks(t.TempDir())
@@ -79,6 +89,7 @@ func TestPrivateClientReviewsThenSavesWithoutReturningSecret(t *testing.T) {
 func TestUIEnvironmentOmitsInheritedCredentials(t *testing.T) {
 	t.Setenv("GH_TOKEN", "synthetic-private-env")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "synthetic-private-env")
+	t.Setenv("GODMODE_PREVIEW_PASSWORD", "synthetic-private-env")
 	t.Setenv("CODEX_HOME", "/example/agent")
 	environment := strings.Join(uiEnvironment(), "\n")
 	if strings.Contains(environment, "synthetic-private-env") {
@@ -86,6 +97,16 @@ func TestUIEnvironmentOmitsInheritedCredentials(t *testing.T) {
 	}
 	if !strings.Contains(environment, "CODEX_HOME=/example/agent") || !strings.Contains(environment, "GODMODE_EXECUTABLE=") {
 		t.Fatal("UI subprocess lacks its agent/executable context")
+	}
+}
+
+func TestPreviewPasswordNeverReachesProviderCommands(t *testing.T) {
+	environment := strings.Join(withExecutable([]string{"PATH=/bin", "GODMODE_PREVIEW_PASSWORD=synthetic-preview-secret"}), "\n")
+	if strings.Contains(environment, "synthetic-preview-secret") {
+		t.Fatal("preview password reached a provider command")
+	}
+	if !strings.Contains(environment, "PATH=/bin") {
+		t.Fatal("ordinary command environment changed")
 	}
 }
 

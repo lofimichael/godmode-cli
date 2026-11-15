@@ -4,7 +4,8 @@ Values are encrypted in .env.godmode with a random key in seal.key.
 Reading the file shows names, never values.
 Any program running as you can still ask godmode for a key.
 Anyone with both files has every key.
-Profile and key commands make no network calls. `godmodeup` downloads releases;
+Profile and key commands verify a signed license offline. License activation and
+deactivation contact godmode.build; `godmodeup` downloads releases from it;
 provider links open in your browser; Picard downloads media on request. A command
 started with `godmode run` has its own network access. Music uses local Darunia
 tools and local song files.
@@ -61,9 +62,11 @@ GOPROXY=off GOSUMDB=off scripts/build-native.sh
 sh install.sh --binary target/godmode-native --sha256 "$(shasum -a 256 target/godmode-native | cut -d ' ' -f 1)" --no-setup
 ```
 
-Godmode source is MIT licensed; dependency licenses ship in the source archive.
-Repository access remains private. Installation uses release archives rather than
-a package registry. Source builds use the vendored dependencies.
+First-party Godmode source uses the Godmode Commercial Source License. Dependency licenses
+ship in the source archive. Downloads remain password-protected. Installation
+uses release archives rather than a package registry. Source builds use the
+vendored dependencies. [Licensing](LICENSING.md) covers activation, signed
+entitlements, network data and offline use.
 
 ## Optional music
 

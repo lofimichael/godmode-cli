@@ -10,13 +10,21 @@ Profile + API keys → Godmode → commands
 
 ## Install
 
-macOS or Linux with Python 3.9 or newer. Private downloads use a GitHub CLI login with repository access. The interface uses Bubble Tea and Lip Gloss. Its embedded Python file engine installs no packages.
+macOS or Linux with Python 3.9 or newer. Downloads and source are at [godmode.build](https://godmode.build), behind the private site password. The interface uses Bubble Tea and Lip Gloss. Its embedded Python file engine installs no packages.
 
 ```sh
-gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+curl --fail --user godmode https://godmode.build/install.sh -o godmode-install.sh
+sh godmode-install.sh --path --no-setup
+godmode license activate
+godmode
 ```
 
 `godmode` opens **Profile**, **Providers**, and **Agents**, with a completion meter for each. Six profile fields, one saved provider, and one agent note fill the setup meter. Every field and provider remains optional.
+
+The personal license costs $100 once and covers Godmode 0.16–1.x on three active
+installations. Paid licenses verify offline without expiry. Evaluation licenses
+expire after seven days and record no purchase. Source inspection is allowed;
+operation requires a license under the [commercial terms](LICENSE).
 
 | Key | Action |
 | --- | --- |
@@ -56,6 +64,9 @@ gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cl
 | `godmode music clear` | Remove synthesized music from the cache |
 | `godmode source` | Print the embedded Python file engine |
 | `godmode build-info` | Compiler, dependencies and engine hash |
+| `godmode license activate` | Activate a purchase key through hidden entry |
+| `godmode license status` | Inspect the signed local entitlement |
+| `godmode license deactivate` | Release this installation without changing provider keys |
 
 ## Files
 
@@ -65,7 +76,7 @@ gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cl
 | `~/.godmode/.env.godmode` | Your keys, each value encrypted |
 | `~/.godmode/seal.key` | Decrypts them. Anyone with both files has your keys. |
 
-Keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine.
+Provider keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine. License activation and deactivation contact godmode.build; ordinary commands verify the saved license offline. [Licensing](docs/LICENSING.md) describes the exact data and behavior.
 
 Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes your keys too) and remove the two `# Godmode` lines from your shell startup file. Deleting a key here does not revoke it; revoke it at the provider.
 

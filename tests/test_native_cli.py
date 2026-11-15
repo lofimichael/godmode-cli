@@ -11,9 +11,10 @@ import termios
 import unittest
 
 from pty_support import Terminal, plain
+from license_support import provision
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = ROOT / 'target/godmode-native'
+BINARY = Path(os.environ.get('GODMODE_TEST_NATIVE_BINARY', ROOT / 'target/godmode-native-test'))
 
 
 class NativeTerminal(Terminal):
@@ -37,6 +38,7 @@ class NativeCLI(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.home = self.root / '.godmode'
         self.home.mkdir(mode=0o700)
+        provision(self.home)
         (self.home / 'intro.seen').touch(mode=0o600)
         self.env = {'HOME': str(self.root), 'PATH': os.environ['PATH'], 'TERM': 'xterm-256color',
                     'GODMODE_NO_MOTION': '1', 'CODEX_HOME': str(self.root / '.codex'),

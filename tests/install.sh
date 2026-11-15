@@ -124,247 +124,13 @@ PATH="$scratch/on-path:$PATH" sh "$repo/install.sh" --binary "$scratch/artifact/
 printf '  %s\n' "$check Installed $scratch/on-path/godmode" 'To set up, run:  godmode' | cmp - "$scratch/on-path-output"
 
 
-# Automatic downloads are exercised with local fixtures. No GitHub authentication
-# or network access is used by this test, even if the developer is signed in.
-mkdir -p "$scratch/mock-bin" "$scratch/downloads" "$scratch/fixtures"
-cat > "$scratch/mock-bin/uname" <<'MOCK'
-#!/bin/sh
-case "$1" in
-    -s) printf '%s\n' "${GODMODE_TEST_OS:-Darwin}" ;;
-    -m) printf '%s\n' "${GODMODE_TEST_ARCH:-arm64}" ;;
-    *) exit 1 ;;
-esac
-MOCK
-cat > "$scratch/mock-bin/gh" <<'MOCK'
-#!/bin/sh
-set -e
-printf '%s\n' "$*" >> "$GODMODE_TEST_NETWORK_LOG"
-case "$1" in
-    api)
-        [ "${GODMODE_TEST_GH_MODE:-success}" != fail ] || exit 1
-        [ "${GODMODE_TEST_GH_MODE:-success}" != empty ] || exit 0
-        printf '%s\n' "${GODMODE_TEST_TAG:-v7.6.5}"
-        ;;
-    release)
-        shift 3
-        name=; dir=
-        while [ "$#" -gt 0 ]; do
-            case "$1" in
-                --repo) [ "$2" = github.com/lofimichael/godmode-cli ] || exit 1; shift 2 ;;
-                --pattern) [ "$2" = SHA256SUMS ] || name=$2; shift 2 ;;
-                --dir) dir=$2; shift 2 ;;
-                *) exit 1 ;;
-            esac
-        done
-        # gh reports success when any --pattern matches, including SHA256SUMS
-        # alone. Existing destination files fail without --clobber.
-        found=no
-        for asset in "$name" SHA256SUMS; do
-            if [ -f "$GODMODE_TEST_FIXTURES/$asset" ]; then
-                [ ! -e "$dir/$asset" ] || exit 1
-                cp "$GODMODE_TEST_FIXTURES/$asset" "$dir/$asset"
-                found=yes
-            fi
-        done
-        [ "$found" = yes ]
-        ;;
-    *) exit 1 ;;
-esac
-MOCK
-cat > "$scratch/mock-bin/curl" <<'MOCK'
-#!/bin/sh
-printf '%s\n' "$*" >> "$GODMODE_TEST_NETWORK_LOG"
-output=; url=
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --output) output=$2; shift 2 ;;
-        --write-out|--proto|--proto-redir) shift 2 ;;
-        https://*) url=$1; shift ;;
-        --disable|--fail|--silent|--show-error|--location|--tlsv1.2) shift ;;
-        *) exit 1 ;;
-    esac
-done
-case "$url" in
-    https://github.com/lofimichael/godmode-cli/releases/latest)
-        printf '%s' 'https://github.com/lofimichael/godmode-cli/releases/tag/v7.6.5'
-        ;;
-    https://github.com/lofimichael/godmode-cli/releases/download/v7.6.5/*)
-        cp "$GODMODE_TEST_FIXTURES/${url##*/}" "$output"
-        ;;
-    *) exit 1 ;;
-esac
-MOCK
-chmod 755 "$scratch/mock-bin/gh" "$scratch/mock-bin/curl" "$scratch/mock-bin/uname"
-fixture_name=godmode-v7.6.5-aarch64-apple-darwin.tar.gz
-cp "$scratch/godmode-test.tar.gz" "$scratch/fixtures/$fixture_name"
-printf '%s  %s\n' "$archive_digest" "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
-export GODMODE_TEST_FIXTURES="$scratch/fixtures"
+mkdir -p "$scratch/fixtures" "$scratch/mock-bin"
+mock_path=$PATH
 export GODMODE_TEST_NETWORK_LOG="$scratch/network-log"
-export TMPDIR="$scratch/downloads"
-mock_path=$scratch/mock-bin:$PATH
-HOME="$scratch/automatic-home" GODMODE_HOME='' PATH="$mock_path" sh "$repo/install.sh" --no-setup > "$scratch/automatic-output"
-cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
-grep -qx '  Downloading Godmode 7.6.5' "$scratch/automatic-output"
-grep -qx '  To set up, run:  godmode' "$scratch/automatic-output"
-[ ! -e "$scratch/automatic-home/.godmode/.env.godmode" ]
-[ ! -e "$scratch/automatic-home/.godmode/state" ]
-[ -z "$(ls -A "$scratch/downloads")" ]
-
-# The README install prints three lines; the PATH note and next command follow.
-mkdir "$scratch/fresh-account"
-HOME="$scratch/fresh-account" SHELL=/bin/zsh PATH="$mock_path" sh "$repo/install.sh" --path --no-setup > "$scratch/fresh-output"
-printf '  %s\n' 'Downloading Godmode 7.6.5' "$check Installed ~/.godmode/bin/godmode" \
-    "$check Added ~/.godmode/bin to PATH in ~/.zshenv" \
-    'Open a new terminal, or run:  . ~/.godmode/env' 'To set up, run:  godmode' | cmp - "$scratch/fresh-output"
-[ -f "$scratch/fresh-account/.zshenv" ]
-[ ! -e "$scratch/fresh-account/.zshrc" ]
-
-# Native archives take priority when an older portable asset is also present.
-universal_name=godmode-v7.6.5-unix.tar.gz
-cp "$scratch/godmode-test.tar.gz" "$scratch/fixtures/$universal_name"
-printf '%s  %s\n%s  %s\n' "$archive_digest" "$fixture_name" "$archive_digest" "$universal_name" > "$scratch/fixtures/SHA256SUMS"
-: > "$GODMODE_TEST_NETWORK_LOG"
-PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/native-priority-home" > /dev/null
-cmp "$scratch/artifact/godmode" "$scratch/native-priority-home/bin/godmode"
-grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
-if grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"; then
-    echo 'portable archive was downloaded despite an available native archive' >&2; exit 1
-fi
-# A release carrying only the portable script remains installable even when gh
-# returns success for the missing native archive because SHA256SUMS matched.
-mv "$scratch/fixtures/$fixture_name" "$scratch/native-held.tar.gz"
-: > "$GODMODE_TEST_NETWORK_LOG"
-PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/legacy-portable-home" > /dev/null
-cmp "$scratch/artifact/godmode" "$scratch/legacy-portable-home/bin/godmode"
-grep -q -- "--pattern $fixture_name" "$GODMODE_TEST_NETWORK_LOG"
-grep -q -- "--pattern $universal_name" "$GODMODE_TEST_NETWORK_LOG"
-mv "$scratch/native-held.tar.gz" "$scratch/fixtures/$fixture_name"
-# Success with only the archive is also incomplete: neither target installs
-# without SHA256SUMS, and the failed download leaves no destination or residue.
-mv "$scratch/fixtures/SHA256SUMS" "$scratch/checksums-held"
-if PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/no-checksum-home" > "$scratch/no-checksum-output" 2>&1; then
-    echo 'archive-only GitHub CLI success was accepted' >&2; exit 1
-fi
-grep -q 'cannot download the release archive and checksum; nothing installed' "$scratch/no-checksum-output"
-[ ! -e "$scratch/no-checksum-home" ]
-[ -z "$(ls -A "$scratch/downloads")" ]
-mv "$scratch/checksums-held" "$scratch/fixtures/SHA256SUMS"
-# SHA256SUMS alone cannot install either target or leave an empty home.
-mv "$scratch/fixtures/$fixture_name" "$scratch/native-held.tar.gz"
-mv "$scratch/fixtures/$universal_name" "$scratch/universal-held.tar.gz"
-if PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/no-archive-home" > "$scratch/no-archive-output" 2>&1; then
-    echo 'checksum-only GitHub CLI success was accepted' >&2; exit 1
-fi
-grep -q 'cannot download the release archive and checksum; nothing installed' "$scratch/no-archive-output"
-[ ! -e "$scratch/no-archive-home" ]
-[ -z "$(ls -A "$scratch/downloads")" ]
-mv "$scratch/native-held.tar.gz" "$scratch/fixtures/$fixture_name"
-mv "$scratch/universal-held.tar.gz" "$scratch/fixtures/$universal_name"
-# A portable script does not depend on a known native CPU architecture.
-GODMODE_TEST_ARCH=riscv64 PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/universal-cpu-home" > /dev/null
-cmp "$scratch/artifact/godmode" "$scratch/universal-cpu-home/bin/godmode"
-rm "$scratch/fixtures/$universal_name"
-printf '%s  %s\n' "$archive_digest" "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
-
-# Re-running never fetches or replaces an existing installation.
-: > "$GODMODE_TEST_NETWORK_LOG"
-if HOME="$scratch/automatic-home" GODMODE_HOME='' PATH="$mock_path" sh "$repo/install.sh" --no-setup > "$scratch/repeat-output" 2>&1; then
-    echo 'automatic install replaced an existing binary' >&2; exit 1
-fi
-[ ! -s "$GODMODE_TEST_NETWORK_LOG" ]
-printf '%s\n' 'godmode install: ~/.godmode/bin/godmode already exists; nothing replaced.' \
-    'Run godmode to set up, or godmodeup to update.' | cmp - "$scratch/repeat-output"
-cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
-
-# An executable that reports no version is downloaded again, without setup.
-HOME="$scratch/automatic-home" PATH="$mock_path" "$scratch/automatic-home/.godmode/bin/godmodeup" > "$scratch/update-output"
-cmp "$scratch/artifact/godmode" "$scratch/automatic-home/.godmode/bin/godmode"
-printf '  %s\n' 'Downloading Godmode 7.6.5' "$check Updated ~/.godmode/bin/godmode" \
-    'Changes: https://github.com/lofimichael/godmode-cli/releases/tag/v7.6.5' | cmp - "$scratch/update-output"
-[ -z "$(ls -A "$scratch/downloads")" ]
-
-# Private API failure falls back to a public HTTPS release; pinning is optional.
-GODMODE_TEST_GH_MODE=fail PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/public-home" > "$scratch/public-output"
-cmp "$scratch/artifact/godmode" "$scratch/public-home/bin/godmode"
-grep -q -- '--proto =https --proto-redir =https' "$GODMODE_TEST_NETWORK_LOG"
-PATH="$mock_path" sh "$repo/install.sh" --no-setup --version v7.6.5 --home "$scratch/pinned-home" >/dev/null
-cmp "$scratch/artifact/godmode" "$scratch/pinned-home/bin/godmode"
-
-# Missing/unsupported targets, untrusted tags and bad hashes leave no home behind.
-: > "$GODMODE_TEST_NETWORK_LOG"
-if GODMODE_TEST_OS=FreeBSD PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/unsupported-home" 2>/dev/null; then
-    echo 'unsupported target was accepted' >&2; exit 1
-fi
-[ ! -e "$scratch/unsupported-home" ]
-[ ! -s "$GODMODE_TEST_NETWORK_LOG" ]
-if GODMODE_TEST_GH_MODE=empty PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/missing-home" 2>/dev/null; then
-    echo 'empty release selection was accepted' >&2; exit 1
-fi
-[ ! -e "$scratch/missing-home" ]
-if GODMODE_TEST_TAG='v7.6.5/../../bad' PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/tag-home" 2>/dev/null; then
-    echo 'unsafe release metadata was accepted' >&2; exit 1
-fi
-[ ! -e "$scratch/tag-home" ]
-if GODMODE_TEST_TAG='v7.6.5
-../../bad' PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/multiline-tag-home" 2>/dev/null; then
-    echo 'multiline release metadata was accepted' >&2; exit 1
-fi
-[ ! -e "$scratch/multiline-tag-home" ]
-printf '%064d  %s\n' 0 "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
-if PATH="$mock_path" sh "$repo/install.sh" --no-setup --home "$scratch/corrupt-home" >/dev/null 2>&1; then
-    echo 'corrupt download was installed' >&2; exit 1
-fi
-[ ! -e "$scratch/corrupt-home" ]
-[ -z "$(ls -A "$scratch/downloads")" ]
-printf '%s  %s\n' "$archive_digest" "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
-
-# godmodeup compares the installed version with the selected release first.
-mkdir -p "$scratch/versioned/release" "$scratch/versioned-account" "$scratch/ascii-account"
-for version in 7.6.3 7.6.4 7.6.5; do
-    printf '%s\n' '#!/bin/sh' "printf 'godmode $version\\n'" > "$scratch/versioned/godmode-$version"
-done
-cp "$scratch/versioned/godmode-7.6.5" "$scratch/versioned/release/godmode"
-cp "$repo/install.sh" "$scratch/versioned/release/install.sh"
-tar -czf "$scratch/fixtures/$fixture_name" -C "$scratch/versioned/release" godmode install.sh
-printf '%s  %s\n' "$(shasum -a 256 < "$scratch/fixtures/$fixture_name" | awk '{print $1}')" "$fixture_name" > "$scratch/fixtures/SHA256SUMS"
-for pair in versioned-account:7.6.4 ascii-account:7.6.3; do
-    old=$scratch/versioned/godmode-${pair#*:}
-    HOME="$scratch/${pair%%:*}" sh "$repo/install.sh" --binary "$old" \
-        --sha256 "$(shasum -a 256 < "$old" | awk '{print $1}')" --no-setup > /dev/null
-done
-updater=$scratch/versioned-account/.godmode/bin/godmodeup
-HOME="$scratch/versioned-account" PATH="$mock_path" TERM=xterm-256color "$updater" > "$scratch/version-change-output"
-printf '  %s\n' "Godmode 7.6.4 $(printf '\342\206\222') 7.6.5" "$check Updated ~/.godmode/bin/godmode" \
-    'Changes: https://github.com/lofimichael/godmode-cli/releases/tag/v7.6.5' | cmp - "$scratch/version-change-output"
-cmp "$scratch/versioned/godmode-7.6.5" "$scratch/versioned-account/.godmode/bin/godmode"
-cmp "$scratch/versioned/godmode-7.6.4" "$scratch/versioned-account/.godmode/bin/godmode.previous"
-# The same version downloads nothing, through the GitHub CLI or public HTTPS.
-cp "$scratch/versioned-account/.godmode/bin/.godmode-install-receipt" "$scratch/receipt-before"
-for gh_mode in success fail; do
-    : > "$GODMODE_TEST_NETWORK_LOG"
-    HOME="$scratch/versioned-account" GODMODE_TEST_GH_MODE=$gh_mode PATH="$mock_path" "$updater" > "$scratch/current-output"
-    printf '  %s\n' 'Godmode 7.6.5 is up to date.' | cmp - "$scratch/current-output"
-    if grep -q -e '^release download' -e '/releases/download/' "$GODMODE_TEST_NETWORK_LOG"; then
-        echo 'an up-to-date godmodeup downloaded a release' >&2; exit 1
-    fi
-done
-cmp "$scratch/receipt-before" "$scratch/versioned-account/.godmode/bin/.godmode-install-receipt"
-cmp "$scratch/versioned/godmode-7.6.4" "$scratch/versioned-account/.godmode/bin/godmode.previous"
-[ -z "$(ls -A "$scratch/downloads")" ]
-# --force reinstalls the same version on request.
-: > "$GODMODE_TEST_NETWORK_LOG"
-HOME="$scratch/versioned-account" PATH="$mock_path" "$updater" --force > "$scratch/forced-output"
-grep -q '^release download' "$GODMODE_TEST_NETWORK_LOG"
-grep -qx '  Downloading Godmode 7.6.5' "$scratch/forced-output"
-# Without Unicode, the arrow and check mark are ASCII.
-HOME="$scratch/ascii-account" PATH="$mock_path" TERM=linux "$scratch/ascii-account/.godmode/bin/godmodeup" > "$scratch/ascii-output"
-printf '  %s\n' 'Godmode 7.6.3 -> 7.6.5' '+ Updated ~/.godmode/bin/godmode' \
-    'Changes: https://github.com/lofimichael/godmode-cli/releases/tag/v7.6.5' | cmp - "$scratch/ascii-output"
-
 # A piped installer must reconnect setup to the controlling terminal, not leave
 # it reading the installer stream. The fake CLI checks all three descriptors.
 python3 - "$repo" "$scratch" <<'PY'
-import hashlib, os, select, signal, subprocess, sys, tarfile, termios, time
+import hashlib, os, select, signal, subprocess, sys, termios, time
 from pathlib import Path
 repo, scratch = map(Path, sys.argv[1:])
 program = scratch / 'tty-fixture'
@@ -378,11 +144,6 @@ read -r reply
 printf 'SETUP_FINISHED\\n'
 ''')
 digest = hashlib.sha256(program.read_bytes()).hexdigest()
-archive = scratch/'fixtures/godmode-v7.6.5-aarch64-apple-darwin.tar.gz'
-with tarfile.open(archive, 'w:gz') as tar:
-    tar.add(program, arcname='godmode')
-    tar.add(repo/'install.sh', arcname='install.sh')
-(scratch/'fixtures/SHA256SUMS').write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n')
 # Only the wrapper owns stdin from the PTY. Installer stdin is a separate pipe.
 wrapper = '''import subprocess,sys
 from pathlib import Path
@@ -394,7 +155,7 @@ def session():
     import fcntl
     os.setsid()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-for mode in ['offline', 'automatic', 'no-color', 'dumb', 'bin-only-update', 'legacy-bin-update', 'explicit-home-update']:
+for mode in ['offline', 'no-color', 'dumb', 'bin-only-update', 'legacy-bin-update', 'explicit-home-update']:
     master, slave = os.openpty()
     device_name = os.ttyname(slave)
     root = scratch / ('tty-home-'+mode)
@@ -407,15 +168,7 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb', 'bin-only-update', 'leg
         env['NO_COLOR'] = ''
     args = ['--home', str(root)]
     expected_args = ['--home', str(root), 'init']
-    if mode == 'automatic':
-        # The README command: a download with --path into a fresh account.
-        account = scratch / 'account-automatic'
-        account.mkdir()
-        env['HOME'], env['SHELL'] = str(account), '/bin/zsh'
-        root = account / '.godmode'
-        args, expected_args = ['--path'], ['init']
-    else:
-        args += ['--binary', str(program), '--sha256', digest, '--setup']
+    args += ['--binary', str(program), '--sha256', digest, '--setup']
     command = [sys.executable, '-c', wrapper, str(repo/'install.sh'), *args]
     if mode.endswith('-update'):
         account = scratch / ('account-'+mode)
@@ -465,14 +218,7 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb', 'bin-only-update', 'leg
             assert b'\x1b[32m\xe2\x9c\x93\x1b[0m ' in output, 'interactive check mark was not green'
         before_setup = [line for line in output.split(b'SETUP_WAITING')[0].splitlines() if line.strip()]
         installed = b' '.join([b'Updated' if mode.endswith('-update') else b'Installed', str(root/'bin/godmode').encode()])
-        if mode == 'automatic':
-            # Exactly three lines before setup, the check marks green, paths through ~.
-            done = b'  \x1b[32m\xe2\x9c\x93\x1b[0m '
-            assert before_setup == [b'  Downloading Godmode 7.6.5', done + b'Installed ~/.godmode/bin/godmode',
-                                    done + b'Added ~/.godmode/bin to PATH in ~/.zshenv'], before_setup
-            assert (account/'.zshenv').is_file() and not (account/'.zshrc').exists()
-        else:
-            assert [line.replace(b'\x1b[32m', b'').replace(b'\x1b[0m', b'') for line in before_setup][-1] == b'  \xe2\x9c\x93 ' + installed
+        assert [line.replace(b'\x1b[32m', b'').replace(b'\x1b[0m', b'') for line in before_setup][-1] == b'  \xe2\x9c\x93 ' + installed
         if mode in ['bin-only-update', 'legacy-bin-update']:
             assert (legacy/'.env.godmode').read_text() == 'SYNTHETIC_KEY=unchanged\n'
             assert not (root/'env').exists(), 'bin-only update created a configuration home'
@@ -483,8 +229,6 @@ for mode in ['offline', 'automatic', 'no-color', 'dumb', 'bin-only-update', 'leg
         else:
             assert len(commands) == 1 and b'\x1b' not in commands[0], 'copyable command was styled'
             assert output.index(b'SETUP_FINISHED') < output.index(commands[0]), 'PATH note printed before setup'
-        if mode == 'automatic':
-            assert commands == [b'  Open a new terminal, or run:  . ~/.godmode/env'], commands
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
@@ -512,7 +256,7 @@ finally:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()
     os.close(master); os.close(slave)
-for name in ['automatic-output', 'public-output', 'repeat-output', 'fresh-output', 'version-change-output']:
+for name in ['default-output', 'on-path-output', 'custom-home-output']:
     assert b'\x1b[' not in (scratch/name).read_bytes(), 'redirected output contained styling'
 
 PY
@@ -534,4 +278,5 @@ if PATH="$scratch/no-python" /bin/sh "$repo/install.sh" --no-setup --home "$scra
     echo 'missing Python was accepted' >&2; exit 1
 fi
 [ ! -e "$scratch/no-python-home" ]
-printf '%s\n' 'Installer tests passed (native-first and legacy-portable downloads, version check, Python requirement, checksums, no-clobber, quoted ~ commands, three-line output, piped setup and plain/color output).'
+python3 "$repo/tests/install_transport.py"
+printf '%s\n' 'Installer tests passed (offline checksums, no-clobber, PATH quoting, setup handoff, HTTPS transport and preview authentication).'

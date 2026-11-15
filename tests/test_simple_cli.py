@@ -69,7 +69,7 @@ USAGE_LINES = ('Usage: godmode [COMMAND]', 'For you', 'For agents', 'Files', 'Op
                '  godmode run NAME... -- CMD   run CMD with those keys in its environment',
                '  godmode edit                 open the key file in nano',
                '  --home DIR                   use another Godmode home (default ~/.godmode)',
-               'Update with godmodeup. Docs: https://github.com/lofimichael/godmode-cli')
+               'Update with godmodeup. Downloads and source: https://godmode.build')
 
 
 def load_cli():
@@ -91,7 +91,7 @@ class CLI(unittest.TestCase):
         self.home = self.root/'.godmode'
         self.file = self.home/'.env.godmode'
         self.env = {'HOME':str(self.root),'PATH':os.environ.get('PATH','/usr/bin:/bin'),'TERM':'xterm-256color','SHELL':'/bin/sh'}
-        self.command = [sys.executable,str(REPO/'target/godmode'),'--home',str(self.home)]
+        self.command = [sys.executable,str(REPO/'tests/engine_fixture.py'),str(REPO/'target/godmode'),'--home',str(self.home)]
         self.sessions=[]
 
     def tearDown(self):
@@ -779,7 +779,7 @@ class CLI(unittest.TestCase):
 
     def godmode(self, *args, **options):
         """The installed script with this test's HOME and no explicit home."""
-        return subprocess.run([sys.executable,str(REPO/'target/godmode'),*args],env=self.env,capture_output=True,text=True,**options)
+        return subprocess.run([sys.executable,str(REPO/'tests/engine_fixture.py'),str(REPO/'target/godmode'),*args],env=self.env,capture_output=True,text=True,**options)
 
     def test_list_run_help_and_migrate_never_print_values(self):
         old=self.legacy('GH_TOKEN=ghp_SYNTHETIC_value_000000000001 \nGMAIL_USER=demo@example.com\nEMPTY=\n')
@@ -823,7 +823,7 @@ class CLI(unittest.TestCase):
 
     def test_setup_offers_to_move_plain_text_keys_and_seal_them(self):
         old=self.legacy('GH_TOKEN=ghp_SYNTHETIC_value_000000000002\nCLOUDFLARE_API_TOKEN=cf_SYNTHETIC_value_00000000\n')
-        command=[sys.executable,str(REPO/'target/godmode'),'setup']
+        command=[sys.executable,str(REPO/'tests/engine_fixture.py'),str(REPO/'target/godmode'),'setup']
         keep=Terminal(command,self.env,cols=100,rows=36);self.sessions.append(keep)
         keep.expect('Found 2 keys stored as plain text in ~/.config/godmode/.env.godmode.')
         keep.expect('Before sealing, update programs that read this file to use godmode run NAME -- command.')
@@ -1152,7 +1152,7 @@ class CLI(unittest.TestCase):
         """The real meter for a fresh home holding these keys, profile fields and agent note."""
         root = Path(tempfile.mkdtemp(prefix='meter-', dir=self.root))
         env = dict(self.env, HOME=str(root), PYTHONDONTWRITEBYTECODE='1')
-        command = [sys.executable, str(REPO/'godmode.py'), '--home', str(root/'.godmode')]
+        command = [sys.executable, str(REPO/'tests/engine_fixture.py'), str(REPO/'godmode.py'), '--home', str(root/'.godmode')]
         for name in keys:
             value = json.dumps(SERVICE_ACCOUNT) if name.endswith('_JSON') else 'meter_DEMO_ONLY_' + name
             subprocess.run(command + ['set', name, '--stdin'], env=env, input=value.encode(), capture_output=True, check=True)

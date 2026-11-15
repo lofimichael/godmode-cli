@@ -3,10 +3,13 @@
 Godmode uses a native Go interface built with Bubble Tea and Lip Gloss. Its embedded file engine needs Python 3.9 or newer. Native releases support macOS and Linux on Apple Silicon/ARM64 and x86-64. Installation needs no Go compiler, Python packages or root access.
 
 ```sh
-gh api -H 'Accept: application/vnd.github.raw+json' repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+curl --fail --user godmode https://godmode.build/install.sh -o godmode-install.sh
+sh godmode-install.sh --path --no-setup
+godmode license activate
+godmode
 ```
 
-The installer selects the release for your operating system and CPU, checks its SHA-256, installs `~/.godmode/bin/godmode` and `godmodeup`, and starts setup. Options go after `--`:
+The private site asks for its password. The installer selects the release for your operating system and CPU, checks its SHA-256, and installs `~/.godmode/bin/godmode` and `godmodeup`. Activation asks for your purchase key with hidden entry. Installer options follow the script name:
 
 | Option | Effect |
 | --- | --- |
@@ -17,7 +20,7 @@ The installer selects the release for your operating system and CPU, checks its 
 
 `sh install.sh --help` lists every option.
 
-The repository is private. The installer and `godmodeup` use a [GitHub CLI](https://cli.github.com/) login with repository access to download releases.
+The repository and downloads remain private. The installer and `godmodeup` use password-protected HTTPS at godmode.build. No GitHub account is needed. Automated downloads can receive the site password through `GODMODE_PREVIEW_PASSWORD`; the password is never written into the installed updater.
 
 ## Update
 
@@ -47,7 +50,7 @@ Download the native archive for the destination machine and its `SHA256SUMS`, th
 sh install.sh --archive godmode-vX.Y.Z-aarch64-apple-darwin.tar.gz --checksum SHA256SUMS
 ```
 
-Other native archive suffixes are `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`. Replace `vX.Y.Z` with the release version. Offline installs do not open setup unless you add `--setup`.
+Other native archive suffixes are `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`. Replace `vX.Y.Z` with the release version. Offline installs do not open setup unless you add `--setup`. Restore an existing signed entitlement with `godmode license import --stdin < /private/backup/license.json`; a fresh activation needs a connection to godmode.build.
 
 To build from a checkout or the separate `godmode-vX.Y.Z-source.tar.gz` archive, use Python 3.9+ and the Go 1.26.7 toolchain pinned in `go.mod`:
 
@@ -68,7 +71,7 @@ godmode source | less
 godmode build-info
 ```
 
-The separate source archive contains the matching Go and Python sources, build scripts and vendored dependencies. Native archives include build metadata and dependency license notices. See [Security](SECURITY.md) for source and rebuild checks. `python3 godmode.py --home /absolute/path/to/a/test-home` still runs the Python compatibility interface from a checkout; it does not run the native UI.
+The separate source archive contains the matching Go and Python sources, build scripts and vendored dependencies. Native archives include build metadata and dependency license notices. See [Security](SECURITY.md) for source and rebuild checks. Build and use the native command for ordinary operations; direct Python entry retains inspection and help.
 
 ## Files
 
@@ -83,6 +86,8 @@ The separate source archive contains the matching Go and Python sources, build s
   STOP_AND_READ_ME_FOR_KEYS.md  tells agents to use godmode instead of opening the files
   intro.seen                    empty; you finished the welcome
   agent.added                   empty; you added the Agents text by hand
+  license.json                  signed entitlement and deactivation token, mode 0600
+  installation.json             random activation ID, mode 0600
   state/picard/                 optional Picard media cache
   state/music/                  optional local music settings and render cache
 ```

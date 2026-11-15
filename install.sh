@@ -8,18 +8,18 @@ umask 077
 usage() {
     cat <<'USAGE'
 Usage:
-  sh install.sh [--version vX.Y.Z] [--home DIR | --bin-dir DIR] [--path] [--no-setup]
+  sh install.sh [--version vX.Y.Z] [--home DIR | --bin-dir DIR] [--path] [--install-only]
   godmodeup [--version vX.Y.Z] [--setup] [--path]
   sh install.sh --archive PATH --checksum SHA256SUMS [--home DIR | --bin-dir DIR] [--setup]
   sh install.sh --binary PATH --sha256 HEX [--home DIR | --bin-dir DIR] [--setup]
 
-With no artifact flags, download the newest compatible GitHub release,
+With no artifact flags, download the newest compatible release from godmode.build,
 verify its checksum, install it and start interactive masked setup. Python 3.9+
-is required; no Python packages are installed. An existing
-GitHub CLI login can access private/draft releases; public releases use HTTPS.
+is required; no Python packages or GitHub account are needed. Protected previews
+ask for a password without echoing it, or read GODMODE_PREVIEW_PASSWORD.
 Default destination: ~/.godmode/bin/godmode (or $GODMODE_HOME/bin/godmode).
 --home DIR selects a home; --bin-dir DIR changes only the executable directory.
---no-setup installs only; --setup also opens setup for an offline installation.
+--install-only (also --no-setup) installs only; --setup opens setup after install.
 godmodeup updates only files matching its install receipt and downloads nothing
 when the installed version is current; setup is opt-in.
 Unknown existing files require --force. Symlinks are always refused.
@@ -77,6 +77,7 @@ fail() { say '31' "godmode install: $*" >&2; exit 1; }
 need_value() { [ "$#" -ge 2 ] && [ -n "$2" ] || fail "missing option value"; }
 valid_version() {
     # grep alone accepts a valid line followed by a newline and unsafe text.
+    [ "${#1}" -le 40 ] || return 1
     case "$1" in *[!v0-9.]*|'') return 1 ;; esac
     printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
 }
@@ -148,6 +149,7 @@ managed_file() {
     [ "$(hash_file "$1")" = "$recorded" ]
 }
 cleanup() {
+    unset GODMODE_PREVIEW_PASSWORD
     [ -z "$updater_staged" ] || rm -f "$updater_staged"
     [ -z "$receipt_staged" ] || rm -f "$receipt_staged"
     [ -z "$env_staged" ] || rm -f "$env_staged"
@@ -156,6 +158,209 @@ cleanup() {
     [ -z "$staged" ] || rm -f "$staged"
     [ -z "$download_dir" ] || rm -rf "$download_dir"
 }
+
+# All network access has one fixed HTTPS origin. Passwords remain in this
+# process's memory and are never written into a URL, file, command or receipt.
+fetch_release() {
+    python3 -I - "$@" <<'GODMODE_DOWNLOAD_PY'
+import base64
+import getpass
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import re
+import ssl
+import sys
+import urllib.error
+import urllib.request
+import warnings
+
+ORIGIN = "https://godmode.build"
+MAX_MANIFEST = 128 * 1024
+MAX_ARCHIVE = 256 * 1024 * 1024
+TARGETS = {
+    "darwin-arm64": "aarch64-apple-darwin",
+    "darwin-amd64": "x86_64-apple-darwin",
+    "linux-amd64": "x86_64-unknown-linux-musl",
+    "linux-arm64": "aarch64-unknown-linux-musl",
+}
+
+class DownloadError(Exception):
+    pass
+
+class RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise DownloadError("release manifest contains duplicate fields")
+        result[key] = value
+    return result
+
+def validate_entry(entry, version, platform=None):
+    fields = {"filename", "sha256", "size"}
+    if platform is not None:
+        fields.add("platform")
+    if not isinstance(entry, dict) or set(entry) != fields:
+        raise DownloadError("release manifest has an invalid artifact")
+    name = entry["filename"]
+    pattern = r"godmode-" + re.escape(version) + r"(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?\.tar\.gz"
+    if not isinstance(name, str) or len(name) > 160 or ".." in name or not re.fullmatch(pattern, name):
+        raise DownloadError("release manifest has an unsafe filename")
+    if platform is not None and name != "godmode-" + version + "-" + TARGETS[platform] + ".tar.gz":
+        raise DownloadError("release filename does not match its platform")
+    digest = entry["sha256"]
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise DownloadError("release manifest has an invalid checksum")
+    if type(entry["size"]) is not int or not 0 < entry["size"] <= MAX_ARCHIVE:
+        raise DownloadError("release manifest has an invalid size")
+
+def manifest(data, requested, platform):
+    try:
+        doc = json.loads(data.decode("utf-8"), object_pairs_hook=unique_object)
+    except (ValueError, UnicodeError):
+        raise DownloadError("release manifest is not valid JSON") from None
+    if not isinstance(doc, dict) or set(doc) != {"version", "artifacts", "source"}:
+        raise DownloadError("release manifest has an invalid schema")
+    version = doc["version"]
+    if not isinstance(version, str) or len(version) > 40 or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise DownloadError("release manifest has an invalid version")
+    if requested and version != requested:
+        raise DownloadError("release manifest does not match the requested version")
+    entries = doc["artifacts"]
+    if not isinstance(entries, list) or not 1 <= len(entries) <= len(TARGETS):
+        raise DownloadError("release manifest has an invalid artifact list")
+    seen = set()
+    filenames = set()
+    selected = None
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("platform"), str):
+            raise DownloadError("release manifest has an invalid platform")
+        target = entry["platform"]
+        if target not in TARGETS or target in seen:
+            raise DownloadError("release manifest has an unknown or duplicate platform")
+        validate_entry(entry, version, target)
+        seen.add(target)
+        filenames.add(entry["filename"])
+        if target == platform:
+            selected = entry
+    validate_entry(doc["source"], version)
+    if doc["source"]["filename"] in filenames:
+        raise DownloadError("release source and binary filenames must differ")
+    if selected is None:
+        raise DownloadError("this release has no artifact for this platform")
+    return version, selected
+
+class Downloads:
+    def __init__(self):
+        self.password = os.environ.pop("GODMODE_PREVIEW_PASSWORD", None)
+        self.opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), RefuseRedirects(),
+            urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+
+    def open(self, path):
+        for attempt in range(2):
+            headers = {"User-Agent": "godmode-installer/2", "Accept-Encoding": "identity"}
+            if self.password is not None:
+                if len(self.password) > 4096:
+                    raise DownloadError("preview password is too long")
+                encoded = base64.b64encode(("godmode:" + self.password).encode("utf-8")).decode("ascii")
+                headers["Authorization"] = "Basic " + encoded
+            req = urllib.request.Request(ORIGIN + path, headers=headers)
+            try:
+                response = self.opener.open(req, timeout=30)
+                if response.status != 200:
+                    response.close()
+                    raise DownloadError("release server returned an unexpected response")
+                return response
+            except urllib.error.HTTPError as error:
+                status = error.code
+                error.close()
+                if status == 401:
+                    if self.password is not None or attempt:
+                        raise DownloadError("preview password was not accepted") from None
+                    try:
+                        # Verify a controlling terminal exists before getpass can
+                        # consider falling back to visible stdin.
+                        with open("/dev/tty", "w") as tty:
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("error", getpass.GetPassWarning)
+                                self.password = getpass.getpass("Godmode preview password: ", stream=tty)
+                    except (OSError, EOFError, getpass.GetPassWarning):
+                        raise DownloadError("preview password required; set GODMODE_PREVIEW_PASSWORD or run in a terminal") from None
+                    continue
+                if 300 <= status < 400:
+                    raise DownloadError("release server redirected a request; redirects are refused") from None
+                raise DownloadError("release download failed (HTTP " + str(status) + ")") from None
+            except (urllib.error.URLError, TimeoutError, OSError):
+                raise DownloadError("cannot reach godmode.build over verified HTTPS") from None
+        raise DownloadError("preview authentication failed")
+
+def main():
+    directory, requested, platform, installed, options = sys.argv[1:]
+    directory = Path(directory)
+    download = Downloads()
+    route = "/releases/" + requested + "/manifest.json" if requested else "/releases/latest.json"
+    with download.open(route) as response:
+        data = response.read(MAX_MANIFEST + 1)
+    if len(data) > MAX_MANIFEST:
+        raise DownloadError("release manifest is too large")
+    version, selected = manifest(data, requested, platform)
+    if installed == version[1:] and options == "no:no:no":
+        (directory / "release").write_text(version + "\ncurrent\n", encoding="utf-8")
+        print("  Godmode " + installed + " is up to date.")
+        return
+    if installed and installed != version[1:]:
+        locale = os.environ.get("LC_ALL") or os.environ.get("LC_CTYPE") or os.environ.get("LANG", "C")
+        utf8 = locale in ("C", "POSIX") or "utf-8" in locale.lower() or "utf8" in locale.lower()
+        arrow = "\u2192" if utf8 and os.environ.get("TERM") != "linux" else "->"
+        print("  Godmode " + installed + " " + arrow + " " + version[1:], flush=True)
+    else:
+        print("  Downloading Godmode " + version[1:], flush=True)
+    name = selected["filename"]
+    digest = hashlib.sha256()
+    count = 0
+    with download.open("/releases/" + version + "/" + name) as response:
+        length = response.headers.get("Content-Length")
+        if length is not None and length != str(selected["size"]):
+            raise DownloadError("release download size does not match the manifest")
+        with (directory / name).open("xb") as output:
+            while True:
+                chunk = response.read(min(1024 * 1024, selected["size"] - count + 1))
+                if not chunk:
+                    break
+                count += len(chunk)
+                if count > selected["size"]:
+                    raise DownloadError("release download exceeds its declared size")
+                digest.update(chunk)
+                output.write(chunk)
+    if count != selected["size"]:
+        raise DownloadError("release download is incomplete")
+    if digest.hexdigest() != selected["sha256"]:
+        raise DownloadError("checksum mismatch")
+    (directory / "SHA256SUMS").write_text(selected["sha256"] + "  " + name + "\n", encoding="ascii")
+    (directory / "release").write_text(version + "\n" + name + "\n", encoding="ascii")
+
+try:
+    main()
+except KeyboardInterrupt:
+    print("\ngodmode install: download cancelled; nothing installed", file=sys.stderr)
+    sys.exit(130)
+except (DownloadError, OSError, ValueError, http.client.HTTPException):
+    # Only intentional DownloadError text is safe to show; other exceptions may
+    # contain local inputs or URLs. Never print a response body or credentials.
+    error = sys.exc_info()[1]
+    message = str(error) if isinstance(error, DownloadError) else "release download failed"
+    print("godmode install: " + message + "; nothing installed", file=sys.stderr)
+    sys.exit(1)
+GODMODE_DOWNLOAD_PY
+}
+
 
 # A piped installer only starts once its whole function definition has arrived.
 main() {
@@ -183,8 +388,8 @@ backup_staged=
 lock_dir=
 staged=
 release_url=
+licensed_download=no
 setup_tty=
-repository=lofimichael/godmode-cli
 previous_command=$(command -v godmode 2>/dev/null || :)
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -196,7 +401,7 @@ while [ "$#" -gt 0 ]; do
         --home) need_value "$@"; godmode_home=$2; home_option=yes; shift 2 ;;
         --bin-dir) need_value "$@"; bin_dir=$2; bin_option=yes; shift 2 ;;
         --setup) setup=yes; shift ;;
-        --no-setup) setup=no; shift ;;
+        --install-only|--no-setup) setup=no; shift ;;
         --force) force=yes; shift ;;
         --update) update=yes; shift ;;
         --path) path_setup=yes; shift ;;
@@ -310,75 +515,28 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     if [ -n "$version" ]; then
         valid_version "$version" || fail "version must be vX.Y.Z"
     fi
-    # Native releases take priority. Older portable Python releases remain installable.
     case "$(uname -s):$(uname -m)" in
-        Darwin:arm64|Darwin:aarch64) target=aarch64-apple-darwin ;;
-        Darwin:x86_64) target=x86_64-apple-darwin ;;
-        Linux:x86_64) target=x86_64-unknown-linux-musl ;;
-        Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-musl ;;
-        Darwin:*|Linux:*) target=unix ;;
+        Darwin:arm64|Darwin:aarch64) platform=darwin-arm64 ;;
+        Darwin:x86_64) platform=darwin-amd64 ;;
+        Linux:x86_64) platform=linux-amd64 ;;
+        Linux:aarch64|Linux:arm64) platform=linux-arm64 ;;
+        Darwin:*|Linux:*) fail "Godmode has no release for this CPU; use a verified local archive" ;;
         *) fail "Godmode supports macOS and Linux" ;;
     esac
-    transport=curl
-    if command -v gh >/dev/null 2>&1; then
-        # gh owns authentication. No token is requested, captured or logged here.
-        query='sort_by(.created_at) | reverse | map(select(.prerelease == false)) | map(select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))'
-        if [ -n "$version" ]; then
-            query="$query | map(select(.tag_name == \"$version\"))"
-        fi
-        query="$query | map(. as \$r | select(any(.assets[]; .name == (\"godmode-\" + \$r.tag_name + \"-unix.tar.gz\") or .name == (\"godmode-\" + \$r.tag_name + \"-$target.tar.gz\"))) | select(any(.assets[]; .name == \"SHA256SUMS\"))) | .[0].tag_name // empty"
-        if selected=$(gh api --hostname github.com "repos/$repository/releases?per_page=100" --jq "$query" 2>/dev/null); then
-            [ -n "$selected" ] || fail "no compatible $target release archive and checksum are available to your GitHub login"
-            version=$selected
-            transport=gh
-        fi
-    fi
-    if [ "$transport" = curl ]; then
-        command -v curl >/dev/null 2>&1 || fail "curl is required for public downloads; private releases need an authenticated GitHub CLI"
-        if [ -z "$version" ]; then
-            latest=$(curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output /dev/null --write-out '%{url_effective}' "https://github.com/$repository/releases/latest" 2>/dev/null) || fail "cannot find a public release; for private releases, sign in with gh auth login first"
-            prefix="https://github.com/$repository/releases/tag/"
-            case "$latest" in "$prefix"*) version=${latest#"$prefix"} ;; *) fail "GitHub did not return a release tag" ;; esac
-        fi
-    fi
-    # Validate remote metadata before it can become a URL, pattern or filename.
-    valid_version "$version" || fail "release tag must be vX.Y.Z"
-    release_url=https://github.com/$repository/releases/tag/$version
     installed=
     [ "$update" != yes ] || installed=$(installed_version)
-    # An explicit --force, --setup or --path still runs in full on the same version.
-    if [ "$installed" = "${version#v}" ] && [ "$force:$setup:$path_setup" = no:no:no ]; then
-        printf '  Godmode %s is up to date.\n' "$installed"
-        exit 0
-    fi
-    if [ -n "$installed" ] && [ "$installed" != "${version#v}" ]; then
-        if unicode; then arrow=$(printf '\342\206\222'); else arrow='->'; fi
-        printf '  Godmode %s %s %s\n' "$installed" "$arrow" "${version#v}"
-    else
-        printf '  Downloading Godmode %s\n' "${version#v}"
-    fi
     download_dir=$(mktemp -d "${TMPDIR:-/tmp}/godmode-download.XXXXXX")
-    fetch_archive() {
-        name=$1
-        if [ "$transport" = gh ]; then
-            # gh succeeds when either pattern matches. Both files must arrive
-            # before this archive can win over the legacy fallback.
-            gh release download "$version" --repo "github.com/$repository" --pattern "$name" --pattern SHA256SUMS --dir "$download_dir" >/dev/null 2>&1 &&
-            [ -f "$download_dir/$name" ] && [ ! -L "$download_dir/$name" ] &&
-            [ -f "$download_dir/SHA256SUMS" ] && [ ! -L "$download_dir/SHA256SUMS" ]
-        else
-            base=https://github.com/$repository/releases/download/$version
-            curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/$name" "$base/$name" 2>/dev/null &&
-            curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$download_dir/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null
-        fi
-    }
-    if ! fetch_archive "godmode-$version-$target.tar.gz"; then
-        [ "$target" != unix ] || fail "no compatible archive for $version on this CPU; nothing installed"
-        rm -f "$download_dir/SHA256SUMS"
-        fetch_archive "godmode-$version-unix.tar.gz" || fail "cannot download the release archive and checksum; nothing installed"
-    fi
+    fetch_release "$download_dir" "$version" "$platform" "$installed" "$force:$setup:$path_setup"
+    unset GODMODE_PREVIEW_PASSWORD
+    version=$(sed -n '1p' "$download_dir/release")
+    name=$(sed -n '2p' "$download_dir/release")
+    # The helper authenticates and validates the manifest before deciding that
+    # a managed installation is current. No artifact is fetched in that case.
+    [ "$name" != current ] || exit 0
     archive=$download_dir/$name
     checksum=$download_dir/SHA256SUMS
+    release_url=https://godmode.build/releases/$version/manifest.json
+    licensed_download=yes
 else
     [ -z "$version" ] || fail "--version cannot be combined with local artifact flags"
     [ "$setup" != auto ] || setup=no
@@ -522,7 +680,7 @@ mv -f "$receipt_staged" "$receipt"
 receipt_staged=
 if [ "$update" = yes ]; then
     check "Updated $(show_path "$destination")"
-    [ -z "$release_url" ] || printf '  Changes: %s\n' "$release_url"
+    [ -z "$release_url" ] || printf '  Release: %s\n' "$release_url"
 else
     check "Installed $(show_path "$destination")"
 fi
@@ -567,7 +725,9 @@ if [ "$update" != yes ] || [ "$path_setup" = yes ]; then
     path_note
 fi
 if [ -z "$setup_tty" ]; then
-    if [ "$setup" = yes ]; then
+    if [ "$licensed_download" = yes ] && [ "$update" != yes ]; then
+        printf '  Activate:  %s license activate\n' "$(godmode_command)"
+    elif [ "$setup" = yes ]; then
         printf '  To set up, run this in a terminal:  %s\n' "$(godmode_command)"
     elif [ "$update" != yes ]; then
         printf '  To set up, run:  %s\n' "$(godmode_command)"

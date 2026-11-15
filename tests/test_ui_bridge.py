@@ -110,7 +110,7 @@ class BridgeTests(unittest.TestCase):
     def test_protocol_never_echoes_bad_requests(self):
         env = dict(os.environ)
         request = b'{"action":"synthetic_SECRET_BAD_JSON"\n'
-        process = subprocess.run([sys.executable, str(ROOT / 'godmode.py'), '__ui'],
+        process = subprocess.run([sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(ROOT / 'godmode.py'), '__ui'],
                                  input=request, capture_output=True, env=env)
         self.assertEqual(process.returncode, 0)
         self.assertNotIn(b'SECRET', process.stdout + process.stderr)

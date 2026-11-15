@@ -53,7 +53,7 @@ class NfoIdentityTests(unittest.TestCase):
             (home / 'intro.seen').touch(mode=0o600)
             env = dict(HOME=str(root), PATH=os.environ.get('PATH', '/usr/bin:/bin'),
                        TERM='xterm-256color', NO_COLOR='1', PYTHONUTF8='1')
-            terminal = Terminal([sys.executable, str(REPO / 'godmode.py')], env, cols=40, rows=12)
+            terminal = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(REPO / 'godmode.py')], env, cols=40, rows=12)
             try:
                 terminal.expect('Esc quit')
                 terminal.settle(.05)
@@ -73,7 +73,7 @@ class NfoIdentityTests(unittest.TestCase):
             (home / 'intro.seen').touch(mode=0o600)
             env = dict(HOME=str(root), PATH=os.environ.get('PATH', '/usr/bin:/bin'),
                        TERM='xterm-256color', NO_COLOR='1', PYTHONUTF8='1')
-            terminal = Terminal([sys.executable, str(REPO / 'godmode.py')], env, cols=80, rows=24)
+            terminal = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(REPO / 'godmode.py')], env, cols=80, rows=24)
             try:
                 def selected(name):
                     terminal.wait(lambda: any(row.startswith('❯ ' + name)
