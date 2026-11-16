@@ -37,3 +37,19 @@ func TestRoutesKeepHomeAndMotionOptions(t *testing.T) {
 		t.Fatal("interactive route lost a display option")
 	}
 }
+
+func TestContextSelectionBelongsToTheParentCommand(t *testing.T) {
+	r := selectRoute([]string{"--context", "acme", "profile"})
+	if !r.contextSelected || r.context != "acme" || r.command != "profile" || !r.interactive {
+		t.Fatal("context profile lost its selection")
+	}
+	for _, args := range [][]string{{"--context=", "profile"}, {"--context", "a", "--context", "b", "profile"}, {"--context"}} {
+		if !selectRoute(args).contextError {
+			t.Fatal("invalid context selection entered the interactive route")
+		}
+	}
+	r = selectRoute([]string{"run", "TOKEN", "--", "tool", "--context", "other"})
+	if r.contextSelected || r.context != "" {
+		t.Fatal("child context flag changed the parent command")
+	}
+}

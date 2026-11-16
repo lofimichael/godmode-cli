@@ -252,7 +252,11 @@ func (m model) header() []string {
 	p := m.palette()
 	switch m.page {
 	case "profile":
-		rows := m.title("Profile", fmt.Sprintf("%d/%d optional fields", len(m.state.Progress.Fields), len(m.state.Fields)))
+		title := "Profile"
+		if m.state.Context != "" {
+			title += " · " + m.state.Context
+		}
+		rows := m.title(title, fmt.Sprintf("%d/%d optional fields", len(m.state.Progress.Fields), len(m.state.Fields)))
 		blurb := m.state.ProfileBlurb
 		if blurb == "" {
 			blurb = "Full sites that take payments usually require a business profile, terms of service and a privacy policy. Agents use these details to fill them in."

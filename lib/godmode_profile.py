@@ -70,9 +70,11 @@ def _profile_encode(data):
 
 
 class Profile:
-    def __init__(self, home):
+    def __init__(self, home, filename="profile.json"):
         self.home = Path(os.path.abspath(os.path.expanduser(str(home))))
-        self.path = self.home / "profile.json"
+        if filename not in ("profile.json", "context.json"):
+            raise ValueError("Unknown profile file.")
+        self.path = self.home / filename
         self._read_once = False
         self._snapshot = None
 
@@ -118,9 +120,9 @@ class Profile:
         def git(args):
             return subprocess.run(command + args, env=env, stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-        if (git(["ls-files", "--error-unmatch", "--", "profile.json"]) != 1
-                or git(["check-ignore", "-q", "--", "profile.json"]) != 0):
-            raise ValueError("Keep profile.json ignored and untracked by Git before saving.")
+        if (git(["ls-files", "--error-unmatch", "--", self.path.name]) != 1
+                or git(["check-ignore", "-q", "--", self.path.name]) != 0):
+            raise ValueError("Keep " + self.path.name + " ignored and untracked by Git before saving.")
 
     def write(self, data):
         """Atomically replace the last-read snapshot; callers merge edits to keep unknown fields.

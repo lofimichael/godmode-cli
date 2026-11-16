@@ -15,8 +15,7 @@ Usage:
 
 With no artifact flags, download the newest compatible release from godmode.build,
 verify its checksum, install it and start interactive masked setup. Python 3.9+
-is required; no Python packages or GitHub account are needed. Protected previews
-ask for a password without echoing it, or read GODMODE_PREVIEW_PASSWORD.
+is required; no Python packages, account or activation are needed.
 Default destination: ~/.godmode/bin/godmode (or $GODMODE_HOME/bin/godmode).
 --home DIR selects a home; --bin-dir DIR changes only the executable directory.
 --install-only (also --no-setup) installs only; --setup opens setup after install.
@@ -159,12 +158,9 @@ cleanup() {
     [ -z "$download_dir" ] || rm -rf "$download_dir"
 }
 
-# All network access has one fixed HTTPS origin. Passwords remain in this
-# process's memory and are never written into a URL, file, command or receipt.
+# Downloads use one fixed public HTTPS origin and never send account credentials.
 fetch_release() {
     python3 -I - "$@" <<'GODMODE_DOWNLOAD_PY'
-import base64
-import getpass
 import hashlib
 import http.client
 import json
@@ -175,7 +171,6 @@ import ssl
 import sys
 import urllib.error
 import urllib.request
-import warnings
 
 ORIGIN = "https://godmode.build"
 MAX_MANIFEST = 128 * 1024
@@ -258,48 +253,28 @@ def manifest(data, requested, platform):
 
 class Downloads:
     def __init__(self):
-        self.password = os.environ.pop("GODMODE_PREVIEW_PASSWORD", None)
+        os.environ.pop("GODMODE_PREVIEW_PASSWORD", None)
         self.opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}), RefuseRedirects(),
             urllib.request.HTTPSHandler(context=ssl.create_default_context()))
 
     def open(self, path):
-        for attempt in range(2):
-            headers = {"User-Agent": "godmode-installer/2", "Accept-Encoding": "identity"}
-            if self.password is not None:
-                if len(self.password) > 4096:
-                    raise DownloadError("preview password is too long")
-                encoded = base64.b64encode(("godmode:" + self.password).encode("utf-8")).decode("ascii")
-                headers["Authorization"] = "Basic " + encoded
-            req = urllib.request.Request(ORIGIN + path, headers=headers)
-            try:
-                response = self.opener.open(req, timeout=30)
-                if response.status != 200:
-                    response.close()
-                    raise DownloadError("release server returned an unexpected response")
-                return response
-            except urllib.error.HTTPError as error:
-                status = error.code
-                error.close()
-                if status == 401:
-                    if self.password is not None or attempt:
-                        raise DownloadError("preview password was not accepted") from None
-                    try:
-                        # Verify a controlling terminal exists before getpass can
-                        # consider falling back to visible stdin.
-                        with open("/dev/tty", "w") as tty:
-                            with warnings.catch_warnings():
-                                warnings.simplefilter("error", getpass.GetPassWarning)
-                                self.password = getpass.getpass("Godmode preview password: ", stream=tty)
-                    except (OSError, EOFError, getpass.GetPassWarning):
-                        raise DownloadError("preview password required; set GODMODE_PREVIEW_PASSWORD or run in a terminal") from None
-                    continue
-                if 300 <= status < 400:
-                    raise DownloadError("release server redirected a request; redirects are refused") from None
-                raise DownloadError("release download failed (HTTP " + str(status) + ")") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                raise DownloadError("cannot reach godmode.build over verified HTTPS") from None
-        raise DownloadError("preview authentication failed")
+        headers = {"User-Agent": "godmode-installer/3", "Accept-Encoding": "identity"}
+        req = urllib.request.Request(ORIGIN + path, headers=headers)
+        try:
+            response = self.opener.open(req, timeout=30)
+            if response.status != 200:
+                response.close()
+                raise DownloadError("release server returned an unexpected response")
+            return response
+        except urllib.error.HTTPError as error:
+            status = error.code
+            error.close()
+            if 300 <= status < 400:
+                raise DownloadError("release server redirected a request; redirects are refused") from None
+            raise DownloadError("release download failed (HTTP " + str(status) + ")") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise DownloadError("cannot reach godmode.build over verified HTTPS") from None
 
 def main():
     directory, requested, platform, installed, options = sys.argv[1:]
@@ -388,7 +363,6 @@ backup_staged=
 lock_dir=
 staged=
 release_url=
-licensed_download=no
 setup_tty=
 previous_command=$(command -v godmode 2>/dev/null || :)
 while [ "$#" -gt 0 ]; do
@@ -530,13 +504,12 @@ if [ -z "$archive$binary$checksum$expected" ]; then
     unset GODMODE_PREVIEW_PASSWORD
     version=$(sed -n '1p' "$download_dir/release")
     name=$(sed -n '2p' "$download_dir/release")
-    # The helper authenticates and validates the manifest before deciding that
+    # The helper validates the public manifest before deciding that
     # a managed installation is current. No artifact is fetched in that case.
     [ "$name" != current ] || exit 0
     archive=$download_dir/$name
     checksum=$download_dir/SHA256SUMS
     release_url=https://godmode.build/releases/$version/manifest.json
-    licensed_download=yes
 else
     [ -z "$version" ] || fail "--version cannot be combined with local artifact flags"
     [ "$setup" != auto ] || setup=no
@@ -725,9 +698,7 @@ if [ "$update" != yes ] || [ "$path_setup" = yes ]; then
     path_note
 fi
 if [ -z "$setup_tty" ]; then
-    if [ "$licensed_download" = yes ] && [ "$update" != yes ]; then
-        printf '  Activate:  %s license activate\n' "$(godmode_command)"
-    elif [ "$setup" = yes ]; then
+    if [ "$setup" = yes ]; then
         printf '  To set up, run this in a terminal:  %s\n' "$(godmode_command)"
     elif [ "$update" != yes ]; then
         printf '  To set up, run:  %s\n' "$(godmode_command)"

@@ -1,9 +1,21 @@
-# Godmode licenses
+# Free CLI and legacy licenses
 
-A Godmode purchase licenses the local CLI. Provider credentials remain on your
-machine. The license service receives a purchase key, a random installation ID,
-your operating system and CPU, and the Godmode version. It receives no provider
-keys, business profile, hardware fingerprint, or agent instructions.
+The CLI is free to use on any number of computers you own or control. Ordinary
+commands need no account, activation or membership and work offline. The
+[source-available license](../LICENSE) permits inspection and private modification
+while restricting redistribution. Paid member packs and services are separate.
+
+Updates preserve your existing keys, profile, agent notes and legacy receipts.
+No new installation ID or license file is created by ordinary local use.
+Existing paid grants retain their rights.
+
+## Legacy receipts
+
+The commands below inspect or manage previously issued receipts. They are not
+part of setup for current releases. Activation and deactivation contact
+Godmode's licensing service. The service receives the purchase key, random
+installation ID, operating system, CPU and version; never provider credentials,
+profile fields or agent instructions.
 
 ```sh
 godmode license activate
@@ -12,10 +24,10 @@ godmode license status
 
 Key entry is hidden. For automation, pipe the purchase key to
 `godmode license activate --stdin`; never put it in command arguments.
-The private site also asks for its password. Automated activation can receive
-that password through `GODMODE_PREVIEW_PASSWORD`. It is not written to disk or
-passed to provider commands. A release accepts only its compiled HTTPS origin
-and signing key; redirects are refused.
+An older protected licensing endpoint can ask for its preview password.
+`GODMODE_PREVIEW_PASSWORD` supplies it to legacy activation without saving it or
+passing it to provider commands. Public CLI downloads never send it. A release
+accepts only its compiled HTTPS origin and signing key; redirects are refused.
 
 Activation saves `~/.godmode/license.json` with mode 0600. This contains an
 Ed25519-signed entitlement and a separate token that can release the activation.
@@ -23,8 +35,9 @@ The purchase key and site password are not saved. `installation.json` holds a
 random UUID so interrupted activation can retry without consuming another slot.
 `--home DIR` and `GODMODE_HOME` select another Godmode home.
 
-Every ordinary command checks the saved signature locally. A perpetual receipt
-has no expiry or recurring network check. The $100 Early Access purchase under
+Older releases check the saved signature before ordinary commands. Current
+releases only verify it when a legacy license command requests verification. A
+perpetual receipt has no expiry or recurring network check. The $100 Early Access purchase under
 Terms 1.1 includes perpetual local CLI use and all future local CLI updates.
 Hosted services are separate. Earlier receipts retain their original coverage.
 
@@ -38,12 +51,6 @@ later releases interpret zero as unbounded coverage.
 Preview evaluation receipts expire seven days after issuance. Their signed
 expiry is checked offline; reactivation does not extend the server's evaluation
 window. They record no purchase or upgrade credit. Paid receipts have no expiry.
-
-Help, FAQ, source, build information, version, path, saved key names, and license
-commands remain available without activation. Failed verification changes no
-provider credentials or profile data. Keep your previous executable when
-upgrading. The existing installed v0.15.1 executable stays unchanged until you
-choose to replace it.
 
 ```sh
 godmode license path
@@ -76,11 +83,6 @@ Receipt changes share a kernel-held lock that releases if the process exits or
 crashes; its private `.license-lock` file remains in place. Deactivation retains a newer receipt if an
 activation or import finished while the network request was in progress.
 
-The Python engine invokes its containing native executable for verification.
-Direct Python entry exposes inspection and help; ordinary use requires the
-native command. Build it with `scripts/build-native.sh` from the supplied source.
-
-Tests use a separate executable and a synthetic signing key that production
-builds do not trust. `scripts/build-license-test.sh` produces that test candidate;
-`scripts/build-native.sh` produces the normal licensed candidate. Never distribute
-the test executable as a release.
+The Python engine also operates without activation. Legacy receipt tests use a
+separate executable and synthetic signing key that production builds do not
+trust. Never distribute that test executable as a release.

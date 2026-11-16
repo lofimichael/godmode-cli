@@ -14,7 +14,7 @@ class UIBridge:
     def __init__(self, namespace, home=None):
         self.api, self.home = namespace, home
         self.store = namespace['Store'](home)
-        self.profile = namespace['Profile'](namespace['profile_home'](home))
+        self.profile = namespace['business_profile'](home)
         self.profile_data = None
         self.keys, self.agents = {}, {}
 
@@ -33,8 +33,11 @@ class UIBridge:
     def call(self, request):
         a = self.api
         action = request.get('action')
+        if a.get('ACTIVE_CONTEXT') is not None and action not in ('state', 'accept_intro', 'profile_save'):
+            raise ValueError('This context view edits business facts only. Save shared keys separately, then map their names.')
         if action == 'state':
-            result = {'version': a['VERSION'], 'home': str(a['profile_home'](self.home)),
+            result = {'version': a['VERSION'], 'home': str(self.profile.home),
+                      'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else '',
                       'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
                       'fields': [dict(name=name, label=label, description=description)

@@ -41,7 +41,7 @@ def audit(event, args):
                  'os.link', 'os.symlink', 'os.truncate'):
         raise RuntimeError('guidance attempted a filesystem change')
 sys.addaudithook(audit)
-source = open(script).read().replace('    require_license(argv, home)\n', '    pass  # Test-only native license boundary.\n')
+source = open(script).read()
 exec(compile(source, script, 'exec'), {'__name__':'__main__','__file__':script})
 """
 

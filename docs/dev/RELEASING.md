@@ -42,7 +42,7 @@ Do not add a `-unix.tar.gz` alias. Pre-0.15 updaters try that name first, then t
 native target. With curl, omitting it makes those updaters try the native command.
 The 0.14 GitHub CLI route can return success for a checksum-only download and stop
 before falling back; use the explicit archive upgrade in docs/INSTALLATION.md for
-those installs. The current updater selects a native platform from the protected
+those installs. The current updater selects a native platform from the public
 site's release manifest; it does not discover releases through GitHub.
 
 Create a private draft release with all files in the distribution directory:
@@ -77,30 +77,29 @@ published archives, checksums or their embedded installer/source files.
 Use the saved product deployment credential and deployment procedure in
 [`godmode-build/docs/release-cycle.md`](https://github.com/lofimichael/godmode-build/blob/main/docs/release-cycle.md).
 The deployment helper verifies release integrity before applying migrations, then
-checks migration state, deployed commit and anonymous denial. Automatic Git deployment
+checks migration state, deployed commit and public/member access boundaries. Automatic Git deployment
 is currently disabled; a tag, GitHub release or repository push alone does not advance
 the deployed customer channel.
 
 `godmodeup` downloads `https://godmode.build/releases/latest.json`. An explicit
 `godmodeup --version vX.Y.Z` selects that version's deployed manifest. Downloads need
-the private preview password, not a GitHub account. The updater verifies archive size
+no password, account or activation. The updater verifies archive size
 and SHA-256, checks its managed-file receipt, keeps the previous executable as
 `~/.godmode/bin/godmode.previous`, and preserves profile, provider credentials and
 license files. Verify downloaded archive checksums, embedded source, native binary
 bytes, the previous version and preserved user files in a disposable home.
 
-## Bootstrap and activation
+## Bootstrap
 
 ```sh
 curl -fsSL https://get.godmode.build | bash
 # Open a new terminal, or run the PATH command printed by the installer.
-godmode license activate
 godmode
 ```
 
-The public bootstrap downloads the password-protected installer and runs it with
-`--path --install-only`, installing both the CLI and `godmodeup`. It does not expose
-archives or licensing APIs, save the preview password or bypass purchase-key activation.
+The public bootstrap downloads the public installer and runs it with
+`--path --install-only`, installing both the CLI and `godmodeup`. It needs no
+account, preview password or license key.
 Later updates use `godmodeup`. Bootstrap-only changes live in the distribution
 repository and do not require rewriting immutable CLI release files.
 

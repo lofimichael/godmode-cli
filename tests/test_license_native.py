@@ -1,4 +1,4 @@
-"""The native gate uses actual signed receipts and refuses the test key in release builds."""
+"""Legacy receipt commands stay strict while ordinary local use remains free."""
 import json
 import os
 from pathlib import Path
@@ -27,15 +27,16 @@ class NativeLicenseTests(unittest.TestCase):
         return subprocess.run([str(binary), '--home', str(self.home), *args], input=input,
                               text=True, capture_output=True, env=self.env, timeout=10)
 
-    def test_unlicensed_commands_and_internal_help_cannot_write(self):
-        for args in (('set', 'SYNTHETIC_KEY', '--stdin'), ('__ui', '--help'), ('__ui', '--version')):
-            result = self.command(*args, input='{"action":"accept_intro"}\n')
-            self.assertEqual(result.returncode, 2)
-            self.assertFalse(self.home.exists())
+    def test_local_commands_need_no_receipt(self):
+        result = self.command('set', 'SYNTHETIC_KEY', '--stdin', input='synthetic-private-key-value')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.home / 'license.json').exists())
+        self.assertFalse((self.home / 'installation.json').exists())
+        self.assertNotIn('synthetic-private-key-value', result.stdout + result.stderr)
         self.assertEqual(self.command('help').returncode, 0)
         self.assertEqual(self.command('source').returncode, 0)
 
-    def test_valid_receipt_works_offline_and_tampering_preserves_provider_store(self):
+    def test_tampered_receipt_does_not_block_local_use_or_get_rewritten(self):
         provision(self.home)
         result = self.command('set', 'SYNTHETIC_KEY', '--stdin', input='synthetic-private-key-value')
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -46,8 +47,13 @@ class NativeLicenseTests(unittest.TestCase):
         receipt = json.loads((self.home / 'license.json').read_text())
         receipt['license']['signature'] = 'bad'
         (self.home / 'license.json').write_text(json.dumps(receipt))
-        self.assertEqual(self.command('set', 'OTHER', '--stdin', input='synthetic-other').returncode, 2)
+        receipt_bytes = (self.home / 'license.json').read_bytes()
+        self.assertEqual(self.command('license', 'check').returncode, 2)
+        result = self.command('run', 'SYNTHETIC_KEY', '--', 'python3', '-c',
+                              'import os; assert os.environ["SYNTHETIC_KEY"] == "synthetic-private-key-value"')
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.home / '.env.godmode').read_bytes(), before)
+        self.assertEqual((self.home / 'license.json').read_bytes(), receipt_bytes)
 
     @unittest.skipUnless((ROOT / 'target/godmode-native').exists(), 'Build production candidate first.')
     def test_production_binary_does_not_trust_synthetic_test_key(self):

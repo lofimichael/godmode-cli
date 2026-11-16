@@ -22,7 +22,7 @@ const licenseHelp = `Usage: godmode license activate [--stdin]
        godmode license path
 
 Activation needs your purchase key and an internet connection. Key entry is hidden.
-A signed license stays on this machine. Normal use verifies it offline.
+Legacy signed licenses stay on this machine. Local CLI use needs no activation.
 Import reads a previously issued license.json from stdin without a network call.
 Deactivation releases this installation and removes its local license file.
 Provider keys and your profile stay unchanged.
@@ -40,39 +40,16 @@ func commandWords(args []string) []string {
 			words = append(words, args[i:]...)
 			break
 		}
-		if a == "--home" || a == "--config-dir" {
+		if a == "--home" || a == "--config-dir" || a == "--context" {
 			i++
 			continue
 		}
-		if a == "--plain" || a == "--no-motion" || strings.HasPrefix(a, "--home=") || strings.HasPrefix(a, "--config-dir=") {
+		if a == "--plain" || a == "--no-motion" || strings.HasPrefix(a, "--home=") || strings.HasPrefix(a, "--config-dir=") || strings.HasPrefix(a, "--context=") {
 			continue
 		}
 		words = append(words, a)
 	}
 	return words
-}
-
-func inspection(args []string) bool {
-	words := commandWords(args)
-	if len(words) == 0 {
-		return false
-	}
-	if words[0] == "__ui" {
-		return false
-	}
-	for _, a := range words {
-		if a == "--" {
-			break
-		}
-		if a == "--help" || a == "-h" {
-			return true
-		}
-	}
-	switch words[0] {
-	case "license", "help", "faq", "source", "build-info", "--version", "path", "list":
-		return true
-	}
-	return false
 }
 
 func secretInput(prompt string, piped bool) (string, error) {

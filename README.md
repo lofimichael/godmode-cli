@@ -10,22 +10,19 @@ Profile + API keys → Godmode → commands
 
 ## Install
 
-macOS or Linux with Python 3.9 or newer. Downloads and source are at [godmode.build](https://godmode.build), behind the private site password. The interface uses Bubble Tea and Lip Gloss. Its embedded Python file engine installs no packages.
+macOS or Linux with Python 3.9 or newer. Downloads and source are public at [godmode.build](https://godmode.build). The interface uses Bubble Tea and Lip Gloss. Its embedded Python file engine installs no packages.
 
 ```sh
-curl --fail --user godmode https://godmode.build/install.sh -o godmode-install.sh
-sh godmode-install.sh --path --no-setup
-godmode license activate
+curl -fsSL https://get.godmode.build | bash
 godmode
 ```
 
 `godmode` opens **Profile**, **Providers**, and **Agents**, with a completion meter for each. Six profile fields, one saved provider, and one agent note fill the setup meter. Every field and provider remains optional.
 
-The Early Access personal license costs $100 once and includes perpetual local
-CLI use and all future local CLI updates on three active installations. Hosted
-services are separate. Paid licenses verify offline without expiry. Evaluation licenses
-expire after seven days and record no purchase. Source inspection is allowed;
-operation requires a license under the [commercial terms](LICENSE).
+The CLI is free to use on any number of your machines. No account or activation
+is required. Its [source-available license](LICENSE) permits inspection and
+private modification; redistribution is restricted. Paid membership supplies
+separate maintained playbooks, routing instructions and provider packs.
 
 | Key | Action |
 | --- | --- |
@@ -42,6 +39,23 @@ operation requires a license under the [commercial terms](LICENSE).
 ## Connect your agent
 
 **Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. Other agents use the copied note. New agent sessions run `godmode help` when a task needs a key or profile field.
+
+## Separate businesses
+
+Named contexts keep each business profile separate and override selected key
+names while sharing the rest. Each command chooses its context, so concurrent
+agents cannot switch one another's accounts.
+
+```sh
+godmode context create acme
+godmode --context acme profile
+godmode set ACME_STRIPE_SECRET_KEY
+godmode context map acme STRIPE_SECRET_KEY ACME_STRIPE_SECRET_KEY
+godmode --context acme run STRIPE_SECRET_KEY CLOUDFLARE_API_TOKEN -- your-command
+```
+
+Mappings contain names, never copied credentials. A missing mapped key stops
+the command. [Business contexts](docs/CONTEXTS.md) covers inspection and changes.
 
 ## Music
 
@@ -65,8 +79,7 @@ operation requires a license under the [commercial terms](LICENSE).
 | `godmode music clear` | Remove synthesized music from the cache |
 | `godmode source` | Print the embedded Python file engine |
 | `godmode build-info` | Compiler, dependencies and engine hash |
-| `godmode license activate` | Activate a purchase key through hidden entry |
-| `godmode license status` | Inspect the signed local entitlement |
+| `godmode license status` | Inspect a legacy signed local entitlement |
 | `godmode license deactivate` | Release this installation without changing provider keys |
 
 ## Files
@@ -77,7 +90,7 @@ operation requires a license under the [commercial terms](LICENSE).
 | `~/.godmode/.env.godmode` | Your keys, each value encrypted |
 | `~/.godmode/seal.key` | Decrypts them. Anyone with both files has your keys. |
 
-Provider keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine. License activation and deactivation contact godmode.build; ordinary commands verify the saved license offline. [Licensing](docs/LICENSING.md) describes the exact data and behavior.
+Provider keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine. Ordinary commands work offline without a license. Legacy activation and deactivation contact godmode.build. [Licensing](docs/LICENSING.md) describes the exact data and behavior.
 
 Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes your keys too) and remove the two `# Godmode` lines from your shell startup file. Deleting a key here does not revoke it; revoke it at the provider.
 

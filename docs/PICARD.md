@@ -16,4 +16,4 @@ The source is [picard.ytmnd.com](https://picard.ytmnd.com/), with audio by DarkM
 
 Downloads use curl only on request, are bounded to 1 MiB and checked against the original pinned hashes. Source image and audio are not bundled. Cache files are mode 0600 in private directories under `~/.godmode/state/picard`. `--state-dir DIR` or `GODMODE_STATE_DIR` selects another state root; give `stop` the same root as `play`. An explicit `--home` defaults media state to that home's `state` directory.
 
-YTMND receives the media download request. No credential inventory is read or sent. The MIT license for this project's code does not cover the original image or recording. See [the culture research](dev/research/CULTURE.md) for historical context.
+YTMND receives the media download request. No credential inventory is read or sent. The source-available license for this project's code does not cover the original image or recording. See [the culture research](dev/research/CULTURE.md) for historical context.

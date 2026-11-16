@@ -279,4 +279,4 @@ if PATH="$scratch/no-python" /bin/sh "$repo/install.sh" --no-setup --home "$scra
 fi
 [ ! -e "$scratch/no-python-home" ]
 python3 "$repo/tests/install_transport.py"
-printf '%s\n' 'Installer tests passed (offline checksums, no-clobber, PATH quoting, setup handoff, HTTPS transport and preview authentication).'
+printf '%s\n' 'Installer tests passed (offline checksums, no-clobber, PATH quoting, setup handoff, public HTTPS transport and no credential headers).'

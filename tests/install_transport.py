@@ -4,7 +4,6 @@
 The production script has no runtime origin override. This test substitutes the
 origin and certificate trust only in a temporary source copy.
 """
-import base64
 import copy
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,16 +11,12 @@ import io
 import json
 import os
 from pathlib import Path
-import select
-import signal
 import ssl
 import subprocess
 import sys
 import tarfile
 import tempfile
-import termios
 import threading
-import time
 
 REPO = Path(__file__).resolve().parents[1]
 TARGETS = {
@@ -31,7 +26,6 @@ TARGETS = {
     "linux-arm64": "aarch64-unknown-linux-musl",
 }
 PASSWORD = "synthetic-preview-" + os.urandom(12).hex()
-AUTH = "Basic " + base64.b64encode(("godmode:" + PASSWORD).encode()).decode()
 state = {"requests": [], "user_agents": [], "mode": "", "transform": None, "version": "v0.16.0"}
 
 class Handler(BaseHTTPRequestHandler):
@@ -39,10 +33,10 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        authorized = self.headers.get("Authorization") == AUTH
+        authorized = self.headers.get("Authorization") is not None
         state["requests"].append((self.path, authorized))
         state["user_agents"].append(self.headers.get("User-Agent"))
-        if not authorized:
+        if state["mode"] == "unauthorized":
             self.send_response(401)
             self.send_header("WWW-Authenticate", 'Basic realm="Godmode preview"')
             self.send_header("Content-Length", "0")
@@ -175,9 +169,10 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         first = root / "first"
         output = run(first)
         assert (first / ".godmode/bin/godmode").read_bytes().startswith(b"#!/bin/sh")
-        assert b"Activate:  godmode license activate" in output.stdout
-        assert len(state["requests"]) == 2 and all(auth for _, auth in state["requests"])
-        assert state["user_agents"] == ["godmode-installer/2", "godmode-installer/2"]
+        assert b"To set up, run:" in output.stdout
+        assert b"Activate:" not in output.stdout
+        assert len(state["requests"]) == 2 and not any(auth for _, auth in state["requests"])
+        assert state["user_agents"] == ["godmode-installer/3", "godmode-installer/3"]
         for path in (first / ".godmode/bin").iterdir():
             if path.is_file():
                 assert PASSWORD.encode() not in path.read_bytes(), "password persisted"
@@ -194,7 +189,7 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         before = (first / ".godmode/bin/.godmode-install-receipt").read_bytes()
         current = run(first, command=[str(updater)])
         assert b"0.16.0 is up to date" in current.stdout
-        assert state["requests"] == [("/releases/latest.json", True)]
+        assert state["requests"] == [("/releases/latest.json", False)]
         assert (first / ".godmode/bin/.godmode-install-receipt").read_bytes() == before
         state["requests"].clear()
         run(first, command=[str(updater), "--force"])
@@ -204,7 +199,7 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         state["requests"].clear()
         run(root / "pinned", "--version", "v0.16.0",
             env={"GODMODE_DOWNLOAD_ORIGIN": "https://untrusted.invalid", "GODMODE_API_URL": "https://untrusted.invalid"})
-        assert state["requests"][0] == ("/releases/v0.16.0/manifest.json", True)
+        assert state["requests"][0] == ("/releases/v0.16.0/manifest.json", False)
         state["requests"].clear()
         run(root / "unsafe-pin", "--version", "v0.16.0\n../outside", expected=1)
         assert not state["requests"] and not (root / "unsafe-pin").exists()
@@ -226,8 +221,8 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         assert not (root / "mismatched-pin").exists()
         state["transform"] = None
 
-        # Authentication failures, redirects, truncated archives and altered bytes install nothing.
-        for mode in ("redirect-manifest", "redirect-artifact", "missing-artifact", "tamper",
+        # HTTP failures, redirects, truncated archives and altered bytes install nothing.
+        for mode in ("unauthorized", "redirect-manifest", "redirect-artifact", "missing-artifact", "tamper",
                      "truncated", "duplicate-json", "oversized-manifest"):
             state.update(mode=mode, requests=[])
             home = root / mode
@@ -235,18 +230,11 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
             assert not home.exists(), mode
             assert all(path != "/credential-trap" for path, _ in state["requests"]), "redirect was followed"
         state["mode"] = ""
-        bad = run(root / "wrong-password", expected=1, env={"GODMODE_PREVIEW_PASSWORD": "incorrect-fixture-password"})
-        assert b"password was not accepted" in bad.stderr
-        assert b"incorrect-fixture-password" not in bad.stderr
-        assert not (root / "wrong-password").exists()
-
-        # Missing password cannot fall back to echoing stdin, and an untrusted TLS certificate is refused.
-        env_without_password = dict(base_env, HOME=str(root / "no-password"))
-        env_without_password.pop("GODMODE_PREVIEW_PASSWORD", None)
-        missing = subprocess.run(["sh", str(installer), "--install-only"], env=env_without_password,
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 start_new_session=True, timeout=20)
-        assert missing.returncode != 0 and b"preview password required" in missing.stderr
+        # Legacy password variables are never sent. Public downloads need no stdin.
+        ignored = run(root / "ignored-password", env={"GODMODE_PREVIEW_PASSWORD": "incorrect-fixture-password"})
+        assert b"incorrect-fixture-password" not in ignored.stdout + ignored.stderr
+        assert not any(auth for _, auth in state["requests"])
+        # An untrusted TLS certificate is refused.
         unsafe_cert_script = root / "untrusted-install.sh"
         unsafe_cert_script.write_text(untrusted_fixture)
         denied = run(root / "bad-certificate", expected=1,
@@ -296,48 +284,10 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         assert not state["requests"], "offline update contacted a server"
         assert b"godmode 0.16.2" in (first / ".godmode/bin/godmode").read_bytes()
 
-        # The password prompt uses the terminal once and never echoes or stores the password.
-        import fcntl
-        release("v0.16.0")
-        state["requests"].clear()
-        master, slave = os.openpty()
-        def session():
-            os.setsid()
-            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-        tty_env = dict(base_env, HOME=str(root / "tty-password"))
-        tty_env.pop("GODMODE_PREVIEW_PASSWORD", None)
-        process = subprocess.Popen(["sh", str(installer), "--install-only"],
-                                   env=tty_env, stdin=slave, stdout=slave, stderr=slave, preexec_fn=session)
-        output = bytearray()
-        deadline = time.monotonic() + 20
-        try:
-            sent = False
-            while process.poll() is None:
-                assert time.monotonic() < deadline, "hidden password prompt timed out"
-                if select.select([master], [], [], .05)[0]:
-                    output.extend(os.read(master, 65536))
-                if not sent and b"Godmode preview password:" in output:
-                    os.write(master, PASSWORD.encode() + b"\n")
-                    sent = True
-            if select.select([master], [], [], .05)[0]:
-                output.extend(os.read(master, 65536))
-            assert sent and process.returncode == 0, output.decode()
-            assert PASSWORD.encode() not in output, "password was echoed"
-            assert output.count(b"Godmode preview password:") == 1
-            assert state["requests"] == [
-                ("/releases/latest.json", False), ("/releases/latest.json", True),
-                (state["requests"][-1][0], True),
-            ]
-            assert state["requests"][-1][0].endswith(".tar.gz")
-        finally:
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            os.close(master)
-            os.close(slave)
+        assert not any(auth for _, auth in state["requests"]), "installer sent an Authorization header"
         assert not list(temp.iterdir())
     finally:
         server.shutdown()
         server.server_close()
 
-print("HTTPS installer tests passed (activation hint, password privacy, TLS, redirects, pins, schemas, tamper, rollback and offline update).")
+print("HTTPS installer tests passed (accountless install, no credential headers, TLS, redirects, pins, schemas, tamper, rollback and offline update).")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Godmode 0.16.1: readable source, no bundled interpreter or dependencies.
+# Godmode 0.17.0: readable source, no bundled interpreter or dependencies.
 import sys
 if sys.version_info < (3, 9):
     sys.exit("Godmode needs Python 3.9 or newer. No files changed.")
@@ -775,9 +775,11 @@ def _profile_encode(data):
 
 
 class Profile:
-    def __init__(self, home):
+    def __init__(self, home, filename="profile.json"):
         self.home = Path(os.path.abspath(os.path.expanduser(str(home))))
-        self.path = self.home / "profile.json"
+        if filename not in ("profile.json", "context.json"):
+            raise ValueError("Unknown profile file.")
+        self.path = self.home / filename
         self._read_once = False
         self._snapshot = None
 
@@ -823,9 +825,9 @@ class Profile:
         def git(args):
             return subprocess.run(command + args, env=env, stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-        if (git(["ls-files", "--error-unmatch", "--", "profile.json"]) != 1
-                or git(["check-ignore", "-q", "--", "profile.json"]) != 0):
-            raise ValueError("Keep profile.json ignored and untracked by Git before saving.")
+        if (git(["ls-files", "--error-unmatch", "--", self.path.name]) != 1
+                or git(["check-ignore", "-q", "--", self.path.name]) != 0):
+            raise ValueError("Keep " + self.path.name + " ignored and untracked by Git before saving.")
 
     def write(self, data):
         """Atomically replace the last-read snapshot; callers merge edits to keep unknown fields.
@@ -870,6 +872,133 @@ class Profile:
                 os.unlink(temporary)
             if directory is not None:
                 os.close(directory)
+
+
+# --- godmode_context.py ---
+"""Named business profiles and key-name aliases; credential values stay in the base store."""
+import json
+import os
+from pathlib import Path
+import re
+import stat
+
+
+
+def context_name(name):
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,47}', name):
+        raise ValueError('Use a context name starting with a lowercase letter, then letters, numbers, _ or - (48 characters maximum).')
+    return name
+
+
+def context_directory(home, name=None):
+    base = Path(home)
+    _profile_directories(base)
+    directory = base / 'contexts'
+    paths = [directory]
+    if name is not None:
+        directory = directory / context_name(name)
+        paths.append(directory)
+    for path in paths:
+        if os.path.lexists(path):
+            info = path.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o700):
+                raise ValueError('Context directories must be yours, real directories and mode 0700.')
+    return directory
+
+
+class Context:
+    def __init__(self, home, name):
+        self.name = context_name(name)
+        self.home = context_directory(home, name)
+        self.config = Profile(self.home, filename='context.json')
+        if not self.config.path.exists():
+            raise ValueError('Context is not saved. Create it with godmode context create NAME.')
+        self.data = self.config.read()
+        if (set(self.data) != {'schema', 'aliases'} or type(self.data['schema']) is not int
+                or self.data['schema'] != 1 or not isinstance(self.data['aliases'], dict)):
+            raise ValueError('The context configuration is invalid.')
+        self.aliases = self.data['aliases']
+        for variable, saved in self.aliases.items():
+            if not isinstance(saved, str):
+                raise ValueError('Context mappings contain saved key names only.')
+            valid_key(variable)
+            valid_key(saved)
+
+    def profile(self):
+        return Profile(self.home)
+
+    def map(self, variable, saved):
+        aliases = dict(self.aliases)
+        variable = valid_key(variable)
+        if saved is None:
+            aliases.pop(variable, None)
+        else:
+            aliases[variable] = valid_key(saved)
+        self.config.write({'schema': 1, 'aliases': aliases})
+        self.aliases = aliases
+        self.data = {'schema': 1, 'aliases': aliases}
+
+
+class ContextStore:
+    def __init__(self, store, context):
+        self.store, self.context = store, context
+
+    def __getattr__(self, name):
+        return getattr(self.store, name)
+
+    def values(self, names):
+        selected = {name: self.context.aliases.get(name, name) for name in names}
+        # Resolve once. A missing override fails in the base store; it never
+        # falls through to a shared value under the original variable name.
+        values = self.store.values(list(dict.fromkeys(selected.values())))
+        return {name: values[saved] for name, saved in selected.items()}
+
+    def states(self):
+        states = self.store.states() if self.store.exists() else {}
+        result = dict(states)
+        for variable, saved in self.context.aliases.items():
+            result[variable] = states.get(saved, 'empty')
+        return result
+
+    def names(self):
+        return sorted(name for name, state in self.states().items() if state == 'set')
+
+
+def context_command(home, args):
+    if not args or args == ['list']:
+        directory = context_directory(home)
+        if directory.exists():
+            for path in sorted(directory.iterdir()):
+                if re.fullmatch(r'[a-z][a-z0-9_-]{0,47}', path.name):
+                    Context(home, path.name)
+                    print(path.name)
+        return 0
+    action = args[0]
+    if action == 'create' and len(args) == 2:
+        directory = context_directory(home, args[1])
+        config = Profile(directory, filename='context.json')
+        if os.path.lexists(config.path):
+            raise ValueError('Context already exists; its files were not changed.')
+        config.read()
+        config.write({'schema': 1, 'aliases': {}})
+        print('Context ' + args[1] + ' created. Its business profile is empty; unmapped keys use the shared store.')
+        return 0
+    if action in ('show', 'map', 'unmap') and len(args) >= 2:
+        context = Context(home, args[1])
+        if action == 'show' and len(args) == 2:
+            print(json.dumps({'name': context.name, 'profile_path': str(context.profile().path),
+                              'keys': context.aliases}, indent=2, sort_keys=True))
+            return 0
+        if action == 'map' and len(args) == 4:
+            context.map(args[2], args[3])
+            print(args[2] + ' uses ' + args[3] + ' in ' + context.name + '.')
+            return 0
+        if action == 'unmap' and len(args) == 3:
+            context.map(args[2], None)
+            print(args[2] + ' uses the shared store in ' + context.name + '.')
+            return 0
+    raise ValueError('Use: godmode context [list | create NAME | show NAME | map NAME VARIABLE SAVED_KEY | unmap NAME VARIABLE].')
 
 
 # --- godmode_terminal.py ---
@@ -2160,7 +2289,7 @@ class UIBridge:
     def __init__(self, namespace, home=None):
         self.api, self.home = namespace, home
         self.store = namespace['Store'](home)
-        self.profile = namespace['Profile'](namespace['profile_home'](home))
+        self.profile = namespace['business_profile'](home)
         self.profile_data = None
         self.keys, self.agents = {}, {}
 
@@ -2179,8 +2308,11 @@ class UIBridge:
     def call(self, request):
         a = self.api
         action = request.get('action')
+        if a.get('ACTIVE_CONTEXT') is not None and action not in ('state', 'accept_intro', 'profile_save'):
+            raise ValueError('This context view edits business facts only. Save shared keys separately, then map their names.')
         if action == 'state':
-            result = {'version': a['VERSION'], 'home': str(a['profile_home'](self.home)),
+            result = {'version': a['VERSION'], 'home': str(self.profile.home),
+                      'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else '',
                       'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
                       'fields': [dict(name=name, label=label, description=description)
@@ -2888,7 +3020,8 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 
-VERSION = '0.16.1'
+VERSION = '0.17.0'
+ACTIVE_CONTEXT = None
 MUSIC_INCLUDED = True
 PROVIDERS = [{'id': 'github',
   'name': 'GitHub',
@@ -3939,6 +4072,15 @@ def profile_home(home=None):
     return Path(os.path.abspath(os.path.expanduser(str(selected or Path.home() / '.godmode'))))
 
 
+def business_profile(home=None):
+    return ACTIVE_CONTEXT.profile() if ACTIVE_CONTEXT is not None else Profile(profile_home(home))
+
+
+def effective_store(home=None):
+    store = Store(home)
+    return ContextStore(store, ACTIVE_CONTEXT) if ACTIVE_CONTEXT is not None else store
+
+
 def visible_fact(value):
     """Untrusted input is visible text, never terminal control sequences."""
     return ''.join(('\\u%04x' % ord(c)) if unicodedata.category(c).startswith('C') else c for c in value)
@@ -4547,7 +4689,7 @@ def progress(store, home=None):
         states = {}
         state['errors'].add('providers')
     try:
-        data = Profile(profile_home(home)).read()
+        data = business_profile(home).read()
     except ValueError:
         data = {}
         state['errors'].add('profile')
@@ -4677,7 +4819,7 @@ def onboard(home=None):
                 return
             try:
                 if at == 0:
-                    edit_profile(Profile(profile_home(home)), back=True)
+                    edit_profile(business_profile(home), back=True)
                 elif at == 1:
                     setup(Store(home), explicit=explicit, accepted=True, home=home, back=True)
                 elif at == 2:
@@ -4926,7 +5068,7 @@ def saved_block(store, home=None):
         if missing:
             rows += help_wrap('Not saved: ' + ', '.join(missing))
     try:
-        data = Profile(profile_home(home)).read()
+        data = business_profile(home).read()
         filled = [field for field in PROFILE_FIELDS if data.get(field)]
         unknown = [field for field in PROFILE_FIELDS if not data.get(field)]
         if filled:
@@ -4986,6 +5128,11 @@ def guide(store, home=None):
         'back, so save any replacement the tool returns.', '',
         'These files belong to this machine. Remote setup:',
         'https://github.com/lofimichael/godmode-cli/blob/main/docs/REMOTE.md']
+    if ACTIVE_CONTEXT is not None:
+        rows += ['', 'Business context: ' + ACTIVE_CONTEXT.name,
+                 'Use godmode --context ' + ACTIVE_CONTEXT.name + ' for every profile and run command in this task.',
+                 'Unmapped keys use the shared store; mapped keys never fall back.']
+        rows += ['  ' + variable + ' -> ' + saved for variable, saved in sorted(ACTIVE_CONTEXT.aliases.items())]
     return '\n'.join(rows)
 
 
@@ -5013,7 +5160,7 @@ def run_with_keys(store, argv):
 
 
 COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'setup', 'list', 'run', 'set',
-            'help', 'migrate', 'edit', 'path', 'picard', 'init')
+            'help', 'migrate', 'edit', 'path', 'picard', 'init', 'context')
 
 USAGE = """Usage: godmode [COMMAND]
 
@@ -5024,12 +5171,11 @@ For you
   godmode                      set up your profile, providers and agents
   godmode setup [PROVIDER]     add or replace a provider's keys
   godmode profile              edit your profile
+  godmode context              list named business contexts
   godmode agents               add Godmode to your agents' instructions
   godmode intro                replay the welcome
   godmode faq                  answers about files, keys and source
   godmode music                local music and visualizer
-  godmode license activate     activate your purchased license
-  godmode license status       inspect the saved license
 
 For agents
   godmode help                 the guide agents read, with what is saved
@@ -5048,6 +5194,7 @@ Files
 
 Options
   --home DIR                   use another Godmode home (default ~/.godmode)
+  --context NAME               select business facts and key mappings for this command
   --plain                      static text and numbered menus
   --no-motion                  disable animation
   --version                    print the version
@@ -5062,6 +5209,7 @@ class Arguments(argparse.ArgumentParser):
 
 
 COMMAND_HELP = {
+    'context': 'Usage: godmode context [list | create NAME | show NAME | map NAME VARIABLE SAVED_KEY | unmap NAME VARIABLE]\n\nA context keeps its own business profile and maps selected key names to saved keys.\nUnmapped keys use the shared store. Select with godmode --context NAME run ...\nor godmode --context NAME profile. No global switch is changed.',
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
     'faq': 'Usage: godmode faq\n\nAnswers about keys, files, network use and source.',
     'music': 'Usage: godmode music [init DIR --songs DIR | list | play NAME | clear | status]\n\nLocal Darunia music with a visualizer. Rendered songs stay cached. clear removes the music cache.',
@@ -5079,37 +5227,42 @@ COMMAND_HELP = {
 }
 
 
-def require_license(argv, home):
-    """The embedded engine uses its native executable as the trusted verifier."""
-    before_child = argv[:argv.index('--')] if '--' in argv else argv
-    internal = argv[:1] == ['__ui']
-    if not internal and any(word in ('--help', '-h', '--version') for word in before_child):
-        return
-    if argv[:1] in (['help'], ['faq'], ['list'], ['path']):
-        return
-    for index, word in enumerate(before_child):
-        if word in ('--home', '--config-dir') and index + 1 < len(before_child):
-            home = before_child[index + 1]
-        elif word.startswith(('--home=', '--config-dir=')):
-            home = word.split('=', 1)[1]
-    executable = Path(__file__).resolve()
-    with executable.open('rb') as stream:
-        magic = stream.read(4)
-    if magic not in (b'\x7fELF', b'\xcf\xfa\xed\xfe'):
-        raise ValueError('Use the native Godmode command. Build it with scripts/build-native.sh, then run godmode license activate.')
-    command = [str(executable)]
-    if home:
-        command += ['--home', home]
-    command += ['license', 'check']
-    result = subprocess.run(command, input=b'', stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, timeout=15)
-    if result.returncode:
-        # Never repeat an external program's output; it may contain secrets.
-        raise ValueError('A Godmode license is required. Run godmode license activate.')
-
-
 def main():
+    global ACTIVE_CONTEXT
+    ACTIVE_CONTEXT = None
     argv, home = sys.argv[1:], None
+    selected_context, cleaned, index = None, [], 0
+    while index < len(argv):
+        word = argv[index]
+        if word == '--':
+            cleaned.extend(argv[index:])
+            break
+        if word in ('--home', '--config-dir') or word.startswith(('--home=', '--config-dir=')):
+            if home is not None:
+                raise ValueError('Select one Godmode home per command.')
+            if '=' in word:
+                home = word.split('=', 1)[1]
+            else:
+                index += 1
+                if index == len(argv):
+                    raise ValueError('--home needs a directory.')
+                home = argv[index]
+            if not home:
+                raise ValueError('--home needs a directory.')
+        elif word == '--context' or word.startswith('--context='):
+            if selected_context is not None:
+                raise ValueError('Select one context per command.')
+            if word == '--context':
+                index += 1
+                if index == len(argv):
+                    raise ValueError('--context needs a name.')
+                selected_context = argv[index]
+            else:
+                selected_context = word.split('=', 1)[1]
+        else:
+            cleaned.append(word)
+        index += 1
+    argv = cleaned
     # Global display options stop at --; a child command owns everything after it.
     boundary = argv.index('--') if '--' in argv else len(argv)
     for option, variable in (('--plain', 'GODMODE_PLAIN'), ('--no-motion', 'GODMODE_NO_MOTION')):
@@ -5121,7 +5274,6 @@ def main():
         home, argv = argv[1], argv[2:]
     elif argv and argv[0].startswith(('--home=', '--config-dir=')):
         home, argv = argv[0].split('=', 1)[1], argv[1:]
-    require_license(argv, home)
     before_child = argv[:argv.index('--')] if '--' in argv else argv
     if any(word in ('-h', '--help') for word in before_child):
         print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
@@ -5129,6 +5281,12 @@ def main():
     if '--version' in before_child:
         print('godmode ' + VERSION)
         return 0
+    if selected_context is not None:
+        if argv[:1] not in (['profile'], ['run'], ['list'], ['help'], ['__ui']):
+            raise ValueError('Use --context with profile, run, list or help. Save shared keys with godmode set, then map their names with godmode context map.')
+        ACTIVE_CONTEXT = Context(profile_home(home), selected_context)
+    if argv[:1] == ['context']:
+        return context_command(profile_home(home), argv[1:])
     STORE_KEY_PROVIDERS.update({key['name']: p['id'] for p in catalog() for key in p['key']})
     if argv[:1] == ['__ui']:
         return ui_bridge(home, globals())
@@ -5138,7 +5296,7 @@ def main():
                   'Runs CMD with the named keys in its environment. VAR=NAME supplies the key saved\n'
                   'as NAME under the variable VAR. Saved names: godmode list.')
             return 0
-        return run_with_keys(Store(home), argv[1:])
+        return run_with_keys(effective_store(home), argv[1:])
     if argv[:1] == ['music']:
         return music_command(home, argv[1:])
     if any(word in ('-h', '--help') for word in argv):
@@ -5156,7 +5314,7 @@ def main():
     parser.add_argument('command', nargs='?', default='onboard')
     parser.add_argument('name', nargs='?', help='provider, key name, or Picard action')
     parser.add_argument('field', nargs='?', help='profile field for get, set, or unset')
-    parser.add_argument('--home', '--config-dir', dest='home', help='Godmode home; existing legacy home is detected')
+    parser.add_argument('--home', '--config-dir', dest='home', default=home, help='Godmode home; existing legacy home is detected')
     parser.add_argument('--stdin', action='store_true', help='read one value from a pipe instead of the masked prompt')
     parser.add_argument('--version', action='version', version='godmode ' + VERSION)
     parser.add_argument('--accept-disclaimer', action='store_true', help=argparse.SUPPRESS)
@@ -5171,7 +5329,7 @@ def main():
         faq(args.home)
         return 0
     if args.command == 'profile':
-        return profile_command(Profile(profile_home(args.home)), args.name, args.field, args.stdin)
+        return profile_command(business_profile(args.home), args.name, args.field, args.stdin)
     if args.command == 'provider' and not args.stdin:
         provider_guide(args.name)
         return 0
@@ -5189,7 +5347,7 @@ def main():
         # Optional media code never receives a Store or opens the credential file.
         media_state = args.state_dir or (str(Path(args.home) / 'state') if args.home else None)
         return picard(args.name or 'link', media_state)
-    store = Store(args.home)
+    store = effective_store(args.home)
     explicit = bool(args.home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'))
     if args.command == 'path' and not args.name:
         line(str(store.env_path))

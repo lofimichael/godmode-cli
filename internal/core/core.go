@@ -158,9 +158,16 @@ type Client struct {
 }
 
 func New(home string) (*Client, error) {
+	return NewForContext(home, "")
+}
+
+func NewForContext(home, context string) (*Client, error) {
 	args := []string{"__ui"}
 	if home != "" {
 		args = append([]string{"--home", home}, args...)
+	}
+	if context != "" {
+		args = append([]string{"--context", context}, args...)
 	}
 	cmd, reader, writer, err := command(args, uiEnvironment())
 	if err != nil {

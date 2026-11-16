@@ -5,7 +5,7 @@
 ╚██████╔╝╚██████╔╝██████╔╝██║ ╚═╝ ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
 
-GODMODE 0.16.0
+GODMODE 0.17.0
 
   GODMODE gives your agents the goddamn keys.
 
@@ -14,8 +14,7 @@ GODMODE 0.16.0
 
 Install
 
-  gh api -H 'Accept: application/vnd.github.raw+json' \
-    repos/lofimichael/godmode-cli/contents/install.sh | sh -s -- --path
+  curl -fsSL https://get.godmode.build | bash
 
 Commands
 
@@ -43,7 +42,7 @@ Music
   godmode picard stop   stop the player
 
   Picard downloads media from https://picard.ytmnd.com/ on request.
-  Music by DarkMateria. Godmode's commercial license covers its code, not that
+  Music by DarkMateria. Godmode's source-available license covers its code, not that
   image or recording, Darunia's code, soundfonts or songs.
 
 Credits

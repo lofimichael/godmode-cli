@@ -45,21 +45,21 @@ type progress struct {
 	Errors                 []string
 }
 type snapshot struct {
-	MusicIncluded  bool   `json:"music_included"`
-	StoreError     string `json:"store_error"`
-	ProfileError   string `json:"profile_error"`
-	Version, Home  string
-	EnvPath        string `json:"env_path"`
-	Profile        map[string]string
-	Fields         []field
-	Providers      []provider
-	States         map[string]string
-	Progress       progress
-	IntroSeen      bool   `json:"intro_seen"`
-	StoreExists    bool   `json:"store_exists"`
-	IssueURL       string `json:"issue_url"`
-	ProfileBlurb   string `json:"profile_blurb"`
-	ProvidersBlurb string `json:"providers_blurb"`
+	MusicIncluded          bool   `json:"music_included"`
+	StoreError             string `json:"store_error"`
+	ProfileError           string `json:"profile_error"`
+	Version, Home, Context string
+	EnvPath                string `json:"env_path"`
+	Profile                map[string]string
+	Fields                 []field
+	Providers              []provider
+	States                 map[string]string
+	Progress               progress
+	IntroSeen              bool   `json:"intro_seen"`
+	StoreExists            bool   `json:"store_exists"`
+	IssueURL               string `json:"issue_url"`
+	ProfileBlurb           string `json:"profile_blurb"`
+	ProvidersBlurb         string `json:"providers_blurb"`
 }
 type keyPlan struct {
 	ID, Name, Title, Visit, Page, Note, Prompt, Path string

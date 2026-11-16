@@ -9,16 +9,16 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/lofimichael/godmode-cli/internal/core"
-	"github.com/lofimichael/godmode-cli/internal/license"
 	"github.com/lofimichael/godmode-cli/internal/ui"
 )
 
 var version = "dev"
 
 type route struct {
-	command, arg, home string
-	plain, noMotion    bool
-	interactive        bool
+	command, arg, home, context   string
+	plain, noMotion               bool
+	interactive                   bool
+	contextSelected, contextError bool
 }
 
 func enabled(value string) bool {
@@ -43,6 +43,29 @@ func selectRoute(args []string) route {
 			r.plain = true
 		case word == "--no-motion":
 			r.noMotion = true
+		case word == "--context":
+			if r.contextSelected {
+				r.contextError = true
+			}
+			r.contextSelected = true
+			if i+1 == len(args) {
+				r.contextError = true
+				return r
+			}
+			i++
+			r.context = args[i]
+			if r.context == "" {
+				r.contextError = true
+			}
+		case strings.HasPrefix(word, "--context="):
+			if r.contextSelected {
+				r.contextError = true
+			}
+			r.contextSelected = true
+			r.context = strings.SplitN(word, "=", 2)[1]
+			if r.context == "" {
+				r.contextError = true
+			}
 		case word == "--home" || word == "--config-dir":
 			if i+1 == len(args) {
 				return r
@@ -100,25 +123,18 @@ func run(args []string) int {
 		}
 	}
 	r := selectRoute(args)
+	if r.contextError || (r.contextSelected && r.command != "profile") {
+		return core.Run(args)
+	}
 	if words := commandWords(args); len(words) > 0 && words[0] == "license" {
 		return licenseCommand(args, r.home)
-	}
-	if !inspection(args) {
-		config, err := license.Default(r.home, version)
-		if err == nil {
-			_, _, err = config.Read()
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "godmode:", err)
-			return 2
-		}
 	}
 	if !r.interactive || r.plain || os.Getenv("TERM") == "dumb" || os.Getenv("TERM") == "" ||
 		!term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 		return core.Run(args)
 	}
 	for {
-		client, err := core.New(r.home)
+		client, err := core.NewForContext(r.home, r.context)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "godmode:", err)
 			return 1
