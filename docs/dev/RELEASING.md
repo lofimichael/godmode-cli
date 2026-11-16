@@ -39,8 +39,11 @@ The Linux names retain `-musl` for compatibility with older updaters; the binari
 are static Go builds.
 
 Do not add a `-unix.tar.gz` alias. Pre-0.15 updaters try that name first, then the
-native target. With curl, omitting it makes those updaters try the native command. The 0.14 GitHub CLI route can return success for a checksum-only download and stop before falling back; use the explicit archive upgrade in docs/INSTALLATION.md for those installs.
-New updaters prefer native targets and retain the legacy universal fallback.
+native target. With curl, omitting it makes those updaters try the native command.
+The 0.14 GitHub CLI route can return success for a checksum-only download and stop
+before falling back; use the explicit archive upgrade in docs/INSTALLATION.md for
+those installs. The current updater selects a native platform from the protected
+site's release manifest; it does not discover releases through GitHub.
 
 Create a private draft release with all files in the distribution directory:
 
@@ -49,10 +52,58 @@ gh release create vX.Y.Z target/release-vX.Y.Z/dist/* \
   --verify-tag --draft --title "Godmode vX.Y.Z" --notes-file release-notes.md
 ```
 
-Install with `godmodeup --version vX.Y.Z`. A draft is visible only to a GitHub
-login with repository access. The updater keeps the previous executable as
-`~/.godmode/bin/godmode.previous`. Verify downloaded archive checksums, embedded
-source, native binary bytes, the previous version, and preserved user files.
+A private draft archives the release for repository members. It does not make the
+release available to customers. The release workflow runs only through explicit
+`workflow_dispatch` and creates a draft; pushing a tag alone does not build or publish.
+Private Actions remain opt-in, and local release builds require no Actions minutes.
 
-The README uses authenticated GitHub downloads for the private repository.
-Private Actions remain opt-in; local release builds require no Actions minutes.
+## Publish the customer channel
+
+In the private `godmode-build` distribution repository, import the completed
+distribution directory, check it and deploy through that repository's documented
+deployment helper:
+
+```sh
+python3 scripts/import-release.py /path/to/godmode-cli/target/release-vX.Y.Z/dist --version vX.Y.Z
+npm run check:release
+npm run check
+```
+
+The importer creates `public/releases/vX.Y.Z`, advances `public/releases/latest.json`
+and copies the matching root `public/install.sh`. It refuses changed bytes under an
+existing release version. Correct release payloads with a new version; never replace
+published archives, checksums or their embedded installer/source files.
+
+Use the saved product deployment credential and deployment procedure in
+[`godmode-build/docs/release-cycle.md`](https://github.com/lofimichael/godmode-build/blob/main/docs/release-cycle.md).
+The deployment helper verifies release integrity before applying migrations, then
+checks migration state, deployed commit and anonymous denial. Automatic Git deployment
+is currently disabled; a tag, GitHub release or repository push alone does not advance
+the deployed customer channel.
+
+`godmodeup` downloads `https://godmode.build/releases/latest.json`. An explicit
+`godmodeup --version vX.Y.Z` selects that version's deployed manifest. Downloads need
+the private preview password, not a GitHub account. The updater verifies archive size
+and SHA-256, checks its managed-file receipt, keeps the previous executable as
+`~/.godmode/bin/godmode.previous`, and preserves profile, provider credentials and
+license files. Verify downloaded archive checksums, embedded source, native binary
+bytes, the previous version and preserved user files in a disposable home.
+
+## Bootstrap and activation
+
+```sh
+curl -fsSL https://get.godmode.build | bash
+# Open a new terminal, or run the PATH command printed by the installer.
+godmode license activate
+godmode
+```
+
+The public bootstrap downloads the password-protected installer and runs it with
+`--path --install-only`, installing both the CLI and `godmodeup`. It does not expose
+archives or licensing APIs, save the preview password or bypass purchase-key activation.
+Later updates use `godmodeup`. Bootstrap-only changes live in the distribution
+repository and do not require rewriting immutable CLI release files.
+
+Release SHA-256 checks detect damaged or mismatched downloads and HTTPS authenticates
+the transport. Release manifests are not independently signed or Apple-notarized.
+The Ed25519 signature on a license entitlement is separate from release integrity.
