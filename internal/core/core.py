@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Godmode 0.16.0: readable source, no bundled interpreter or dependencies.
+# Godmode 0.16.1: readable source, no bundled interpreter or dependencies.
 import sys
 if sys.version_info < (3, 9):
     sys.exit("Godmode needs Python 3.9 or newer. No files changed.")
@@ -2888,7 +2888,7 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 
-VERSION = '0.16.0'
+VERSION = '0.16.1'
 MUSIC_INCLUDED = True
 PROVIDERS = [{'id': 'github',
   'name': 'GitHub',

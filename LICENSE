@@ -1,5 +1,5 @@
 Godmode Commercial Source License
-Version 1.0
+Version 1.1
 15 November 2026
 
 Copyright (c) 2026 Michael Kirsanov.
@@ -42,13 +42,15 @@ A license permits use of Godmode. It does not grant access to a cloud, model, pa
 
 4. Covered releases and duration
 
-The paid local license covers Godmode CLI releases from version 0.16 through version 1.x. Version 2 and later, including their prereleases, are outside this grant unless the purchase record expressly includes them.
+The Godmode Early Access paid local license covers Godmode CLI version 0.16 and all future local CLI releases, including future major versions. The Licensed User receives perpetual local CLI use and all future local CLI updates that Licensor releases.
 
 The right to use covered releases is perpetual, subject to compliance with this license. An annual renewal or recurring subscription is not required for that local use.
 
-Fixes and improvements that Licensor releases within the covered version range are included. This does not require Licensor to release a particular feature, maintain every earlier release, or follow a release schedule.
+Fixes, improvements, and new local CLI versions that Licensor releases are included without an update renewal fee. This does not require Licensor to release a particular feature, maintain every earlier release, or follow a release schedule.
 
-The purchase does not include a hosted Godmode service, cloud or model usage, custom development, or a human support response-time or availability commitment.
+The purchase includes founder onboarding and Godmode setup help. Hosted Godmode services, cloud or model usage, and custom development are separate. The purchase does not include a human support response-time or availability commitment.
+
+Additional project downloads and community access are described in their own offer and retain their applicable licenses. They do not grant rights to third-party compositions, recordings, samples, or other assets. Marketing email is optional and is separate from license access and transactional account messages.
 
 5. Your applications and client work
 

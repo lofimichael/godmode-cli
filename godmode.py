@@ -27,7 +27,7 @@ from godmode_terminal import plain_mode, quiet, read_menu, read_page, read_secre
 from godmode_terminal import read_document, animate_entrance, _Keyboard, _draw
 from godmode_bridge import ui_bridge
 
-VERSION = '0.16.0'
+VERSION = '0.16.1'
 MUSIC_INCLUDED = None  # The native/source builder sets this optional feature flag.
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['█▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀', '█▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄']

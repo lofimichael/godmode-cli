@@ -21,8 +21,9 @@ godmode
 
 `godmode` opens **Profile**, **Providers**, and **Agents**, with a completion meter for each. Six profile fields, one saved provider, and one agent note fill the setup meter. Every field and provider remains optional.
 
-The personal license costs $100 once and covers Godmode 0.16–1.x on three active
-installations. Paid licenses verify offline without expiry. Evaluation licenses
+The Early Access personal license costs $100 once and includes perpetual local
+CLI use and all future local CLI updates on three active installations. Hosted
+services are separate. Paid licenses verify offline without expiry. Evaluation licenses
 expire after seven days and record no purchase. Source inspection is allowed;
 operation requires a license under the [commercial terms](LICENSE).
 

@@ -48,7 +48,7 @@ type Claims struct {
 	InstallationID string   `json:"installation_id"`
 	IssuedAt       int64    `json:"issued_at"`
 	Kind           string   `json:"kind"`
-	MaxMajor       int      `json:"max_major"`
+	MaxMajor       int      `json:"max_major"` // Zero covers all local CLI versions for paid perpetual receipts.
 	Features       []string `json:"features"`
 	TestMode       bool     `json:"test_mode"`
 	ExpiresAt      *int64   `json:"expires_at,omitempty"`
@@ -58,6 +58,11 @@ type Receipt struct {
 	InstallationID    string   `json:"installation_id"`
 	License           Envelope `json:"license"`
 	DeactivationToken string   `json:"deactivation_token,omitempty"`
+}
+
+// LifetimeUpdates identifies the signed, unbounded local CLI update entitlement.
+func (c Claims) LifetimeUpdates() bool {
+	return c.Kind == "perpetual" && !c.TestMode && c.ExpiresAt == nil && c.MaxMajor == 0
 }
 
 type Config struct {
@@ -158,6 +163,9 @@ func (c Config) verify(e Envelope, installation string, allowExpired bool) (Clai
 		return Claims{}, errors.New("This license was issued in the future. Check your system clock.")
 	}
 	if claims.TestMode {
+		if claims.MaxMajor < 1 {
+			return Claims{}, errors.New("The evaluation license has invalid version coverage.")
+		}
 		if claims.Kind != "evaluation" || claims.ExpiresAt == nil || *claims.ExpiresAt <= claims.IssuedAt || *claims.ExpiresAt > claims.IssuedAt+7*24*60*60 {
 			return Claims{}, errors.New("The evaluation license has invalid dates.")
 		}
@@ -168,7 +176,7 @@ func (c Config) verify(e Envelope, installation string, allowExpired bool) (Clai
 		return Claims{}, errors.New("The paid license has invalid entitlement terms.")
 	}
 	major, err := strconv.Atoi(strings.Split(strings.TrimPrefix(c.Version, "v"), ".")[0])
-	if err != nil || major > claims.MaxMajor {
+	if err != nil || major < 0 || (!claims.LifetimeUpdates() && major > claims.MaxMajor) {
 		return Claims{}, errors.New("This Godmode version is outside your license. Your earlier version remains licensed.")
 	}
 	for _, feature := range claims.Features {

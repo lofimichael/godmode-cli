@@ -52,6 +52,7 @@ func TestOfflineSignatureAndEntitlementBoundaries(t *testing.T) {
 		"future issue":       func(v *Claims) { v.IssuedAt = 1900000000 },
 		"unknown schema":     func(v *Claims) { v.Schema = 2 },
 		"invalid id":         func(v *Claims) { v.LicenseID = "not-a-uuid" },
+		"negative major":     func(v *Claims) { v.MaxMajor = -1 },
 	}
 	for name, change := range changes {
 		t.Run(name, func(t *testing.T) {
@@ -83,6 +84,39 @@ func TestOfflineSignatureAndEntitlementBoundaries(t *testing.T) {
 	}
 }
 
+func TestLifetimePaidReceiptCoversAllLocalVersionsOffline(t *testing.T) {
+	c, private, claims := fixture(t)
+	claims.MaxMajor = 0
+	envelope := sign(t, c, private, claims)
+	for _, version := range []string{"0.16.0", "1.0.0", "2.0.0", "42.0.0"} {
+		t.Run(version, func(t *testing.T) {
+			c.Version = version
+			c.Now = func() time.Time { return time.Unix(2200000000, 0) }
+			verified, err := c.Verify(envelope, testID)
+			if err != nil || !verified.LifetimeUpdates() {
+				t.Fatal("lifetime local update coverage rejected", err)
+			}
+		})
+	}
+	for _, version := range []string{"invalid", "-1.0.0"} {
+		c.Version = version
+		if _, err := c.Verify(envelope, testID); err == nil {
+			t.Fatalf("invalid version %q accepted", version)
+		}
+	}
+	var unknownPolicy map[string]any
+	payload, _ := json.Marshal(claims)
+	json.Unmarshal(payload, &unknownPolicy)
+	unknownPolicy["update_policy"] = "unknown"
+	payload, _ = json.Marshal(unknownPolicy)
+	unknownEnvelope := Envelope{Payload: base64.RawURLEncoding.EncodeToString(payload), KeyID: c.KeyID,
+		Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, payload))}
+	c.Version = "42.0.0"
+	if _, err := c.Verify(unknownEnvelope, testID); err == nil {
+		t.Fatal("unknown signed entitlement policy accepted")
+	}
+}
+
 func TestEvaluationExpiryAndPaidTermsCannotBeConfused(t *testing.T) {
 	c, private, claims := fixture(t)
 	now := c.Now().Unix()
@@ -94,6 +128,11 @@ func TestEvaluationExpiryAndPaidTermsCannotBeConfused(t *testing.T) {
 	if _, err := c.Verify(sign(t, c, private, claims), testID); err != nil {
 		t.Fatal(err)
 	}
+	claims.MaxMajor = 0
+	if _, err := c.Verify(sign(t, c, private, claims), testID); err == nil {
+		t.Fatal("evaluation accepted lifetime version coverage")
+	}
+	claims.MaxMajor = 1
 	c.Now = func() time.Time { return time.Unix(expiry, 0) }
 	if _, err := c.Verify(sign(t, c, private, claims), testID); err == nil {
 		t.Fatal("expired evaluation accepted")

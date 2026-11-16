@@ -169,7 +169,12 @@ func licenseCommand(args []string, home string) int {
 				fmt.Println("Evaluation ends " + time.Unix(*claims.ExpiresAt, 0).UTC().Format("2006-01-02 15:04 UTC"))
 				fmt.Println("No purchase recorded")
 			}
-			fmt.Printf("Versions through %d.x; offline verification\n%s\n", claims.MaxMajor, c.Path())
+			if claims.LifetimeUpdates() {
+				fmt.Println("All local CLI versions, including future updates; offline verification")
+			} else {
+				fmt.Printf("Versions through %d.x; offline verification\n", claims.MaxMajor)
+			}
+			fmt.Println(c.Path())
 		}
 		return 0
 	case "activate":

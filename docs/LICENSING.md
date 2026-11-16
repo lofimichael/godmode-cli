@@ -24,9 +24,16 @@ random UUID so interrupted activation can retry without consuming another slot.
 `--home DIR` and `GODMODE_HOME` select another Godmode home.
 
 Every ordinary command checks the saved signature locally. A perpetual receipt
-has no expiry or recurring network check. It names the highest licensed major
-version. A future major upgrade can require another entitlement; an already
-licensed version continues working offline.
+has no expiry or recurring network check. The $100 Early Access purchase under
+Terms 1.1 includes perpetual local CLI use and all future local CLI updates.
+Hosted services are separate. Earlier receipts retain their original coverage.
+
+In the signed schema-1 receipt, `max_major: 0` means all local CLI versions for a
+paid perpetual license. A positive value retains the original highest covered
+major version; it does not become lifetime coverage. Evaluation receipts must
+have a positive major limit. `godmode license status` names the update coverage.
+The v0.16.0 verifier accepts a lifetime receipt for its current major 0 version;
+later releases interpret zero as unbounded coverage.
 
 Preview evaluation receipts expire seven days after issuance. Their signed
 expiry is checked offline; reactivation does not extend the server's evaluation
