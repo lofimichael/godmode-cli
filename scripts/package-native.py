@@ -94,6 +94,11 @@ def git_value(*args):
     return result.stdout.strip()
 
 
+def verify_committed_source():
+    if git_value('status', '--porcelain', '--untracked-files=all', '--', *SOURCE_FILES, *SOURCE_DIRS):
+        raise ValueError('Commit every release source change before packaging; the archive must match its recorded commit.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'target/dist')
@@ -108,6 +113,10 @@ def main():
         parser.error('VERSION must be X.Y.Z')
     if not (ROOT / 'vendor/modules.txt').is_file():
         parser.error('Run go mod vendor before packaging; source releases include every dependency.')
+    try:
+        verify_committed_source()
+    except ValueError as error:
+        parser.error(str(error))
     epoch = args.epoch
     if epoch is None:
         epoch = int(os.environ.get('SOURCE_DATE_EPOCH') or git_value('show', '-s', '--format=%ct', 'HEAD'))
@@ -132,6 +141,8 @@ def main():
         if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
             parser.error('Missing native executable: ' + str(path))
         verify_native(path, target)
+    # Building regenerates the embedded engine. It must still match the commit.
+    verify_committed_source()
     build = {'version': version, 'commit': git_value('rev-parse', 'HEAD'),
              'go': subprocess.check_output(['go', 'version'], text=True).strip(),
              'CGO_ENABLED': '0', 'source_archive': release + '-source.tar.gz',

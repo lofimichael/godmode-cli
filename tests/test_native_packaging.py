@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import struct
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -20,6 +21,31 @@ class NativePackagingTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix='godmode-native-package-')
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+
+    def test_uncommitted_entrypoint_or_new_source_is_refused(self):
+        def git(*args):
+            subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', *args],
+                           cwd=self.root, check=True, capture_output=True)
+        git('init', '-q')
+        entry = self.root / 'godmode.py'
+        entry.write_text('original\n')
+        git('add', 'godmode.py')
+        git('commit', '-qm', 'Fixture')
+        with mock.patch.object(package, 'ROOT', self.root):
+            package.verify_committed_source()
+            entry.write_text('changed\n')
+            for staged in (False, True):
+                if staged:
+                    git('add', 'godmode.py')
+                with self.assertRaisesRegex(ValueError, 'Commit every release source change'):
+                    package.verify_committed_source()
+            git('restore', '--staged', 'godmode.py')
+            entry.write_text('original\n')
+            package.verify_committed_source()
+            (self.root / 'lib').mkdir()
+            (self.root / 'lib/new_module.py').write_text('uncommitted module\n')
+            with self.assertRaisesRegex(ValueError, 'Commit every release source change'):
+                package.verify_committed_source()
 
     def test_archive_bytes_ignore_file_times_owner_and_gzip_name(self):
         script = self.root / 'install.sh'
@@ -102,7 +128,7 @@ class NativePackagingTests(unittest.TestCase):
         output = self.root / 'dist'
         argv = ['package-native.py', '--skip-build', '--binaries-dir', str(binaries),
                 '--output-dir', str(output), '--epoch', '1234']
-        with mock.patch.object(package, 'ROOT', self.root), mock.patch.object(package, 'git_value', return_value='a'*40), \
+        with mock.patch.object(package, 'ROOT', self.root), mock.patch.object(package, 'git_value', side_effect=lambda *args: '' if args[0] == 'status' else 'a'*40), \
              mock.patch.object(package.subprocess, 'check_output', return_value='go fixture\n'), \
              mock.patch('sys.argv', argv), mock.patch('sys.stdout', io.StringIO()):
             package.main()

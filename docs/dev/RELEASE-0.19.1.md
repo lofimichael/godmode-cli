@@ -1,4 +1,4 @@
-# Godmode 0.19.0
+# Godmode 0.19.1
 
 17 November 2026.
 
@@ -13,3 +13,7 @@ Guided screens show the selected business and keys, with a full-width focus row 
 [Selection decision](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md), and [performance review](PERFORMANCE_REVIEW.md) contain the source research and measurement boundaries. The local measurements describe this Mac, not a cross-platform performance guarantee. macOS ARM64 is exercised locally; the other release targets are cross-compiled and inspected.
 
 The CLI remains free and accountless under its existing source-available license. Membership, billing, provider credentials and agent files are not changed by this release.
+
+The private 0.19.0 draft was withheld because its source commit omitted the readable entrypoint. No customer download channel advanced to that version. Packaging now refuses uncommitted source before and after building.
+
+Validation: 313 Python tests passed on Python 3.9; the earlier Python 3.14 full run passed 310 tests, followed by focused checks for recovery and intro changes. All Go suites passed with the race detector. Installer/updater preservation, source parity, and nine actual PTY capture checks passed. The subsequent packaging guard has its own regression check.

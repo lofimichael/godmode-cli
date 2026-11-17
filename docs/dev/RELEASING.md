@@ -32,6 +32,8 @@ Set the version in `VERSION`, the `VERSION` constant in `godmode.py`, and
 python3 scripts/package-native.py --output-dir target/release-vX.Y.Z/dist
 ```
 
+The packager refuses uncommitted release source before and after building, so archived source matches its recorded commit.
+
 The packager builds macOS arm64/amd64 and Linux arm64/amd64 with `CGO_ENABLED=0`,
 then creates deterministic archives, the complete source archive, `install.sh`
 and `SHA256SUMS`. All four native archives carry their corresponding binary.
