@@ -1,14 +1,16 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the native 0.15 interface. Direct commands and the Python plain/compatibility interface retain their own output contracts.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the native 0.19 interface. Direct commands and the Python plain/compatibility interface retain their own output contracts.
 
-![Godmode home](../images/native/home.png)
+![Godmode home](../images/v019/home.png)
+
+![Godmode active setup](../images/v019/active-setup.png)
 
 ![Masked key edit](../images/native/key-preview.png)
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses three columns when the terminal is wide enough and rows when narrower. Profile, Providers and Agents stay independent, followed by Help / FAQ, Music and Done. The first incomplete section is selected when home opens; a complete setup selects Done.
+Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses aligned rows for Active setup, Providers, Agents, Business details, Doctor, Update, Help / FAQ, Music and Done. Business and keys stay visible across pages. Active setup leads to separate key-environment and business-profile pickers and saves the complete pair. The intro has an immediate warning-to-empowerment transition, finite gradient animation and no forced wait. Selected rows pulse briefly; delayed loading indicators appear only during real work. See [active setup](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
 ```mermaid
 flowchart LR
@@ -48,9 +50,11 @@ The Go interface temporarily holds newly entered text. The Python engine validat
 ```mermaid
 flowchart TD
     Entry[godmode] --> Seen{Welcome completed?}
-    Seen -->|No| Welcome[NFO welcome + account-use statement]
-    Seen -->|Yes| Home[Profile · Providers · Agents · FAQ · Music · Done]
-    Welcome -->|Enter accepts| Home
+    Seen -->|No| Welcome[Animated warning → empowerment]
+    Seen -->|Yes| Home[Active setup · Providers · Agents · Business details · Doctor · Update · FAQ · Music]
+    Welcome -->|Enter on each stage| Home
+    Home --> Active[Choose business + keys]
+    Active -->|Save pair for new commands| Home
     Home --> Profile[Profile field list]
     Profile --> Field[Edit one field]
     Field -->|Save| Profile

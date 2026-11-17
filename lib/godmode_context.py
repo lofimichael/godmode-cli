@@ -100,12 +100,15 @@ class ContextStore:
         return sorted(name for name, state in self.states().items() if state == 'set')
 
 
-def context_list(home):
+def context_list(home, missing_selected=None):
     directory = context_directory(home)
     result = []
     if directory.exists():
         for path in sorted(directory.iterdir()):
             if re.fullmatch(r'[a-z][a-z0-9_-]{0,47}', path.name):
+                if path.name == missing_selected and not os.path.lexists(path / 'context.json'):
+                    context_directory(home, path.name)  # Missing metadata, not an unsafe directory.
+                    continue  # Let a live session select Automatic or another saved business.
                 context = Context(home, path.name)
                 result.append({'name': context.name, 'profile_path': str(context.profile().path),
                                'keys': dict(context.aliases)})

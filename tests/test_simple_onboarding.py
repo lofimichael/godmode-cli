@@ -121,13 +121,13 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
         complete_intro(session)
-        self.choice(session, "Business")
+        self.choice(session, "Active setup")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Business", "Providers", "Agents", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
+        for label in ("Active setup", "Business details", "Providers", "Agents", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
-        session.send(b"\r")
-        self.choice(session, "Edit profile")
+        session.send(b"\x1b[B" * 3)
+        self.choice(session, "Business details")
         session.send(b"\r")
         self.open_choice(session, LABELS[0])
         # Enter on an empty field skips it and opens the next empty one: one Enter per field.
@@ -141,9 +141,7 @@ class ModularOnboardingTests(unittest.TestCase):
         self.choice(session, "Back")
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
-        self.choice(session, "Edit profile")
-        session.send(b"\x1b")
-        self.choice(session, "Business")  # Home keeps the section that was opened.
+        self.choice(session, "Business details")  # Home keeps the section that was opened.
         session.send(b"\x1b")
         session.expect("Profile 0 optional fields")
         session.done()
@@ -189,7 +187,7 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
         complete_intro(session)
-        self.choice(session, "Business")
+        self.choice(session, "Active setup")
         session.send(b"\x1b")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])

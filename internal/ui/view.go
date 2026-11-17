@@ -97,40 +97,9 @@ func (m model) path(path string) string {
 	}
 	return clean(path)
 }
-func (m model) introLines() []string {
-	p := m.palette()
-	rows := m.logo(m.height >= 20)
-	rows = append(rows, "")
-	rows = append(rows, m.styledWrap("GODMODE gives your agents the goddamn keys.", p.title)...)
-	rows = append(rows, "")
-	rows = append(rows, m.wrap("Your profile and keys are stored in files on this machine.")...)
-	rows = append(rows, "")
-	rows = append(rows, m.styledWrap("Agents use these keys as you. They can spend money, change live systems and delete data.", p.warn)...)
-	return rows
-}
-func (m model) introFits() bool { return m.width >= 28 && len(m.introLines())+4 <= m.height }
-func (m model) introView() []string {
-	p := m.palette()
-	if !m.introFits() {
-		return append(m.styledWrap("Enlarge the terminal to read the account-access statement.", p.warn), "", p.muted.Render("Esc exits"))
-	}
-	rows := m.introLines()
-	if !m.opts.NoMotion && m.colors && m.tick < 6 {
-		artRows := len(m.logo(m.height >= 20))
-		for i := m.tick; i < min(artRows, 6); i++ {
-			rows[i] = ""
-		}
-	}
-	action := "Enter accept and set up"
-	if m.initialRoute == "intro" {
-		action = "Enter accept"
-	}
-	if m.error != "" {
-		rows = append(rows, m.styledWrap(m.error, p.bad)...)
-	}
-	rows = append(rows, "", p.muted.Render(action+"  ·  Esc exit"))
-	return rows
-}
+func (m model) introLines() []string { return m.cinematicIntroLines() }
+func (m model) introFits() bool      { return m.cinematicIntroFits() }
+func (m model) introView() []string  { return m.cinematicIntroView() }
 func (m model) homeView() []string {
 	p, w := m.palette(), m.innerWidth()
 	rows := []string{}
@@ -145,13 +114,13 @@ func (m model) homeView() []string {
 		rows = append(rows, "")
 	}
 	statuses := []string{
-		countLabel(len(m.state.Progress.Fields), "field"),
+		"Switch business / keys",
 		countLabel(m.state.KeyCount, "key") + " stored",
 		countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added",
-		"Key files", "Check local setup", "Install latest", "", "", "",
+		countLabel(len(m.state.Progress.Fields), "field"), "Check local setup", "Install latest", "", "", "",
 	}
 	if m.state.ProfileError != "" {
-		statuses[0] = "cannot read"
+		statuses[3] = "cannot read"
 	}
 	if m.state.StoreError != "" {
 		statuses[1] = "cannot read"
@@ -160,23 +129,27 @@ func (m model) homeView() []string {
 		statuses[7] = "not installed"
 	}
 	if w < 45 {
+		statuses[0] = "Switch"
 		statuses[4], statuses[5] = "", ""
 	}
 	if w < 40 && m.state.StoreError == "" {
 		statuses[1] = countLabel(m.state.KeyCount, "key")
+		statuses[3] = ""
 	}
 	choices := []string{}
 	for i, name := range homeNames {
 		choices = append(choices, m.choice(name, statuses[i], i == m.selected, w))
 	}
 	foot := []string{}
-	if m.error != "" {
+	if m.busyVisible {
+		foot = append(foot, p.cyan.Render(m.loadingText()))
+	} else if m.error != "" {
 		foot = append(foot, m.styledWrap(m.error, p.bad)...)
 	} else if m.notice != "" {
 		foot = append(foot, m.styledWrap(m.notice, p.good)...)
 	}
-	hint := "↑↓ move  ·  Enter open  ·  Esc quit"
-	if w < 36 {
+	hint := "↑↓ move  ·  Enter open  ·  s switch  ·  Esc quit"
+	if w < 54 {
 		hint = "↑↓ Enter · Esc quit"
 	}
 	foot = append(foot, p.muted.Render(hint))
@@ -202,12 +175,35 @@ func (m model) choice(name, status string, selected bool, width int) string {
 		pointer = p.cyan.Render("❯ ")
 		name = p.title.Render(name)
 	}
+	var row string
 	if status != "" {
 		room := max(4, width-ansi.StringWidth(status)-3)
 		name = ansi.Truncate(name, room, "…")
-		return pointer + pad(name, room+1) + status
+		row = pointer + pad(name, room+1) + status
+	} else {
+		row = pointer + ansi.Truncate(name, max(1, width-2), "…")
 	}
-	return pointer + ansi.Truncate(name, max(1, width-2), "…")
+	if selected {
+		style := p.selected
+		if m.colors {
+			if m.dark {
+				style = style.Foreground(lipgloss.Color("#EAE5FF"))
+			} else {
+				style = style.Foreground(lipgloss.Color("#352552"))
+			}
+		}
+		if m.pulseFrame > 0 && m.colors && !m.opts.NoMotion {
+			if m.dark {
+				style = style.Background(lipgloss.Color("#34304D"))
+			} else {
+				style = style.Background(lipgloss.Color("#DDD3EF"))
+			}
+		}
+		// Nested ANSI resets from the pointer/status would clear the row's
+		// background. One style owns the complete selected row.
+		return style.Render(pad(ansi.Strip(row), width))
+	}
+	return row
 }
 func (m model) header() []string {
 	rows := m.scopeLines()
@@ -219,6 +215,13 @@ func (m model) header() []string {
 func (m model) pageHeader() []string {
 	p := m.palette()
 	switch m.page {
+	case "active":
+		rows := m.title("Active setup", "")
+		if m.height >= 18 {
+			rows = append(rows, m.wrap("New commands use this choice. Shell settings and flags override it.")...)
+			rows = append(rows, "")
+		}
+		return rows
 	case "business":
 		rows := m.title("Business", "")
 		if m.state.Context == "" && m.height >= 20 {
@@ -317,7 +320,7 @@ func (m model) body() []string {
 	w := m.innerWidth()
 	rows := []string{}
 	switch m.page {
-	case "business", "contexts", "environments", "environment_new", "scope_name", "scope_details", "doctor":
+	case "active", "business", "contexts", "environments", "environment_new", "scope_name", "scope_details", "doctor":
 		return m.managementBody()
 	case "profile":
 		if m.state.ProfileError != "" {
@@ -508,7 +511,9 @@ func (m model) footer() []string {
 	if m.page == "key" {
 		rows = append(rows, m.keyFooter()...)
 	}
-	if m.error != "" {
+	if m.busyVisible {
+		rows = append(rows, m.styledWrap(m.loadingText(), p.cyan)...)
+	} else if m.error != "" {
 		rows = append(rows, m.styledWrap(m.error, p.bad)...)
 	} else if m.page == "key" && m.check.Error != "" {
 		rows = append(rows, m.styledWrap(m.check.Error, p.warn)...)
@@ -568,6 +573,11 @@ func (m model) footer() []string {
 		case "scope_details":
 			hint = "↑↓ · Enter select\nEsc back"
 		}
+	}
+	if m.busyValidation {
+		hint = "Checking · edits retained · Esc back"
+	} else if m.busyVisible {
+		hint = "Ctrl-C exit"
 	}
 	rows = append(rows, "")
 	rows = append(rows, m.styledWrap(hint, p.muted)...)

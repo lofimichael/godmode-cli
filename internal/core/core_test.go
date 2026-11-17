@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -91,6 +92,8 @@ func TestUIEnvironmentOmitsInheritedCredentials(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "synthetic-private-env")
 	t.Setenv("GODMODE_PREVIEW_PASSWORD", "synthetic-private-env")
 	t.Setenv("CODEX_HOME", "/example/agent")
+	t.Setenv("GODMODE_ENV", "acme-test")
+	t.Setenv("GODMODE_CONTEXT", "acme")
 	environment := strings.Join(uiEnvironment(), "\n")
 	if strings.Contains(environment, "synthetic-private-env") {
 		t.Fatal("UI subprocess inherited management credentials")
@@ -98,10 +101,22 @@ func TestUIEnvironmentOmitsInheritedCredentials(t *testing.T) {
 	if !strings.Contains(environment, "CODEX_HOME=/example/agent") || !strings.Contains(environment, "GODMODE_EXECUTABLE=") {
 		t.Fatal("UI subprocess lacks its agent/executable context")
 	}
+	if !strings.Contains(environment, "GODMODE_ENV=acme-test") || !strings.Contains(environment, "GODMODE_CONTEXT=acme") {
+		t.Fatal("UI subprocess lost the shell's nonsecret active selection")
+	}
 }
 
 func TestClientSelectionIsPerProcessAndReachesTheEngine(t *testing.T) {
 	home := isolatedHome(t)
+	ordinary, err := New(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	// Starting the client fixes its selection before another session saves one.
+	if _, err = ordinary.Call("state", nil); err != nil {
+		t.Fatal(err)
+	}
 	client, err := New(home)
 	if err != nil {
 		t.Fatal(err)
@@ -125,14 +140,18 @@ func TestClientSelectionIsPerProcessAndReachesTheEngine(t *testing.T) {
 	if state["env_path"] != filepath.Join(home, ".env.godmode.acme-test") {
 		t.Fatal("selected client uses wrong key file")
 	}
-	ordinary, err := New(home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ordinary.Close()
 	state, err = ordinary.Call("state", nil)
 	if err != nil || state["context"] != "" || state["environment"] != "default" {
 		t.Fatal("one client changed another client's scope")
+	}
+	fresh, err := New(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	state, err = fresh.Call("state", nil)
+	if err != nil || state["context"] != "acme" || state["environment"] != "acme-test" {
+		t.Fatal("a new client did not adopt the saved setup")
 	}
 }
 
@@ -235,3 +254,80 @@ func TestEmbeddedEngineIgnoresPythonStartupInjection(t *testing.T) {
 }
 
 var _ io.WriteCloser = (*writeBuffer)(nil)
+
+type signalledInput struct {
+	io.WriteCloser
+	written chan struct{}
+	once    sync.Once
+}
+
+func (s *signalledInput) Write(data []byte) (int, error) {
+	n, err := s.WriteCloser.Write(data)
+	s.once.Do(func() { close(s.written) })
+	return n, err
+}
+
+func TestAbortInterruptsCallWithoutWaitingForRequestLock(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("Python 3 is unavailable")
+	}
+	cmd := exec.Command(python, "-I", "-S", "-c", "import time; time.sleep(30)")
+	input, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	signalled := &signalledInput{WriteCloser: input, written: make(chan struct{})}
+	client := &Client{cmd: cmd, input: signalled, output: bufio.NewScanner(output), done: make(chan error, 1), timeout: time.Minute}
+	go func() { client.done <- cmd.Wait() }()
+	t.Cleanup(func() { client.Abort(); client.Close() })
+	called := make(chan error, 1)
+	go func() { _, err := client.Call("blocked", nil); called <- err }()
+	select {
+	case <-signalled.written:
+	case <-time.After(3 * time.Second):
+		t.Fatal("request never reached the fixture child")
+	}
+	// The request holds client.mu while waiting for the sleeping child. Abort
+	// must not take that lock; concurrent repeated cancellation is harmless.
+	var group sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		group.Add(1)
+		go func() { defer group.Done(); client.Abort() }()
+	}
+	aborted := make(chan struct{})
+	go func() { group.Wait(); close(aborted) }()
+	select {
+	case <-aborted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Abort waited for the in-flight request")
+	}
+	select {
+	case err := <-called:
+		if err == nil {
+			t.Fatal("aborted request reported success")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("aborted request did not return")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- client.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close did not reap the aborted child")
+	}
+	if _, err := client.Call("state", nil); err == nil {
+		t.Fatal("closed client accepted a new request")
+	}
+}

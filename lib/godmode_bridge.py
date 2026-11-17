@@ -33,14 +33,24 @@ class UIBridge:
     def call(self, request):
         a = self.api
         action = request.get('action')
+        if action in ('key_plan', 'key_check', 'key_save', 'profile_save'):
+            # A live session pins names, not permission to reconstruct deleted
+            # selections. Keep inventory, switching and doctor available.
+            if a.get('ACTIVE_ENVIRONMENT', 'default') != 'default' and not self.store.exists():
+                raise ValueError('Selected environment is no longer saved. Select another environment, '
+                                 'or recreate it with godmode env create NAME.')
+            if a.get('ACTIVE_CONTEXT') is not None:
+                a['Context'](a['profile_home'](self.home), a['ACTIVE_CONTEXT'].name)
         if action == 'environment_list':
             rows = a['environment_list'](self.home)
             return {'environments': [dict(name=row['name'], path=row['path'], keys=row['key_count']) for row in rows],
                     'selected': a.get('ACTIVE_ENVIRONMENT', 'default')}
         if action == 'context_list':
             automatic = a['environment_profile'](self.home, a.get('ACTIVE_ENVIRONMENT', 'default'))
-            return {'contexts': [dict(name='', profile_path=str(automatic.path))] + a['context_list'](a['profile_home'](self.home)),
-                    'selected': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''}
+            selected = a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''
+            return {'contexts': [dict(name='', profile_path=str(automatic.path))]
+                                + a['context_list'](a['profile_home'](self.home), missing_selected=selected),
+                    'selected': selected}
         if action in ('environment_select', 'environment_create', 'context_select', 'context_create'):
             name = self._text(request, 'name')
             if action.startswith('environment_'):
@@ -54,12 +64,18 @@ class UIBridge:
                     details = a['environment_show'](self.home, name)
                     if name != 'default' and not details['exists']:
                         raise ValueError('Environment is not saved. Create it with godmode env create NAME.')
-                a['ACTIVE_ENVIRONMENT'] = name
+                environment = name
+                context_name = a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''
             else:
                 directory = a['profile_home'](self.home)
                 context = (a['context_create'](directory, name) if action == 'context_create'
                            else a['Context'](directory, name) if name else None)
-                a['ACTIVE_CONTEXT'] = context
+                context_name = context.name if context is not None else ''
+                environment = a.get('ACTIVE_ENVIRONMENT', 'default')
+            # Save only after the entire pair validates. The live session changes
+            # only after the atomic write succeeds; unrelated open sessions retain
+            # their own already-resolved pair.
+            a['set_active_selection'](self.home, environment, context_name)
             self.store = a['effective_store'](self.home)
             self.profile = a['business_profile'](self.home)
             self.profile_data = None
@@ -72,6 +88,11 @@ class UIBridge:
             result = {'version': a['VERSION'], 'home': str(self.store.config_dir),
                       'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else '',
                       'environment': a.get('ACTIVE_ENVIRONMENT', 'default'),
+                      'selection_source': a.get('SELECTION_SOURCE', 'default'),
+                      'environment_source': a.get('ACTIVE_SOURCES', {}).get('environment', 'default'),
+                      'context_source': a.get('ACTIVE_SOURCES', {}).get('context', 'default'),
+                      'startup_sources': dict(a.get('STARTUP_SOURCES', {})),
+                      'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
                       'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
@@ -232,3 +253,22 @@ def ui_bridge(home=None, namespace=None):
         raw = None
         sys.stdout.write(json.dumps(result, ensure_ascii=True, separators=(',', ':')) + '\n')
         sys.stdout.flush()
+
+
+def ui_startup_error(message):
+    """Complete one bounded handshake when selection fails before bridge creation.
+
+    No stderr/traceback capture and no request content enters the response.
+    """
+    raw = sys.stdin.buffer.readline(8 * 1024 * 1024 + 1)
+    if not raw or len(raw) > 8 * 1024 * 1024 or not raw.endswith(b'\n'):
+        return 2
+    try:
+        if not isinstance(json.loads(raw), dict):
+            raise ValueError()
+    except (ValueError, UnicodeError):
+        message = 'Invalid UI request.'
+    safe = ''.join(' ' if ord(char) < 32 or 127 <= ord(char) < 160 else char for char in message)[:1024]
+    sys.stdout.write(json.dumps({'ok': False, 'error': safe}, ensure_ascii=True, separators=(',', ':')) + '\n')
+    sys.stdout.flush()
+    return 2

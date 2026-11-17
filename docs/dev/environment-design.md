@@ -4,7 +4,7 @@ Godmode needs to equip one person working across their own products and client a
 
 ## Complete files are the unit of selection
 
-`.env.godmode` remains the default. `--env NAME` selects `.env.godmode.NAME`. A named file is complete: an absent value never resolves through another file. There is no working-directory detection, global active environment or automatic migration. The menu holds its selection only in its backend process. Concurrent agents select independently.
+`.env.godmode` remains the default. `--env NAME` selects `.env.godmode.NAME`. A named file is complete: an absent value never resolves through another file. Since 0.19, `godmode use` and Active setup save a default environment/business pair in `active.json`. Flags override shell variables, which override the saved pair. There is no working-directory detection or automatic migration. Each running Godmode process keeps its resolved selection; each new unscoped invocation follows the saved default. Agents must capture `godmode active --command`, use a copied scoped note, or pin shell selectors to remain independent of later switches. See [Active setup](ACTIVE_SELECTION.md).
 
 `env create NAME --copy SOURCE` makes a create-only snapshot. It preserves the source's exact bytes, including comments and sealed tokens, using the same home's seal key. Source and destination validation, a writer lock, snapshot checks, private permissions and Git guards apply. No decrypted value is printed or copied through a shell argument. Clone semantics are explicit: subsequent source edits and rotations do not propagate.
 
@@ -30,7 +30,7 @@ Each webhook endpoint has a distinct signing secret. The website now has separat
 
 ## Status replaces setup scoring
 
-The native screen gives Business, Providers, Agents and Environments equal weight. It shows actual fields, keys and installed notes rather than scoring optional business information as unfinished work. Navigation returns to the selected section. NFO lettering, color and focus remain; short windows reserve action and navigation space before decoration.
+The native home starts with Active setup, followed by Providers, Agents and Business details. It shows actual fields, keys and installed notes rather than scoring optional business information as unfinished work. Navigation returns to the selected section. NFO lettering, color and focus remain; short windows reserve action and navigation space before decoration.
 
 Doctor checks local file safety, sealed-value readability, alias targets, business data, agent notes and the managed updater without network requests or mutations. It authenticates raw stored values separately from aliases. A stored key is not reported as provider-verified. Update exits the UI cleanly, checks the sibling updater and executable against the install receipt, and invokes the existing checksum-validating release flow without provider credentials.
 
@@ -47,4 +47,4 @@ Local fixtures exercise independent files, clone preservation, mapped writes, co
 - [Stripe: idempotency](https://docs.stripe.com/api/idempotent_requests)
 - [Evil Martians: interfaces for developer tools](https://evilmartians.com/chronicles/devs-in-mind-how-to-design-interfaces-for-developer-tools)
 
-Reviewed November 16, 2026.
+Reviewed November 17, 2026; updated for 0.19 active selection.

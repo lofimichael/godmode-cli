@@ -531,8 +531,8 @@ class TerminalTests(unittest.TestCase):
             command = [sys.executable, str(repo / "tests/engine_fixture.py"), str(repo / "godmode.py"), "--home", str(home), "--plain"]
             intro = Terminal(command + ["intro"], env, cols=8, rows=12)
             try:
-                intro.seen("can spend money")
-                intro.seen("delete data")
+                intro.seen("can spend, publish and delete")
+                intro.seen("Put your agent to fucking work.")
                 intro.seen("Enter accept")
                 self.assertNotIn(b"Enlarge", intro.capture)
                 intro.send(b"\r")

@@ -78,7 +78,8 @@ The separate source archive contains the matching Go and Python sources, build s
   bin/godmode                   native UI with embedded Python file engine
   bin/godmodeup                 the updater
   env                           PATH setup, sourced by your shell with --path
-  profile.json                  your profile
+  active.json                   optional saved business and key-environment selection
+  profile.json                  your default environment profile
   .env.godmode                  your keys, sealed
   seal.key                      the key that unseals them
   STOP_AND_READ_ME_FOR_KEYS.md  tells agents to use godmode instead of opening the files
@@ -89,6 +90,8 @@ The separate source archive contains the matching Go and Python sources, build s
   state/picard/                 optional Picard media cache
   state/music/                  optional local music settings and render cache
 ```
+
+`godmode use --env NAME --context NAME` saves the active setup. `godmode active` shows it; `--context -` selects the environment’s own profile. See [Businesses and environments](CONTEXTS.md) for precedence and scoped agent commands.
 
 `--home DIR` or `GODMODE_HOME` selects another home. `godmode path` and `godmode profile path` print where the key file and profile are.
 

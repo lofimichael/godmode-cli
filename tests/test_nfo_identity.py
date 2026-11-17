@@ -23,7 +23,9 @@ class NfoIdentityTests(unittest.TestCase):
                     rows, ready = cli.intro_rows(0, None, width, height, setup_next=True)
                     text = ' '.join(' '.join(rows).split())
                     if ready:
-                        for fact in ('Agents use these keys as you.', 'spend money', 'change live systems', 'delete data', 'Enter accept'):
+                        for fact in ("You will fuck shit up if you don't know what you're doing.",
+                                     'Agents use these keys as you.', 'spend, publish and delete',
+                                     'Put your agent to fucking work.', 'Keys stay local.', 'Enter accept'):
                             self.assertIn(fact, text)
                         self.assertLessEqual(cli.drawn_height(rows + [''], width), height - 1)
                         self.assertTrue(all(cli.cells(row) < width for row in rows))
@@ -60,7 +62,7 @@ class NfoIdentityTests(unittest.TestCase):
                 screen = '\n'.join(Screen(40).feed(terminal.capture).lines())
                 self.assertIn('Environment default', screen)
                 self.assertNotIn('Setup 0%', screen)
-                labels = ('Business', 'Providers', 'Agents', 'Environments', 'Doctor', 'Update', 'Help / FAQ', 'Music', 'Done')
+                labels = ('Active setup', 'Providers', 'Agents', 'Business details', 'Doctor', 'Update', 'Help / FAQ', 'Music', 'Done')
                 for index, label in enumerate(labels):
                     if index:
                         terminal.send(b'\x1b[B')
@@ -85,16 +87,18 @@ class NfoIdentityTests(unittest.TestCase):
                     terminal.wait(lambda: any(row.startswith('❯ ' + name)
                                              for row in Screen(80).feed(terminal.capture).lines()))
                 terminal.expect('Esc quit')
-                selected('Business')
+                selected('Active setup')
                 terminal.send(b'\r')
-                selected('Edit profile')
+                selected('Key environment')
+                terminal.send(b'\x1b')
+                selected('Active setup')
+                terminal.send(b'\x1b[B' * 3)
+                selected('Business details')
                 terminal.send(b'\r')
                 terminal.expect('Your name')
                 terminal.send(b'\x1b')
-                selected('Edit profile')
-                terminal.send(b'\x1b')
-                selected('Business')
-                terminal.send(b'\x1b[B')
+                selected('Business details')
+                terminal.send(b'\x1b[A' * 2)
                 selected('Providers')
                 terminal.send(b'\r')
                 terminal.expect('Another key')

@@ -65,7 +65,8 @@ func uiEnvironment() []string {
 	names := []string{"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM",
 		"TMPDIR", "NO_COLOR", "CLICOLOR", "XDG_CONFIG_HOME", "CODEX_HOME", "COPILOT_HOME",
 		"DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
-		"GODMODE_HOME", "GODMODE_CONFIG_DIR", "GODMODE_STATE_DIR", "GODMODE_PLAIN", "GODMODE_NO_MOTION"}
+		"GODMODE_HOME", "GODMODE_CONFIG_DIR", "GODMODE_STATE_DIR", "GODMODE_PLAIN", "GODMODE_NO_MOTION",
+		"GODMODE_ENV", "GODMODE_CONTEXT"}
 	result := make([]string, 0, len(names))
 	for _, name := range names {
 		if value, exists := os.LookupEnv(name); exists {
@@ -149,12 +150,27 @@ func Run(args []string) int {
 // Client serializes bounded JSON requests to one private local subprocess.
 type Client struct {
 	mu      sync.Mutex
+	abort   sync.Once
 	cmd     *exec.Cmd
 	input   io.WriteCloser
 	output  *bufio.Scanner
 	done    chan error
 	closed  bool
 	timeout time.Duration
+}
+
+// Abort interrupts an in-flight operation without waiting for the request lock.
+// Call still owns protocol cleanup; Close reaps the child after Call returns.
+// Killing the process cannot roll back a file change it already committed.
+func (c *Client) Abort() {
+	c.abort.Do(func() {
+		if c.cmd != nil && c.cmd.Process != nil {
+			_ = c.cmd.Process.Kill()
+		}
+		if c.input != nil {
+			_ = c.input.Close()
+		}
+	})
 }
 
 func New(home string) (*Client, error) {

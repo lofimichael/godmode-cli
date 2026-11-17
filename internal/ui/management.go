@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var homeNames = []string{"Business", "Providers", "Agents", "Environments", "Doctor", "Update", "Help / FAQ", "Music", "Done"}
+var homeNames = []string{"Active setup", "Providers", "Agents", "Business details", "Doctor", "Update", "Help / FAQ", "Music", "Done"}
 
 type businessContext struct {
 	Name        string
@@ -66,12 +66,11 @@ func (m model) command(action ...string) string {
 	if m.opts.Home != "" {
 		words = append(words, "--home", m.opts.Home)
 	}
-	if m.state.Context != "" {
-		words = append(words, "--context", m.state.Context)
+	context := m.state.Context
+	if context == "" {
+		context = "-"
 	}
-	if m.state.Environment != "" && m.state.Environment != "default" {
-		words = append(words, "--env", m.state.Environment)
-	}
+	words = append(words, "--context", context, "--env", scopeName(m.state.Environment))
 	words = append(words, action...)
 	for i, word := range words {
 		words[i] = shellArgument(word)
@@ -81,11 +80,18 @@ func (m model) command(action ...string) string {
 
 func (m model) scopeLines() []string {
 	p := m.palette()
-	business, keys := "Business: "+businessName(m.state.Context), "Keys: "+scopeName(m.state.Environment)
+	business := p.muted.Render("Business: ") + p.cyan.Render(businessName(m.state.Context))
+	keys := p.muted.Render("Keys: ") + p.title.Render(scopeName(m.state.Environment))
+	var rows []string
 	if ansi.StringWidth(business+" · "+keys) <= m.innerWidth() {
-		return []string{p.muted.Render(business + " · " + keys)}
+		rows = []string{business + p.muted.Render(" · ") + keys}
+	} else {
+		rows = []string{ansi.Truncate(business, m.innerWidth(), "…"), ansi.Truncate(keys, m.innerWidth(), "…")}
 	}
-	return []string{p.muted.Render(ansi.Truncate(business, m.innerWidth(), "…")), p.muted.Render(ansi.Truncate(keys, m.innerWidth(), "…"))}
+	if m.state.ShellOverride {
+		rows = append(rows, m.styledWrap("Shell settings override the saved default.", p.warn)...)
+	}
+	return rows
 }
 
 func (m *model) external(command error) tea.Cmd {
@@ -171,6 +177,15 @@ func (m *model) selectScope(action, name string) bool {
 
 func (m *model) enterManagement() tea.Cmd {
 	switch m.page {
+	case "active":
+		switch m.selected {
+		case 0:
+			m.loadEnvironments()
+		case 1:
+			m.loadContexts()
+		case 2:
+			return m.back()
+		}
 	case "business":
 		switch m.selected {
 		case 0:
@@ -187,8 +202,8 @@ func (m *model) enterManagement() tea.Cmd {
 		if m.selected < len(m.contexts) {
 			name := m.contexts[m.selected].Name
 			if m.selectScope("context_select", name) {
-				m.notice = "Business: " + businessName(name)
-				m.page, m.selected = "business", 0
+				m.notice = "Active business: " + businessName(name)
+				m.page, m.selected = "active", 1
 			}
 		} else if m.selected == len(m.contexts) {
 			m.startScopeName("context", "")
@@ -199,8 +214,8 @@ func (m *model) enterManagement() tea.Cmd {
 		if m.selected < len(m.environments) {
 			name := m.environments[m.selected].Name
 			if m.selectScope("environment_select", name) {
-				m.notice = "Keys: " + scopeName(name)
-				return m.back()
+				m.notice = "Active keys: " + scopeName(name)
+				m.page, m.selected = "active", 0
 			}
 		} else if m.selected == len(m.environments) {
 			m.page, m.selected = "environment_new", 0
@@ -291,6 +306,8 @@ func (m *model) editScope(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m model) managementNames() []string {
 	switch m.page {
+	case "active":
+		return []string{"Key environment", "Business profile", "Back"}
 	case "business":
 		return []string{"Edit profile", "Switch business", "New business", "Back"}
 	case "environment_new":
@@ -380,6 +397,12 @@ func (m model) managementBody() []string {
 	for i, name := range m.managementNames() {
 		status := ""
 		switch m.page {
+		case "active":
+			if i == 0 {
+				status = p.cyan.Render(scopeName(m.state.Environment))
+			} else if i == 1 {
+				status = p.cyan.Render(businessName(m.state.Context))
+			}
 		case "business":
 			if i == 0 {
 				status = countLabel(len(m.state.Progress.Fields), "field")
@@ -390,13 +413,13 @@ func (m model) managementBody() []string {
 			}
 		case "contexts":
 			if i < len(m.contexts) && m.contexts[i].Name == m.state.Context {
-				status = "selected"
+				status = p.good.Render("active")
 			}
 		case "environments":
 			if i < len(m.environments) {
 				status = countLabel(m.environments[i].Keys, "key")
 				if scopeName(name) == scopeName(m.state.Environment) {
-					status += " · selected"
+					status += " · active"
 				}
 			}
 		}

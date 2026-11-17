@@ -32,6 +32,7 @@ func TestHomeShortKeepsEveryFocusedActionAndExitVisible(t *testing.T) {
 
 func TestBusinessProfileReturnsToItsParent(t *testing.T) {
 	m := create(t, fake(), "home", "")
+	m.selected = 3
 	m = enter(enter(m))
 	if m.page != "profile" {
 		t.Fatal("Business did not open profile")
@@ -41,7 +42,7 @@ func TestBusinessProfileReturnsToItsParent(t *testing.T) {
 		t.Fatal("profile lost Business parent")
 	}
 	m = escape(m)
-	if m.page != "home" || m.selected != 0 {
+	if m.page != "home" || m.selected != 3 {
 		t.Fatal("Business lost home focus")
 	}
 }
@@ -71,12 +72,11 @@ func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 		t.Fatal("automatic selection sent a named context")
 	}
 
-	m = escape(m)
-	m.selected = 3
+	m.selected = 0
 	m = enter(m)
 	m.selected = 1
 	m = enter(m)
-	if m.state.Environment != "acme-test" || m.state.Context != "" || m.page != "home" || m.selected != 3 {
+	if m.state.Environment != "acme-test" || m.state.Context != "" || m.page != "active" || m.selected != 0 {
 		t.Fatal("environment selection changed business or lost home position")
 	}
 	if !strings.Contains(m.View().Content, "acme-test") {
@@ -88,8 +88,7 @@ func TestEnvironmentCopyShowsSnapshotAndWaitsForReview(t *testing.T) {
 	f := fake()
 	f.state["store_exists"] = true
 	m := create(t, f, "home", "")
-	m.selected = 3
-	m = enter(m)
+	m = enter(enter(m))
 	m.selected = len(m.environments)
 	m = enter(m)
 	m.selected = 1
@@ -183,7 +182,7 @@ func TestInstalledAgentsKeepTaskInstructionsAndCopyAction(t *testing.T) {
 }
 
 func TestManagementViewsFitWithAndWithoutColor(t *testing.T) {
-	for _, page := range []string{"business", "contexts", "environments", "environment_new", "scope_name", "doctor"} {
+	for _, page := range []string{"active", "business", "contexts", "environments", "environment_new", "scope_name", "doctor"} {
 		for _, size := range [][2]int{{28, 12}, {40, 18}, {80, 24}, {110, 36}} {
 			for _, colors := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s-%dx%d-%v", page, size[0], size[1], colors), func(t *testing.T) {
@@ -213,8 +212,7 @@ func TestManagementViewsFitWithAndWithoutColor(t *testing.T) {
 func TestLongScopeDetailsRemainScrollableAndSelectTheInspectedItem(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m.selected = 3
-	m = enter(m)
+	m = enter(enter(m))
 	longName := "acme-" + strings.Repeat("long-project-", 5) + "staging"
 	longPath := "/tmp/" + strings.Repeat("long-directory/", 20) + ".env.godmode." + longName
 	m.environments = []environment{{Name: longName, Path: longPath, Keys: 1}}
@@ -234,7 +232,7 @@ func TestLongScopeDetailsRemainScrollableAndSelectTheInspectedItem(t *testing.T)
 		t.Fatal("long path cannot scroll with exit visible")
 	}
 	m = enter(m)
-	if m.state.Environment != longName || m.page != "home" || m.selected != 3 {
+	if m.state.Environment != longName || m.page != "active" || m.selected != 0 {
 		t.Fatal("details selected a different environment")
 	}
 }

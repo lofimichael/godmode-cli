@@ -110,6 +110,7 @@ class ModularIntroTests(unittest.TestCase):
         complete_intro(first)
         first.done()
         self.assertIn('Enter accept', plain(first.capture))
+        self.assertIn('Your accounts. Your consequences.', plain(first.capture))
         self.assertNotIn('accept and set up', plain(first.capture))
         self.assert_only_marker()
         before = self.marker.stat()
@@ -180,7 +181,7 @@ class ModularIntroTests(unittest.TestCase):
                     complete_intro(session)
                 session.expect(MENU)
                 mark = len(session.capture)
-                session.send(b"\x1b[B\r")  # Profile is first; Providers is the next row.
+                session.send(b"\x1b[B\r")  # Active setup is first; Providers is the next row.
                 session.after(mark, "GitHub")
                 output = plain(session.capture[mark:])
                 self.assertNotIn("Enter accept", output)
@@ -198,7 +199,7 @@ class ModularIntroTests(unittest.TestCase):
             with self.subTest(route=route):
                 session = self.terminal(*route)
                 session.expect("Enter accept · Esc cancel")
-                self.assertIn("delete data", plain(session.capture))
+                self.assertIn("spend, publish and delete", plain(session.capture))
                 session.send(b"\x1b")
                 session.done(130)
                 self.assertEqual(list(self.root.iterdir()), [])

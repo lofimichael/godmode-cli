@@ -5,7 +5,7 @@
 ╚██████╔╝╚██████╔╝██████╔╝██║ ╚═╝ ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
 
-GODMODE 0.17.0
+GODMODE 0.19.0
 
   GODMODE gives your agents the goddamn keys.
 
@@ -18,7 +18,10 @@ Install
 
 Commands
 
-  godmode               profile, providers and agents
+  godmode               active setup, providers and agents
+  godmode intro         replay the warning and power-up
+  godmode active        show selected business and keys
+  godmode use ENV        switch the saved key environment
   godmode faq           keys, files and source
   godmode music         local synth and audio visualizer
   godmode music clear   clear synthesized music

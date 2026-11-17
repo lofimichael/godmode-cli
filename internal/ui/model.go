@@ -67,11 +67,16 @@ type snapshot struct {
 	Providers                           []provider
 	States                              map[string]string
 	Progress                            progress
-	IntroSeen                           bool   `json:"intro_seen"`
-	StoreExists                         bool   `json:"store_exists"`
-	IssueURL                            string `json:"issue_url"`
-	ProfileBlurb                        string `json:"profile_blurb"`
-	ProvidersBlurb                      string `json:"providers_blurb"`
+	IntroSeen                           bool              `json:"intro_seen"`
+	SelectionSource                     string            `json:"selection_source"`
+	EnvironmentSource                   string            `json:"environment_source"`
+	ContextSource                       string            `json:"context_source"`
+	StartupSources                      map[string]string `json:"startup_sources"`
+	ShellOverride                       bool              `json:"shell_override"`
+	StoreExists                         bool              `json:"store_exists"`
+	IssueURL                            string            `json:"issue_url"`
+	ProfileBlurb                        string            `json:"profile_blurb"`
+	ProvidersBlurb                      string            `json:"providers_blurb"`
 }
 type keyPlan struct {
 	ID, Name, Title, Visit, Page, Note, Prompt, Path string
@@ -122,6 +127,13 @@ type model struct {
 	faq                                   []faqEntry
 	faqAt                                 int
 	tick                                  int
+	introStage                            int
+	busy, busyVisible                     bool
+	busyValidation, deferValidation       bool
+	pendingInput                          []tea.Msg
+	busyLabel                             string
+	operationID, busyFrame                int
+	pulseID, pulseFrame                   int
 	outcome                               error
 	contexts                              []businessContext
 	environments                          []environment
@@ -207,22 +219,29 @@ func (m *model) refresh() error {
 	if err != nil {
 		return err
 	}
-	if err = decode(data, &m.state); err != nil {
+	// A command owns a model copy, whose existing maps and slices may still be
+	// rendered by the live model. Decode into fresh storage before publishing it.
+	var next snapshot
+	if err = decode(data, &next); err != nil {
 		return err
 	}
-	if m.state.Profile == nil {
-		m.state.Profile = map[string]string{}
+	if next.Profile == nil {
+		next.Profile = map[string]string{}
 	}
-	if m.state.States == nil {
-		m.state.States = map[string]string{}
+	if next.States == nil {
+		next.States = map[string]string{}
 	}
+	m.state = next
 	return nil
 }
 func (m model) Init() tea.Cmd {
 	if m.opts.NoMotion || !m.colors {
 		return tea.RequestBackgroundColor
 	}
-	return tea.Batch(tea.RequestBackgroundColor, tea.Tick(45*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) }))
+	if m.page == "intro" {
+		return tea.Batch(tea.RequestBackgroundColor, introTick())
+	}
+	return tea.RequestBackgroundColor
 }
 func (m *model) openRoute(route, arg string) {
 	m.error = ""
@@ -238,6 +257,7 @@ func (m *model) openRoute(route, arg string) {
 		m.selected = m.homeAt
 	case "intro":
 		m.page = "intro"
+		m.introStage, m.tick = 0, 0
 	case "profile":
 		m.page = "profile"
 	case "setup":
@@ -286,6 +306,9 @@ func (m *model) openKey(name string) {
 }
 func (m *model) validateKey() {
 	m.check = keyCheck{}
+	if m.deferValidation {
+		return
+	}
 	if m.key.ID == "" {
 		m.error = "Open the key again before entering a value."
 		return
@@ -349,7 +372,7 @@ func (m *model) back() tea.Cmd {
 			return nil
 		}
 		fallthrough
-	case "business", "providers", "agents", "faq", "environments", "doctor":
+	case "active", "business", "providers", "agents", "faq", "doctor":
 		if m.initialRoute != "home" {
 			m.quitting = true
 			return tea.Quit
@@ -357,7 +380,9 @@ func (m *model) back() tea.Cmd {
 		m.page = "home"
 		m.selected = m.homeAt
 	case "contexts":
-		m.page, m.selected = "business", 1
+		m.page, m.selected = "active", 1
+	case "environments":
+		m.page, m.selected = "active", 0
 	case "environment_new":
 		m.loadEnvironments()
 	case "scope_name":
@@ -395,7 +420,7 @@ func (m *model) back() tea.Cmd {
 	}
 	return nil
 }
-func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case doctorMsg:
 		if msg.request != m.doctorRequest || m.page != "doctor" {
@@ -423,8 +448,8 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tickMsg:
 		m.tick++
-		if m.page == "intro" && m.tick < 7 && !m.opts.NoMotion && m.colors {
-			return m, tea.Tick(45*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+		if m.introMotionActive() {
+			return m, introTick()
 		}
 		return m, nil
 	case tea.PasteMsg:
@@ -452,9 +477,6 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			m.outcome = ErrCancelled
 			return m, tea.Quit
-		}
-		if m.page == "intro" && m.tick < 7 {
-			m.tick = 7
 		}
 		if key == "esc" {
 			if m.filtering {
@@ -484,6 +506,13 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "intro" {
 			if key == "enter" && m.introFits() {
+				if m.introStage == 0 {
+					m.introStage, m.tick = 1, 0
+					if m.introMotionActive() {
+						return m, introTick()
+					}
+					return m, nil
+				}
 				if m.call("accept_intro", nil, nil) {
 					m.state.IntroSeen = true
 					if m.initialRoute == "intro" {
@@ -557,6 +586,10 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		count := m.choiceCount()
+		if m.page == "home" && key == "s" {
+			m.homeAt, m.page, m.selected = 0, "active", 0
+			return m, nil
+		}
 		switch key {
 		case "down", "j", "ctrl+n":
 			if count > 0 {
@@ -733,7 +766,7 @@ func (m *model) enter() tea.Cmd {
 		m.homeAt = m.selected
 		switch m.selected {
 		case 0:
-			m.page = "business"
+			m.page = "active"
 			m.selected = 0
 		case 1:
 			m.page = "providers"
@@ -741,7 +774,7 @@ func (m *model) enter() tea.Cmd {
 		case 2:
 			m.loadAgents()
 		case 3:
-			m.loadEnvironments()
+			m.page, m.selected = "business", 0
 		case 4:
 			return m.loadDoctor()
 		case 5:
@@ -758,7 +791,7 @@ func (m *model) enter() tea.Cmd {
 			m.quitting = true
 			return tea.Quit
 		}
-	case "business", "contexts", "environments", "environment_new":
+	case "active", "business", "contexts", "environments", "environment_new":
 		return m.enterManagement()
 	case "profile":
 		if m.state.ProfileError != "" {
@@ -895,6 +928,8 @@ func (m model) choiceCount() int {
 	switch m.page {
 	case "home":
 		return len(homeNames)
+	case "active":
+		return 3
 	case "business":
 		return 4
 	case "contexts":
@@ -930,7 +965,7 @@ func (m model) choiceNames() []string {
 	switch m.page {
 	case "home":
 		return homeNames
-	case "business", "contexts", "environments", "environment_new":
+	case "active", "business", "contexts", "environments", "environment_new":
 		return m.managementNames()
 	case "profile":
 		out := []string{}

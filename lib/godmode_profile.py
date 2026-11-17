@@ -72,7 +72,7 @@ def _profile_encode(data):
 class Profile:
     def __init__(self, home, filename="profile.json"):
         self.home = Path(os.path.abspath(os.path.expanduser(str(home))))
-        if filename not in ("profile.json", "context.json"):
+        if filename not in ("profile.json", "context.json", "active.json"):
             raise ValueError("Unknown profile file.")
         self.path = self.home / filename
         self._read_once = False

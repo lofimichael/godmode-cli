@@ -81,7 +81,10 @@ func (f *fakeBackend) Call(action string, args map[string]any) (map[string]any, 
 func key(code rune, text string) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Text: text})
 }
-func send(m model, msg tea.Msg) model { result, _ := m.Update(msg); return result.(model) }
+
+// Behavior tests run the operation body directly; async_test verifies dispatch,
+// cancellation, duplicate-input protection and presentation reconciliation.
+func send(m model, msg tea.Msg) model { result, _ := m.updateNow(msg); return result.(model) }
 func enter(m model) model             { return send(m, key(tea.KeyEnter, "")) }
 func escape(m model) model            { return send(m, key(tea.KeyEscape, "")) }
 func count(calls []string, name string) int {
@@ -107,7 +110,7 @@ func TestSectionExitFocusAndMenuState(t *testing.T) {
 	for _, test := range []struct {
 		at   int
 		page string
-	}{{0, "business"}, {1, "providers"}, {2, "agents"}, {3, "environments"}, {6, "faq"}} {
+	}{{0, "active"}, {1, "providers"}, {2, "agents"}, {3, "business"}, {6, "faq"}} {
 		m.selected = test.at
 		m = enter(m)
 		if m.page != test.page {

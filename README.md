@@ -6,7 +6,7 @@ GODMODE gives your agents the goddamn keys. Your business profile and keys are s
 Profile + API keys → Godmode → commands
 ```
 
-![Godmode status](docs/images/status.png)
+![Godmode native intro](docs/images/v019/intro.gif)
 
 ## Install
 
@@ -14,10 +14,11 @@ macOS or Linux with Python 3.9 or newer. Downloads and source are public at [god
 
 ```sh
 curl -fsSL https://get.godmode.build | bash
+# Open a new terminal, or run the PATH command printed by the installer.
 godmode
 ```
 
-`godmode` shows the selected business and key file, with equal rows for **Business**, **Providers**, **Agents**, and **Environments**. **Doctor** checks local files; **Update** updates the recorded installation. Profile fields and providers remain optional.
+`godmode` opens with a two-part animated NFO intro on first use. **Active setup** switches the business profile and key environment; both stay visible on every screen. **Providers**, **Agents**, and **Business details** configure them. **Doctor** checks local files; **Update** updates the recorded installation. Profile fields and providers remain optional. `godmode intro` replays the intro; Enter advances immediately.
 
 The CLI is free to use on any number of your machines. No account or activation
 is required. Its [source-available license](LICENSE) permits inspection and
@@ -29,6 +30,7 @@ separate maintained playbooks, routing instructions and provider packs.
 | ↑ ↓ | Select a row |
 | Enter | Open a row or save a field |
 | `/` | Search providers |
+| `s` on home | Select Active setup |
 | Tab | Open details |
 | Esc | Go back |
 
@@ -40,7 +42,7 @@ separate maintained playbooks, routing instructions and provider packs.
 
 **Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. The note stays visible and copyable after installation. Copied task notes include the selected environment and business; global instruction files keep the generic note. New agent sessions run `godmode help` when a task needs a key or profile field.
 
-## Separate businesses and key files
+## Choose an active setup
 
 Named environments keep complete key sets separate. Copies are snapshots: later edits do not spread to other files. Business contexts let several environments reuse one business profile.
 
@@ -48,11 +50,15 @@ Named environments keep complete key sets separate. Copies are snapshots: later 
 godmode env create acme-test --copy default
 godmode --env acme-test setup stripe
 godmode context create acme
-godmode --context acme profile
-godmode --env acme-test --context acme agents --print
+godmode use --env acme-test --context acme
+godmode profile
+godmode active
+godmode agents --print
 ```
 
-Use `env create acme-test` without `--copy` to start empty. Every command selects its own environment and business, so concurrent agents do not switch one another's selection. Missing keys never fall through to another file.
+Use `env create acme-test` without `--copy` to start empty. Your selection is saved for new commands. Flags override shell variables (`GODMODE_ENV` / `GODMODE_CONTEXT`), which override the saved choice. `godmode use --env default --context -` returns to the original setup.
+
+Already-running Godmode processes retain their selection. For an agent task, copy the scoped instruction in **Agents** or use the prefix from `godmode active --command`; both pin the business and keys even if you switch later. `godmode run` also pins nested commands. Missing keys never fall through to another file.
 
 [Businesses and environments](docs/CONTEXTS.md) covers files, profiles and aliases. [Stripe accounts and sandboxes](docs/STRIPE_ENVIRONMENTS.md) covers account and webhook boundaries.
 

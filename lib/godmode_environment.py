@@ -1,4 +1,4 @@
-"""Complete named credential files. No global selection, inheritance or value output."""
+"""Complete named credential files. No inheritance or value output."""
 import json
 import os
 from pathlib import Path

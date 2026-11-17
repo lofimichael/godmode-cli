@@ -164,10 +164,20 @@ func run(args []string) int {
 			return 1
 		}
 		err = ui.Run(client, r.command, r.arg, ui.Options{Home: r.home, Plain: r.plain, NoMotion: r.noMotion})
+		// The terminal session is over. Interrupt any remaining read/validation
+		// even when exit came from a parser error or external terminal signal.
+		// Completed writes have already returned before their quit command.
+		client.Abort()
 		client.Close()
 		var external *ui.CommandExit
 		if errors.As(err, &external) {
 			r.context, r.environment = external.Context, external.Environment
+			if r.context == "" {
+				r.context = "-"
+			}
+			if r.environment == "" {
+				r.environment = "default"
+			}
 		}
 		if errors.Is(err, ui.ErrUpdate) {
 			return core.Run(selectedArgs(r, "update"))
