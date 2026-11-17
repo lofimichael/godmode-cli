@@ -83,7 +83,7 @@ class ModularIntroTests(unittest.TestCase):
     def leave_menu(self, session):
         session.expect(MENU)
         session.send(b"\x1b")
-        session.expect("Setup 0%")
+        session.expect("Profile 0 optional fields")
         session.done()
 
     def test_default_and_init_finish_once_without_creating_optional_files(self):
@@ -224,7 +224,7 @@ class ModularIntroTests(unittest.TestCase):
         session.expect("Another key")
         self.assertTrue(self.marker.exists())
         session.send(b"\x1b")
-        session.expect("Setup 0%")
+        session.expect("Profile 0 optional fields")
         session.done()
         following = self.terminal()
         following.expect(MENU)
@@ -232,7 +232,7 @@ class ModularIntroTests(unittest.TestCase):
         self.assertNotIn("Enter accept", plain(following.capture))
         self.leave_menu(following)
 
-    def test_home_shows_the_meter_and_rows_in_every_terminal_mode(self):
+    def test_home_shows_scope_and_rows_in_every_terminal_mode(self):
         self.home.mkdir(mode=0o700)
         os.close(os.open(self.marker, os.O_WRONLY | os.O_CREAT, 0o600))
         for label, extra in (("no color", {}), ("ascii", {"TERM": "linux"}),
@@ -243,16 +243,15 @@ class ModularIntroTests(unittest.TestCase):
                 session.settle(.1)
                 rows = Screen(80).feed(session.capture).lines()
                 screen = "\n".join(rows)
-                for text in ("Profile", "Providers", "Agents", "Done", "Setup 0%", "~/.godmode", "0 saved", "0 added"):
+                for text in ("Business", "Providers", "Agents", "Done", "Environment default", "~/.godmode", "0 keys saved", "0 notes added"):
                     self.assertIn(text, screen)
                 self.assertTrue(all(len(row.rstrip()) <= 79 for row in rows))
                 self.assertIsNone(re.search(rb"\x1b\[[0-9;]*m", session.capture))
                 if label != "no color":
                     self.assertTrue(all(byte < 128 for byte in session.capture))
                     self.assertIn("Godmode", screen)
-                    self.assertIn("-" * 6, screen)
-                else:
-                    self.assertIn("\u2591" * 6, screen)
+                self.assertNotIn("Setup 0%", screen)
+                self.assertNotIn("\u2591" * 6, screen)
                 self.leave_menu(session)
 
     def test_legacy_keys_remain_untouched_and_intro_uses_profile_home(self):
@@ -279,7 +278,7 @@ class ModularIntroTests(unittest.TestCase):
         session = self.terminal(cols=40, rows=12)
         session.expect(MENU)
         screen = "\n".join(Screen(40).feed(session.capture).lines())
-        for text in ("Setup 0%", "Profile", "Providers", "Agents"):
+        for text in ("Environment default", "Business", "Providers", "Agents"):
             self.assertIn(text, screen)
         self.assertTrue(all(len(row) <= 39 for row in screen.splitlines()))
         session.send(b"\x1b")

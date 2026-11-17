@@ -40,11 +40,11 @@ func commandWords(args []string) []string {
 			words = append(words, args[i:]...)
 			break
 		}
-		if a == "--home" || a == "--config-dir" || a == "--context" {
+		if a == "--home" || a == "--config-dir" || a == "--context" || a == "--env" {
 			i++
 			continue
 		}
-		if a == "--plain" || a == "--no-motion" || strings.HasPrefix(a, "--home=") || strings.HasPrefix(a, "--config-dir=") || strings.HasPrefix(a, "--context=") {
+		if a == "--plain" || a == "--no-motion" || strings.HasPrefix(a, "--home=") || strings.HasPrefix(a, "--config-dir=") || strings.HasPrefix(a, "--context=") || strings.HasPrefix(a, "--env=") {
 			continue
 		}
 		words = append(words, a)

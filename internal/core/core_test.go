@@ -100,6 +100,42 @@ func TestUIEnvironmentOmitsInheritedCredentials(t *testing.T) {
 	}
 }
 
+func TestClientSelectionIsPerProcessAndReachesTheEngine(t *testing.T) {
+	home := isolatedHome(t)
+	client, err := New(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = client.Call("environment_create", map[string]any{"name": "acme-test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = client.Call("context_create", map[string]any{"name": "acme"}); err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+	selected, err := NewForSelection(home, "acme", "acme-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer selected.Close()
+	state, err := selected.Call("state", nil)
+	if err != nil || state["context"] != "acme" || state["environment"] != "acme-test" {
+		t.Fatalf("selected client lost scope: %v", err)
+	}
+	if state["env_path"] != filepath.Join(home, ".env.godmode.acme-test") {
+		t.Fatal("selected client uses wrong key file")
+	}
+	ordinary, err := New(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	state, err = ordinary.Call("state", nil)
+	if err != nil || state["context"] != "" || state["environment"] != "default" {
+		t.Fatal("one client changed another client's scope")
+	}
+}
+
 func TestPreviewPasswordNeverReachesProviderCommands(t *testing.T) {
 	environment := strings.Join(withExecutable([]string{"PATH=/bin", "GODMODE_PREVIEW_PASSWORD=synthetic-preview-secret"}), "\n")
 	if strings.Contains(environment, "synthetic-preview-secret") {

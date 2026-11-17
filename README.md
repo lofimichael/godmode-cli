@@ -6,7 +6,7 @@ GODMODE gives your agents the goddamn keys. Your business profile and keys are s
 Profile + API keys → Godmode → commands
 ```
 
-![Godmode setup](docs/images/setup.gif)
+![Godmode status](docs/images/status.png)
 
 ## Install
 
@@ -17,7 +17,7 @@ curl -fsSL https://get.godmode.build | bash
 godmode
 ```
 
-`godmode` opens **Profile**, **Providers**, and **Agents**, with a completion meter for each. Six profile fields, one saved provider, and one agent note fill the setup meter. Every field and provider remains optional.
+`godmode` shows the selected business and key file, with equal rows for **Business**, **Providers**, **Agents**, and **Environments**. **Doctor** checks local files; **Update** updates the recorded installation. Profile fields and providers remain optional.
 
 The CLI is free to use on any number of your machines. No account or activation
 is required. Its [source-available license](LICENSE) permits inspection and
@@ -38,24 +38,23 @@ separate maintained playbooks, routing instructions and provider packs.
 
 ## Connect your agent
 
-**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. Other agents use the copied note. New agent sessions run `godmode help` when a task needs a key or profile field.
+**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. The note stays visible and copyable after installation. Copied task notes include the selected environment and business; global instruction files keep the generic note. New agent sessions run `godmode help` when a task needs a key or profile field.
 
-## Separate businesses
+## Separate businesses and key files
 
-Named contexts keep each business profile separate and override selected key
-names while sharing the rest. Each command chooses its context, so concurrent
-agents cannot switch one another's accounts.
+Named environments keep complete key sets separate. Copies are snapshots: later edits do not spread to other files. Business contexts let several environments reuse one business profile.
 
 ```sh
+godmode env create acme-test --copy default
+godmode --env acme-test setup stripe
 godmode context create acme
 godmode --context acme profile
-godmode set ACME_STRIPE_SECRET_KEY
-godmode context map acme STRIPE_SECRET_KEY ACME_STRIPE_SECRET_KEY
-godmode --context acme run STRIPE_SECRET_KEY CLOUDFLARE_API_TOKEN -- your-command
+godmode --env acme-test --context acme agents --print
 ```
 
-Mappings contain names, never copied credentials. A missing mapped key stops
-the command. [Business contexts](docs/CONTEXTS.md) covers inspection and changes.
+Use `env create acme-test` without `--copy` to start empty. Every command selects its own environment and business, so concurrent agents do not switch one another's selection. Missing keys never fall through to another file.
+
+[Businesses and environments](docs/CONTEXTS.md) covers files, profiles and aliases. [Stripe accounts and sandboxes](docs/STRIPE_ENVIRONMENTS.md) covers account and webhook boundaries.
 
 ## Music
 
@@ -65,7 +64,11 @@ the command. [Business contexts](docs/CONTEXTS.md) covers inspection and changes
 
 | Command | What it does |
 | --- | --- |
-| `godmode` | Set up your profile, providers and agents |
+| `godmode` | Open the status screen |
+| `godmode env` | List complete named key files |
+| `godmode doctor --json` | Check local files and the updater without changing them |
+| `godmode update` | Update the recorded installation |
+| `godmode agents --print` | Print the task note for the selected files |
 | `godmode --plain` | Static text and numbered choices |
 | `godmode setup [PROVIDER]` | Add or replace a provider's keys |
 | `godmode list` | Names of saved keys, never values |

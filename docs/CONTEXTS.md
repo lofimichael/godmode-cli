@@ -1,68 +1,89 @@
-# Business contexts
+# Businesses and environments
 
-Different businesses need different payment accounts and legal details. A context
-keeps those facts separate while reusing your shared provider keys.
+Client work needs its own keys and business details. An environment selects a complete key file. A business context selects reusable business facts.
 
-## Create a context
+## Copy a key file
+
+A copy keeps the providers you already use while letting you replace a few keys.
+
+```sh
+godmode env create acme-test --copy default
+godmode --env acme-test setup stripe
+```
+
+This creates `.env.godmode.acme-test` beside `.env.godmode`. Every source key is copied. Later changes stay in the file you edit; rotations do not spread to copies. The source file is untouched. Existing destinations are refused.
+
+For a client who needs only their own keys, start empty:
+
+```sh
+godmode env create client-test
+godmode --env client-test setup
+```
+
+A missing key stays missing. Named files never borrow keys from the default file. A name such as `acme-live` does not change a key's Stripe account or mode.
+
+## Reuse one business profile
+
+Test and live environments can share one business address and legal name.
 
 ```sh
 godmode context create acme
 godmode --context acme profile
+godmode env create acme-live
+godmode --env acme-test --context acme profile
+godmode --env acme-live --context acme setup stripe
 ```
 
-The context starts with an empty business profile. Your default profile stays
-unchanged. `--context acme profile get FIELD` and `profile set FIELD --stdin`
-also select that business.
+`--context acme` selects the same business profile in both environments. Without a context, a named environment has its own empty profile. Copying keys does not copy business facts.
 
-## Choose different keys
+## Give an agent the selection
 
-Save each credential once under its own name, then map the provider's expected
-key name to it:
+Each command selects its own files. Two agents can work for different businesses at once.
 
 ```sh
-godmode set ACME_STRIPE_SECRET_KEY
-godmode context map acme STRIPE_SECRET_KEY ACME_STRIPE_SECRET_KEY
-godmode --context acme run STRIPE_SECRET_KEY CLOUDFLARE_API_TOKEN -- your-command
+godmode --env acme-test --context acme agents --print
+godmode --env acme-test --context acme help
+godmode --env acme-test --context acme run \
+  STRIPE_SECRET_KEY=STRIPE_TEST_SECRET_KEY -- your-command
 ```
 
-That command receives Acme's Stripe key and the shared Cloudflare key. Unmapped
-names use the shared store. A mapped key that is missing or unreadable stops the
-command; Godmode never substitutes the shared Stripe key.
+Copy the note into the agent's task. The Agents menu keeps this note visible after all agents are connected. Installed global instructions stay generic; a client selection belongs to that client's task.
 
-`VAR=NAME` still changes the environment variable a tool receives. Context
-mappings apply to `NAME` once; mappings do not chain.
+The menu's selection lasts for that menu session. It does not change other terminals. `run` adds the requested keys to the child process; other variables and native provider logins already in the shell remain available.
 
-## Inspect or change a context
+## Inspect the files
+
+Names and paths reveal the selection without exposing values.
 
 ```sh
-godmode context list
-godmode context show acme
-godmode --context acme help
-godmode context unmap acme STRIPE_SECRET_KEY
+godmode env list --json
+godmode env show acme-test
+godmode --env acme-test --context acme doctor --json
 ```
-
-`show` prints key names and the profile path, never credential values. `unmap`
-restores the shared key for that name. Save keys with ordinary `godmode set`;
-context selection supports `profile`, `run`, `list` and `help`.
-
-Every command selects its context explicitly. There is no global active switch,
-so agents working for different businesses can run at the same time. Tell the
-agent which context to use for all profile reads and provider commands in its
-task. A context changes which saved keys are supplied; it is not a sandbox or
-provider permission boundary.
-
-## Files
 
 ```text
 ~/.godmode/
-  .env.godmode                 shared sealed credentials
-  profile.json                 default business profile
+  .env.godmode                    default keys
+  .env.godmode.acme-test          independent test keys
+  .env.godmode.acme-live          independent live keys
+  seal.key                       shared local seal key
+  profile.json                   default business facts
+  environments/acme-test/
+    profile.json                 facts when no context is selected
   contexts/acme/
-    context.json               key-name mappings only
-    profile.json               Acme's business facts
+    context.json                 optional key-name mappings
+    profile.json                 reusable Acme facts
 ```
 
-Context directories are mode 0700; files are mode 0600. They must be owned by you
-and cannot be symlinks. Context edits never copy or rewrite saved credentials.
-Deleting a context removes its mappings and profile, not provider accounts or
-the shared keys.
+Existing legacy homes are detected. `--home DIR` selects a different home explicitly. `godmode path` shows the selected key file.
+
+## Reuse a saved key name
+
+Aliases keep older setups working without copying values inside one file.
+
+```sh
+godmode context map acme STRIPE_SECRET_KEY ACME_STRIPE_KEY
+godmode --env acme-test --context acme run STRIPE_SECRET_KEY -- your-command
+```
+
+The mapping resolves once inside the selected file. Missing mapped keys stop the command. Unmapped names use that same file. `context unmap acme STRIPE_SECRET_KEY` restores the ordinary name in that file. Mapped edits show and change the actual saved name.

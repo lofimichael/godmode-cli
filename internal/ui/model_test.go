@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ type fakeBackend struct {
 	saved     string
 	state     map[string]any
 	longAgent bool
+	requests  []map[string]any
 }
 
 func fake() *fakeBackend {
@@ -30,9 +32,31 @@ func fake() *fakeBackend {
 }
 func (f *fakeBackend) Call(action string, args map[string]any) (map[string]any, error) {
 	f.calls = append(f.calls, action)
+	f.requests = append(f.requests, args)
 	switch action {
 	case "state":
 		return f.state, nil
+	case "context_list":
+		return map[string]any{"selected": f.state["context"], "contexts": []any{
+			map[string]any{"name": "", "profile_path": "/tmp/godmode-test/profile.json"},
+			map[string]any{"name": "default", "profile_path": "/tmp/godmode-test/contexts/default/profile.json"},
+			map[string]any{"name": "acme", "profile_path": "/tmp/godmode-test/contexts/acme/profile.json"}}}, nil
+	case "context_select", "context_create":
+		f.state["context"] = args["name"]
+		return f.state, nil
+	case "environment_list":
+		environments := []any{map[string]any{"name": "default", "path": "/tmp/godmode-test/.env.godmode", "keys": 0},
+			map[string]any{"name": "acme-test", "path": "/tmp/godmode-test/.env.godmode.acme-test", "keys": 2}}
+		if name, ok := f.state["environment"].(string); ok && name != "" && name != "default" && name != "acme-test" {
+			environments = append(environments, map[string]any{"name": name, "path": f.state["env_path"], "keys": 0})
+		}
+		return map[string]any{"selected": f.state["environment"], "environments": environments}, nil
+	case "environment_select", "environment_create":
+		f.state["environment"] = args["name"]
+		f.state["env_path"] = "/tmp/godmode-test/.env.godmode." + args["name"].(string)
+		return f.state, nil
+	case "doctor":
+		return map[string]any{"ok": false, "checks": []any{map[string]any{"name": "Synthetic file", "status": "warn", "detail": "Missing example", "action": "godmode setup example"}}}, nil
 	case "key_plan":
 		return map[string]any{"id": "key-1", "name": args["name"], "title": "Example · API token", "visit": "Visit Example's token page", "page": "https://example.test/token", "steps": []string{"Make a token with **full scope**. Choose an expiration date."}, "prompt": "Paste your token:", "path": "/tmp/godmode-test/.env.godmode", "sealed": true, "saved": true, "lines": []int{4}}, nil
 	case "key_check":
@@ -80,18 +104,19 @@ func create(t *testing.T, backend *fakeBackend, route, arg string) model {
 
 func TestSectionExitFocusAndMenuState(t *testing.T) {
 	m := create(t, fake(), "home", "")
-	for _, want := range []string{"profile", "providers", "agents", "faq"} {
+	for _, test := range []struct {
+		at   int
+		page string
+	}{{0, "business"}, {1, "providers"}, {2, "agents"}, {3, "environments"}, {6, "faq"}} {
+		m.selected = test.at
 		m = enter(m)
-		if m.page != want {
-			t.Fatalf("Enter opened %s, want %s", m.page, want)
+		if m.page != test.page {
+			t.Fatalf("Enter opened %s, want %s", m.page, test.page)
 		}
 		m = escape(m)
-		if m.page != "home" {
-			t.Fatal("section did not return home")
+		if m.page != "home" || m.selected != test.at {
+			t.Fatal("section did not preserve home selection")
 		}
-	}
-	if m.selected != 3 {
-		t.Fatalf("FAQ should return to itself, got %d", m.selected)
 	}
 }
 func TestPasteNeverSubmitsAndNeverAppearsUnmasked(t *testing.T) {
@@ -217,7 +242,7 @@ func TestNoColorKeepsReadableWords(t *testing.T) {
 	if strings.Contains(v, "\x1b[") {
 		t.Fatal("NO_COLOR view contains ANSI styles")
 	}
-	for _, word := range []string{"Profile", "Providers", "Agents", "Help / FAQ", "Music", "Done"} {
+	for _, word := range homeNames {
 		if !strings.Contains(v, word) {
 			t.Fatal("missing " + word)
 		}
@@ -227,9 +252,9 @@ func TestRemovedMusicDoesNotLaunch(t *testing.T) {
 	f := fake()
 	f.state["music_included"] = false
 	m := create(t, f, "home", "")
-	m.selected = 4
+	m.selected = 7
 	m = enter(m)
-	if m.outcome == ErrMusic {
+	if errors.Is(m.outcome, ErrMusic) {
 		t.Fatal("removed music launched")
 	}
 	if m.error == "" {

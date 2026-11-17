@@ -15,10 +15,11 @@ import (
 var version = "dev"
 
 type route struct {
-	command, arg, home, context   string
-	plain, noMotion               bool
-	interactive                   bool
-	contextSelected, contextError bool
+	command, arg, home, context, environment string
+	plain, noMotion                          bool
+	interactive                              bool
+	contextSelected, contextError            bool
+	envSelected, envError                    bool
 }
 
 func enabled(value string) bool {
@@ -43,6 +44,29 @@ func selectRoute(args []string) route {
 			r.plain = true
 		case word == "--no-motion":
 			r.noMotion = true
+		case word == "--env":
+			if r.envSelected {
+				r.envError = true
+			}
+			r.envSelected = true
+			if i+1 == len(args) {
+				r.envError = true
+				return r
+			}
+			i++
+			r.environment = args[i]
+			if r.environment == "" {
+				r.envError = true
+			}
+		case strings.HasPrefix(word, "--env="):
+			if r.envSelected {
+				r.envError = true
+			}
+			r.envSelected = true
+			r.environment = strings.SplitN(word, "=", 2)[1]
+			if r.environment == "" {
+				r.envError = true
+			}
 		case word == "--context":
 			if r.contextSelected {
 				r.contextError = true
@@ -123,7 +147,7 @@ func run(args []string) int {
 		}
 	}
 	r := selectRoute(args)
-	if r.contextError || (r.contextSelected && r.command != "profile") {
+	if r.contextError || r.envError {
 		return core.Run(args)
 	}
 	if words := commandWords(args); len(words) > 0 && words[0] == "license" {
@@ -134,18 +158,22 @@ func run(args []string) int {
 		return core.Run(args)
 	}
 	for {
-		client, err := core.NewForContext(r.home, r.context)
+		client, err := core.NewForSelection(r.home, r.context, r.environment)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "godmode:", err)
 			return 1
 		}
 		err = ui.Run(client, r.command, r.arg, ui.Options{Home: r.home, Plain: r.plain, NoMotion: r.noMotion})
 		client.Close()
+		var external *ui.CommandExit
+		if errors.As(err, &external) {
+			r.context, r.environment = external.Context, external.Environment
+		}
+		if errors.Is(err, ui.ErrUpdate) {
+			return core.Run(selectedArgs(r, "update"))
+		}
 		if errors.Is(err, ui.ErrMusic) {
-			musicArgs := []string{"music"}
-			if r.home != "" {
-				musicArgs = append([]string{"--home", r.home}, musicArgs...)
-			}
+			musicArgs := selectedArgs(r, "music")
 			if r.noMotion {
 				musicArgs = append(musicArgs, "--no-motion")
 			}
@@ -162,6 +190,20 @@ func run(args []string) int {
 		}
 		return 0
 	}
+}
+
+func selectedArgs(r route, command string) []string {
+	args := []string{}
+	if r.home != "" {
+		args = append(args, "--home", r.home)
+	}
+	if r.context != "" {
+		args = append(args, "--context", r.context)
+	}
+	if r.environment != "" {
+		args = append(args, "--env", r.environment)
+	}
+	return append(args, command)
 }
 
 func main() { os.Exit(run(os.Args[1:])) }

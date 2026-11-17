@@ -94,6 +94,13 @@ def valid_key(key):
     return key
 
 
+def environment_name(name):
+    """A file suffix, never a path. default selects the original unsuffixed file."""
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,95}", name):
+        raise ValueError("Use an environment name starting with a lowercase letter, then lowercase letters, digits, _ or - (96 characters maximum).")
+    return name
+
+
 def normalize(value, key=""):
     try:
         if len(value.encode("utf-8")) > STORE_MAX_SIZE:
@@ -198,16 +205,25 @@ def _holds_values(path):
 
 
 class Store:
-    def __init__(self, home=None):
+    def __init__(self, home=None, environment="default"):
+        self.environment = environment_name(environment)
         selected = home or os.environ.get("GODMODE_HOME") or os.environ.get("GODMODE_CONFIG_DIR")
         if selected is None:
             selected = Path.home() / ".godmode"
             legacy = Path.home() / ".config/godmode"
             markers = (".env.godmode", "providers.toml", "AGENTS.md")
-            if not any(os.path.lexists(selected / name) for name in markers) and _holds_values(legacy / ".env.godmode"):
+            named_files = False
+            if os.path.lexists(selected):
+                if not stat.S_ISDIR(selected.lstat().st_mode):
+                    named_files = True  # An unsafe canonical home must fail, never redirect to legacy.
+                else:
+                    named_files = any(re.fullmatch(r"\.env\.godmode\.[a-z][a-z0-9_-]{0,95}", path.name)
+                                      for path in selected.iterdir())
+            if (not named_files and not any(os.path.lexists(selected / name) for name in markers)
+                    and _holds_values(legacy / ".env.godmode")):
                 selected = legacy  # Keys saved before ~/.godmode existed. New files never start here.
         self.config_dir = Path(os.path.abspath(os.path.expanduser(str(selected))))
-        self.env_path = self.config_dir / ".env.godmode"
+        self.env_path = self.config_dir / (".env.godmode" + ("." + self.environment if self.environment != "default" else ""))
         self.key_path = self.config_dir / "seal.key"
 
     def exists(self):
@@ -282,7 +298,8 @@ class Store:
             raise ValueError("Cannot safely read seal.key.") from None
         with os.fdopen(fd) as source:
             info = os.fstat(source.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
                 raise ValueError("seal.key must be yours, regular, and mode 0600.")
             try:
                 key = bytes.fromhex(source.read(200).strip())
@@ -380,7 +397,7 @@ class Store:
 
     def _git_guard(self, *names):
         """Refuse to write inside a Git checkout unless these files are ignored and untracked."""
-        names = names or (".env.godmode",)
+        names = names or (self.env_path.name,)
         if not self._in_git():
             return
         env = {"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
@@ -412,13 +429,13 @@ class Store:
         finally:
             os.close(directory)
 
-    def _write(self, text, previous, directory):
+    def _write(self, text, previous, directory, create_only=False, source_check=None):
         data = text.encode("utf-8")
         if len(data) > STORE_MAX_SIZE:
             raise ValueError("Credential file would exceed the 1 MiB limit.")
         temporary = None
         try:
-            fd, temporary = tempfile.mkstemp(prefix=".env.godmode.", dir=self.config_dir)
+            fd, temporary = tempfile.mkstemp(prefix=".godmode-write-", dir=self.config_dir)
             with os.fdopen(fd, "wb") as target:
                 os.fchmod(target.fileno(), 0o600)
                 target.write(data)
@@ -427,7 +444,17 @@ class Store:
             current = _store_stamp(self.env_path.lstat()) if self.exists() else None
             if current != previous:
                 raise ValueError("The credential file changed before saving; retry.")
-            os.replace(temporary, self.env_path)
+            if source_check is not None:
+                source_check()
+            if create_only:
+                # link publishes a complete private file without ever replacing an
+                # existing destination. Unlink the temporary name before returning;
+                # the saved file is never left with multiple hard links.
+                os.link(temporary, self.env_path, follow_symlinks=False)
+                os.unlink(temporary)
+                temporary = None
+            else:
+                os.replace(temporary, self.env_path)
             os.fsync(directory)
         except OSError:
             raise ValueError("Could not save the credential file.") from None
@@ -647,13 +674,19 @@ def plain_source(store, explicit=False):
     there, unless a home was chosen explicitly. Plain values anywhere else are sealed
     where they are.
     """
+    # Sealing is a whole-file operation. Alias views must not remap its read-back
+    # verification or cause a saved line to be skipped.
+    store = getattr(store, "store", store)
     legacy = Store(Path.home() / ".config/godmode")
-    if not explicit and _holds_values(legacy.env_path):
+    if not explicit and store.environment == "default" and _holds_values(legacy.env_path):
         try:
             found = not legacy.sealed() and legacy.plain_names()
         except ValueError as error:  # Say which file, since it may not be the one in use.
             raise ValueError(str(legacy.env_path) + ": " + str(error)) from None
         if found:
+            if any(re.fullmatch(r"\.env\.godmode\.[a-z][a-z0-9_-]{0,95}", path.name)
+                   for path in legacy.config_dir.iterdir()):
+                return legacy, legacy  # Keep a home containing named files together.
             return legacy, Store(Path.home() / ".godmode")
     if store.exists() and (store.plain_names() or (store.sealed() and store.loose())):
         return store, store  # Sealing in place names any line it cannot seal.

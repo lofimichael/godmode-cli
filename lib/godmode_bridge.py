@@ -13,7 +13,7 @@ import sys
 class UIBridge:
     def __init__(self, namespace, home=None):
         self.api, self.home = namespace, home
-        self.store = namespace['Store'](home)
+        self.store = namespace['effective_store'](home)
         self.profile = namespace['business_profile'](home)
         self.profile_data = None
         self.keys, self.agents = {}, {}
@@ -33,11 +33,46 @@ class UIBridge:
     def call(self, request):
         a = self.api
         action = request.get('action')
-        if a.get('ACTIVE_CONTEXT') is not None and action not in ('state', 'accept_intro', 'profile_save'):
-            raise ValueError('This context view edits business facts only. Save shared keys separately, then map their names.')
+        if action == 'environment_list':
+            rows = a['environment_list'](self.home)
+            return {'environments': [dict(name=row['name'], path=row['path'], keys=row['key_count']) for row in rows],
+                    'selected': a.get('ACTIVE_ENVIRONMENT', 'default')}
+        if action == 'context_list':
+            automatic = a['environment_profile'](self.home, a.get('ACTIVE_ENVIRONMENT', 'default'))
+            return {'contexts': [dict(name='', profile_path=str(automatic.path))] + a['context_list'](a['profile_home'](self.home)),
+                    'selected': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''}
+        if action in ('environment_select', 'environment_create', 'context_select', 'context_create'):
+            name = self._text(request, 'name')
+            if action.startswith('environment_'):
+                name = a['environment_name'](name)
+                if action == 'environment_create':
+                    copy = request.get('copy')
+                    if copy is not None and not isinstance(copy, str):
+                        raise ValueError('Choose a saved environment to copy.')
+                    a['environment_create'](self.home, name, copy_from=copy)
+                else:
+                    details = a['environment_show'](self.home, name)
+                    if name != 'default' and not details['exists']:
+                        raise ValueError('Environment is not saved. Create it with godmode env create NAME.')
+                a['ACTIVE_ENVIRONMENT'] = name
+            else:
+                directory = a['profile_home'](self.home)
+                context = (a['context_create'](directory, name) if action == 'context_create'
+                           else a['Context'](directory, name) if name else None)
+                a['ACTIVE_CONTEXT'] = context
+            self.store = a['effective_store'](self.home)
+            self.profile = a['business_profile'](self.home)
+            self.profile_data = None
+            self.keys.clear()
+            self.agents.clear()
+            return self.call({'action': 'state'})
+        if action == 'doctor':
+            return a['doctor_report'](self.store, self.profile, a, home=self.home)
         if action == 'state':
-            result = {'version': a['VERSION'], 'home': str(self.profile.home),
+            result = {'version': a['VERSION'], 'home': str(self.store.config_dir),
                       'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else '',
+                      'environment': a.get('ACTIVE_ENVIRONMENT', 'default'),
+                      'profile_path': str(self.profile.path),
                       'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
                       'fields': [dict(name=name, label=label, description=description)
@@ -49,8 +84,10 @@ class UIBridge:
                       'intro': [text for text, _ in a['INTRO_PAGES'][0][2]]}
             try:
                 result['states'] = self.store.states() if self.store.exists() else {}
+                base = getattr(self.store, 'store', self.store)
+                result['key_count'] = sum(state == 'set' for state in base.states().values())
             except ValueError as error:
-                result['states'], result['store_error'] = {}, str(error)
+                result['states'], result['store_error'], result['key_count'] = {}, str(error), 0
             try:
                 self.profile_data = self.profile.read()
                 result['profile'] = {key: value for key, value in self.profile_data.items() if key in a['PROFILE_FIELDS']}
@@ -91,14 +128,14 @@ class UIBridge:
                 shown = prompt.shown(clean, pasted) if clean is not None else ('sealed(…)' if prompt.sealed else '…')
                 return dict(valid=clean is not None and not problem, error=problem or '',
                             masked=prompt.entry(value, clean, pasted),
-                            assignment=prompt.name + '=' + shown,
+                            assignment=getattr(prompt, 'saved_name', prompt.name) + '=' + shown,
                             operation='Replace' if prompt.plan['lines'] else 'Add', path=prompt.path,
                             notes=[text for text, _ in prompt.notes(clean, problem, pasted)],
-                            command=a['save_command'](prompt.name, shown, prompt.plan, prompt.path))
+                            command=a['save_command'](getattr(prompt, 'saved_name', prompt.name), shown, prompt.plan, prompt.path))
             if not clean or problem or record['checked'] != candidate:
                 raise ValueError('Review the key before saving.')
             self.store.set(prompt.name, clean, expected_digest=record['digest'])
-            receipt = 'Saved ' + prompt.name + '=' + prompt.shown(clean, pasted)
+            receipt = 'Saved ' + getattr(prompt, 'saved_name', prompt.name) + '=' + prompt.shown(clean, pasted)
             self.keys.clear()
             prompt.accepted = prompt.imported = None
             return {'receipt': receipt}
@@ -111,6 +148,7 @@ class UIBridge:
             return {}
         if action == 'agents_plan':
             block, targets = a['agent_block'](self.home), a['agent_targets']()
+            copy_block = a['agent_instruction'](self.home)
             pending, shown = [], []
             for target in targets:
                 view = {'name': target['name'], 'path': a['home_path'](target['path']),
@@ -125,8 +163,8 @@ class UIBridge:
                         view['issue'] = str(error) if isinstance(error, ValueError) else 'Cannot read this file.'
                 shown.append(view)
             identifier = self._id()
-            self.agents = {identifier: (block, pending)}
-            return dict(id=identifier, block=block, targets=shown,
+            self.agents = {identifier: (block, pending, copy_block)}
+            return dict(id=identifier, block=block, copy_block=copy_block, targets=shown,
                         added_lines=sum(plan['addition'].count(b'\n') for plan in pending), removed_lines=0,
                         can_copy=bool(a['clipboard']()))
         if action == 'copy_agent':
@@ -137,7 +175,7 @@ class UIBridge:
             if not copier:
                 return {'copied': False}
             try:
-                subprocess.run(copier, input=plan[0].encode('utf-8'), timeout=5, check=True,
+                subprocess.run(copier, input=plan[2].encode('utf-8'), timeout=5, check=True,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except (OSError, subprocess.SubprocessError):
                 return {'copied': False}
@@ -146,7 +184,7 @@ class UIBridge:
             plan = self.agents.pop(self._text(request, 'id'), None)
             if plan is None:
                 raise ValueError('The agent preview expired. Open Agents again.')
-            block, pending = plan
+            block, pending, _ = plan
             added = []
             for item in pending:
                 if a['add_agent_text'](item['path'], block, item):

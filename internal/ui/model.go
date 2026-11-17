@@ -24,7 +24,17 @@ type Options struct {
 }
 
 var ErrMusic = errors.New("godmode music")
+var ErrUpdate = errors.New("godmode update")
 var ErrCancelled = errors.New("cancelled")
+
+// CommandExit runs an external command only after Bubble Tea restores the terminal.
+type CommandExit struct {
+	Command              error
+	Context, Environment string
+}
+
+func (e *CommandExit) Error() string { return e.Command.Error() }
+func (e *CommandExit) Unwrap() error { return e.Command }
 
 type field struct{ Name, Label, Description string }
 type providerKey struct {
@@ -45,21 +55,23 @@ type progress struct {
 	Errors                 []string
 }
 type snapshot struct {
-	MusicIncluded          bool   `json:"music_included"`
-	StoreError             string `json:"store_error"`
-	ProfileError           string `json:"profile_error"`
-	Version, Home, Context string
-	EnvPath                string `json:"env_path"`
-	Profile                map[string]string
-	Fields                 []field
-	Providers              []provider
-	States                 map[string]string
-	Progress               progress
-	IntroSeen              bool   `json:"intro_seen"`
-	StoreExists            bool   `json:"store_exists"`
-	IssueURL               string `json:"issue_url"`
-	ProfileBlurb           string `json:"profile_blurb"`
-	ProvidersBlurb         string `json:"providers_blurb"`
+	MusicIncluded                       bool   `json:"music_included"`
+	StoreError                          string `json:"store_error"`
+	ProfileError                        string `json:"profile_error"`
+	Version, Home, Context, Environment string
+	EnvPath                             string `json:"env_path"`
+	ProfilePath                         string `json:"profile_path"`
+	KeyCount                            int    `json:"key_count"`
+	Profile                             map[string]string
+	Fields                              []field
+	Providers                           []provider
+	States                              map[string]string
+	Progress                            progress
+	IntroSeen                           bool   `json:"intro_seen"`
+	StoreExists                         bool   `json:"store_exists"`
+	IssueURL                            string `json:"issue_url"`
+	ProfileBlurb                        string `json:"profile_blurb"`
+	ProvidersBlurb                      string `json:"providers_blurb"`
 }
 type keyPlan struct {
 	ID, Name, Title, Visit, Page, Note, Prompt, Path string
@@ -78,6 +90,7 @@ type target struct {
 }
 type agentPlan struct {
 	ID, Block string
+	CopyBlock string `json:"copy_block"`
 	Targets   []target
 }
 type faqEntry struct {
@@ -110,6 +123,13 @@ type model struct {
 	faqAt                                 int
 	tick                                  int
 	outcome                               error
+	contexts                              []businessContext
+	environments                          []environment
+	scopeKind, scopeCopy, profileReturn   string
+	scopeReturn                           string
+	doctor                                doctorReport
+	doctorLoading                         bool
+	doctorRequest                         int
 }
 
 // Run starts the native Bubble Tea application. The caller owns backend lifetime.
@@ -214,7 +234,7 @@ func (m *model) openRoute(route, arg string) {
 	switch route {
 	case "home":
 		m.page = "home"
-		m.homeAt = m.firstSection()
+		m.homeAt = 0
 		m.selected = m.homeAt
 	case "intro":
 		m.page = "intro"
@@ -242,18 +262,6 @@ func (m *model) openRoute(route, arg string) {
 	default:
 		m.page = "home"
 	}
-}
-func (m model) firstSection() int {
-	if len(m.state.Progress.Fields) < len(m.state.Fields) {
-		return 0
-	}
-	if m.state.Progress.Providers == 0 {
-		return 1
-	}
-	if m.state.Progress.Agent == 0 {
-		return 2
-	}
-	return 5
 }
 func (m *model) resetInput() {
 	m.text = ""
@@ -335,14 +343,32 @@ func (m *model) back() tea.Cmd {
 	case "home":
 		m.quitting = true
 		return tea.Quit
-	case "profile", "providers", "agents", "faq":
+	case "profile":
+		if m.profileReturn == "business" {
+			m.page, m.selected = "business", 0
+			return nil
+		}
+		fallthrough
+	case "business", "providers", "agents", "faq", "environments", "doctor":
 		if m.initialRoute != "home" {
 			m.quitting = true
 			return tea.Quit
 		}
-		m.homeAt = map[string]int{"profile": 1, "providers": 2, "agents": 3, "faq": 3}[m.page]
 		m.page = "home"
 		m.selected = m.homeAt
+	case "contexts":
+		m.page, m.selected = "business", 1
+	case "environment_new":
+		m.loadEnvironments()
+	case "scope_name":
+		m.resetInput()
+		if m.scopeKind == "environment" {
+			m.page, m.selected = "environment_new", 0
+		} else {
+			m.page, m.selected = "business", 2
+		}
+	case "scope_details":
+		m.page = m.scopeReturn
 	case "profile_field":
 		m.page = "profile"
 		m.selected = m.fieldAt
@@ -371,6 +397,17 @@ func (m *model) back() tea.Cmd {
 }
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
+	case doctorMsg:
+		if msg.request != m.doctorRequest || m.page != "doctor" {
+			return m, nil
+		}
+		m.doctorLoading = false
+		if msg.err != nil {
+			m.error = clean(msg.err.Error())
+		} else {
+			m.doctor = msg.report
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		if m.page == "agents" && msg.Width != m.width {
 			m.reviewedUntil = 0
@@ -438,6 +475,13 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.editKey(msg)
 			return m, cmd
 		}
+		if m.page == "scope_name" {
+			return m.editScope(msg)
+		}
+		if key == "tab" && (m.page == "contexts" || m.page == "environments") {
+			m.openScopeDetails()
+			return m, nil
+		}
 		if m.page == "intro" {
 			if key == "enter" && m.introFits() {
 				if m.call("accept_intro", nil, nil) {
@@ -451,7 +495,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.page == "agents" || m.page == "faq_text" {
+		if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" {
 			if key != "enter" {
 				m.error = ""
 			}
@@ -477,6 +521,11 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.noteReview()
 			if m.page == "agents" {
 				cmd := m.agentKey(key)
+				return m, cmd
+			}
+			if m.page == "scope_details" && key == "enter" {
+				m.page = m.scopeReturn
+				cmd := m.enterManagement()
 				return m, cmd
 			}
 			return m, nil
@@ -684,7 +733,7 @@ func (m *model) enter() tea.Cmd {
 		m.homeAt = m.selected
 		switch m.selected {
 		case 0:
-			m.page = "profile"
+			m.page = "business"
 			m.selected = 0
 		case 1:
 			m.page = "providers"
@@ -692,19 +741,25 @@ func (m *model) enter() tea.Cmd {
 		case 2:
 			m.loadAgents()
 		case 3:
-			m.loadFAQ()
+			m.loadEnvironments()
 		case 4:
+			return m.loadDoctor()
+		case 5:
+			return m.external(ErrUpdate)
+		case 6:
+			m.loadFAQ()
+		case 7:
 			if !m.state.MusicIncluded {
 				m.error = "Music is not included in this build."
 				return nil
 			}
-			m.outcome = ErrMusic
-			m.quitting = true
-			return tea.Quit
-		case 5:
+			return m.external(ErrMusic)
+		case 8:
 			m.quitting = true
 			return tea.Quit
 		}
+	case "business", "contexts", "environments", "environment_new":
+		return m.enterManagement()
 	case "profile":
 		if m.state.ProfileError != "" {
 			return nil
@@ -769,7 +824,7 @@ func (m *model) agentKey(key string) tea.Cmd {
 			if reply.Copied {
 				m.notice = "Copied the note."
 			} else {
-				m.notice = "Select the note to copy it."
+				m.notice = "Clipboard unavailable. Copy the instructions below."
 			}
 		}
 	}
@@ -839,7 +894,15 @@ func (m model) providerCount(p provider) int {
 func (m model) choiceCount() int {
 	switch m.page {
 	case "home":
-		return 6
+		return len(homeNames)
+	case "business":
+		return 4
+	case "contexts":
+		return len(m.contexts) + 2
+	case "environments":
+		return len(m.environments) + 2
+	case "environment_new":
+		return 3
 	case "profile":
 		return len(m.state.Fields) + 1
 	case "providers":
@@ -866,7 +929,9 @@ func (m *model) jump(text string) {
 func (m model) choiceNames() []string {
 	switch m.page {
 	case "home":
-		return []string{"Profile", "Providers", "Agents", "Help / FAQ", "Music", "Done"}
+		return homeNames
+	case "business", "contexts", "environments", "environment_new":
+		return m.managementNames()
 	case "profile":
 		out := []string{}
 		for _, f := range m.state.Fields {

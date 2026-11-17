@@ -6,7 +6,7 @@ import re
 import stat
 
 from godmode_profile import Profile, _profile_directories
-from godmode_store import valid_key
+from godmode_store import normalize, valid_key
 
 
 def context_name(name):
@@ -72,8 +72,18 @@ class ContextStore:
     def __getattr__(self, name):
         return getattr(self.store, name)
 
+    def resolve(self, name):
+        valid_key(name)
+        return self.context.aliases.get(name, name)
+
+    def plan(self, name):
+        return self.store.plan(self.resolve(name))
+
+    def set(self, name, value, expected_digest=None):
+        self.store.set(self.resolve(name), normalize(value, name), expected_digest=expected_digest)
+
     def values(self, names):
-        selected = {name: self.context.aliases.get(name, name) for name in names}
+        selected = {name: self.resolve(name) for name in names}
         # Resolve once. A missing override fails in the base store; it never
         # falls through to a shared value under the original variable name.
         values = self.store.values(list(dict.fromkeys(selected.values())))
@@ -90,24 +100,37 @@ class ContextStore:
         return sorted(name for name, state in self.states().items() if state == 'set')
 
 
+def context_list(home):
+    directory = context_directory(home)
+    result = []
+    if directory.exists():
+        for path in sorted(directory.iterdir()):
+            if re.fullmatch(r'[a-z][a-z0-9_-]{0,47}', path.name):
+                context = Context(home, path.name)
+                result.append({'name': context.name, 'profile_path': str(context.profile().path),
+                               'keys': dict(context.aliases)})
+    return result
+
+
+def context_create(home, name):
+    directory = context_directory(home, name)
+    config = Profile(directory, filename='context.json')
+    if os.path.lexists(config.path):
+        raise ValueError('Context already exists; its files were not changed.')
+    config.read()
+    config.write({'schema': 1, 'aliases': {}})
+    return Context(home, name)
+
+
 def context_command(home, args):
     if not args or args == ['list']:
-        directory = context_directory(home)
-        if directory.exists():
-            for path in sorted(directory.iterdir()):
-                if re.fullmatch(r'[a-z][a-z0-9_-]{0,47}', path.name):
-                    Context(home, path.name)
-                    print(path.name)
+        for context in context_list(home):
+            print(context['name'])
         return 0
     action = args[0]
     if action == 'create' and len(args) == 2:
-        directory = context_directory(home, args[1])
-        config = Profile(directory, filename='context.json')
-        if os.path.lexists(config.path):
-            raise ValueError('Context already exists; its files were not changed.')
-        config.read()
-        config.write({'schema': 1, 'aliases': {}})
-        print('Context ' + args[1] + ' created. Its business profile is empty; unmapped keys use the shared store.')
+        context_create(home, args[1])
+        print('Context ' + args[1] + ' created. Its business profile is empty; unmapped keys use the selected store.')
         return 0
     if action in ('show', 'map', 'unmap') and len(args) >= 2:
         context = Context(home, args[1])

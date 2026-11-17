@@ -90,19 +90,6 @@ func (m model) title(title, detail string) []string {
 	}
 	return []string{row, ""}
 }
-func (m model) bar(points, total, width int) string {
-	width = max(1, width)
-	filled := 0
-	if total > 0 {
-		filled = min(width, max(0, points)*width/total)
-	}
-	p := m.palette()
-	style := p.cyan
-	if filled == width {
-		style = p.good
-	}
-	return style.Render(strings.Repeat("━", filled)) + p.muted.Render(strings.Repeat("─", width-filled))
-}
 func (m model) path(path string) string {
 	home, e := os.UserHomeDir()
 	if e == nil && strings.HasPrefix(path, home+string(filepath.Separator)) {
@@ -145,93 +132,67 @@ func (m model) introView() []string {
 	return rows
 }
 func (m model) homeView() []string {
-	p := m.palette()
-	w := m.innerWidth()
+	p, w := m.palette(), m.innerWidth()
 	rows := []string{}
-	large := m.height >= 31 && w >= 63
 	if m.height >= 22 {
-		rows = append(rows, m.logo(large)...)
+		rows = append(rows, m.logo(m.height >= 31 && w >= 63)...)
 		rows = append(rows, "")
 	} else {
 		rows = append(rows, p.brand.Render("GODMODE"))
 	}
-	total := fmt.Sprintf("Setup %d%%", m.state.Progress.Percent)
-	if w >= 50 {
-		total += "  " + m.bar(m.state.Progress.Points, 18, min(24, w-18))
+	rows = append(rows, m.scopeLines()...)
+	if m.height >= 18 {
+		rows = append(rows, "")
 	}
-	rows = append(rows, p.title.Render(total))
-	if m.height >= 24 {
-		rows = append(rows, p.muted.Render(ansi.Truncate(m.path(m.state.Home), w, "…")))
+	statuses := []string{
+		countLabel(len(m.state.Progress.Fields), "field"),
+		countLabel(m.state.KeyCount, "key") + " stored",
+		countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added",
+		"Key files", "Check local setup", "Install latest", "", "", "",
 	}
-	rows = append(rows, "")
-	names := []string{"Profile", "Providers", "Agents"}
-	count := []string{fmt.Sprintf("%d/%d optional fields", len(m.state.Progress.Fields), len(m.state.Fields)), fmt.Sprintf("%d saved", m.state.Progress.Providers), fmt.Sprintf("%d added", max(len(m.state.Progress.Agents), m.state.Progress.Agent))}
 	if m.state.ProfileError != "" {
-		count[0] = "cannot read"
+		statuses[0] = "cannot read"
 	}
 	if m.state.StoreError != "" {
-		count[1] = "cannot read"
+		statuses[1] = "cannot read"
 	}
-	points := []int{len(m.state.Progress.Fields), min(1, m.state.Progress.Providers), m.state.Progress.Agent}
-	totals := []int{max(1, len(m.state.Fields)), 1, 1}
-	commands := []string{"godmode profile", "godmode setup", "godmode agents"}
-	spacious := m.height >= 24 && w >= 45
-	if w >= 96 && m.height >= 24 {
-		cards := []string{}
-		cw := (w - 4) / 3
-		for i, name := range names {
-			heading := p.title.Render(name)
-			pointer := "  "
-			if m.selected == i {
-				pointer = p.cyan.Render("❯ ")
-				heading = p.brand.Render(name)
-			}
-			content := pointer + heading + "\n\n" + m.bar(points[i], totals[i], cw-4) + "\n" + count[i] + "\n" + p.muted.Render(commands[i])
-			card := lipgloss.NewStyle().Width(cw).Padding(0, 1)
-
-			cards = append(cards, card.Render(content))
-		}
-		rows = append(rows, strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, cards[0], "  ", cards[1], "  ", cards[2]), "\n")...)
-	} else {
-		for i, name := range names {
-			pointer := "  "
-			heading := name
-			if m.selected == i {
-				pointer = p.cyan.Render("❯ ")
-				heading = p.title.Render(name)
-			}
-			size := min(16, max(5, w-28))
-			row := pointer + pad(heading, 12) + m.bar(points[i], totals[i], size) + "  " + count[i]
-			if w < 42 {
-				row = pointer + pad(heading, 12) + count[i]
-			}
-			rows = append(rows, row)
-			if spacious {
-				if m.selected == i {
-					rows = append(rows, "  "+p.muted.Render(commands[i]))
-				} else {
-					rows = append(rows, "")
-				}
-			}
-		}
+	if !m.state.MusicIncluded {
+		statuses[7] = "not installed"
 	}
-	rows = append(rows, "")
-	for i, label := range []string{"Help / FAQ", "Music", "Done"} {
-		status := ""
-		if i == 1 && !m.state.MusicIncluded {
-			status = p.muted.Render("not installed")
-		}
-		rows = append(rows, m.choice(label, status, i+3 == m.selected, w))
+	if w < 45 {
+		statuses[4], statuses[5] = "", ""
 	}
+	if w < 40 && m.state.StoreError == "" {
+		statuses[1] = countLabel(m.state.KeyCount, "key")
+	}
+	choices := []string{}
+	for i, name := range homeNames {
+		choices = append(choices, m.choice(name, statuses[i], i == m.selected, w))
+	}
+	foot := []string{}
 	if m.error != "" {
-		rows = append(rows, m.styledWrap(m.error, p.bad)...)
+		foot = append(foot, m.styledWrap(m.error, p.bad)...)
+	} else if m.notice != "" {
+		foot = append(foot, m.styledWrap(m.notice, p.good)...)
 	}
-	if m.notice != "" && m.height >= 24 {
-		rows = append(rows, "", p.good.Render(ansi.Truncate(clean(m.notice), w, "…")))
+	hint := "↑↓ move  ·  Enter open  ·  Esc quit"
+	if w < 36 {
+		hint = "↑↓ Enter · Esc quit"
 	}
-	rows = append(rows, "", p.muted.Render("↑↓ move  ·  Enter open  ·  Esc quit"))
-	return rows
+	foot = append(foot, p.muted.Render(hint))
+	leading := 0
+	if m.height > 12 {
+		leading = 1
+	}
+	room := max(1, m.height-leading-len(rows)-len(foot))
+	start := min(max(0, m.selected-room/2), max(0, len(choices)-room))
+	rows = append(rows, choices[start:min(len(choices), start+room)]...)
+	for len(rows)+len(foot) < m.height-leading {
+		rows = append(rows, "")
+	}
+	return append(rows, foot...)
 }
+
 func pad(s string, n int) string { return s + strings.Repeat(" ", max(0, n-ansi.StringWidth(s))) }
 func (m model) choice(name, status string, selected bool, width int) string {
 	p := m.palette()
@@ -242,15 +203,46 @@ func (m model) choice(name, status string, selected bool, width int) string {
 		name = p.title.Render(name)
 	}
 	if status != "" {
-		room := max(4, width-ansi.StringWidth(status)-4)
+		room := max(4, width-ansi.StringWidth(status)-3)
 		name = ansi.Truncate(name, room, "…")
 		return pointer + pad(name, room+1) + status
 	}
 	return pointer + ansi.Truncate(name, max(1, width-2), "…")
 }
 func (m model) header() []string {
+	rows := m.scopeLines()
+	if m.height >= 18 {
+		rows = append(rows, "")
+	}
+	return append(rows, m.pageHeader()...)
+}
+func (m model) pageHeader() []string {
 	p := m.palette()
 	switch m.page {
+	case "business":
+		rows := m.title("Business", "")
+		if m.state.Context == "" && m.height >= 20 {
+			rows = append(rows, m.wrap("Automatic uses the selected environment's profile.")...)
+		}
+		return rows
+	case "contexts":
+		return m.title("Switch business", "")
+	case "environments":
+		return m.title("Environments", "")
+	case "environment_new":
+		return append(m.title("New environment", ""), m.wrap("Choose its starting values.")...)
+	case "scope_name":
+		if m.scopeKind == "environment" {
+			return m.title("New environment", "")
+		}
+		return m.title("New business", "")
+	case "scope_details":
+		if m.scopeReturn == "contexts" {
+			return m.title("Business details", "")
+		}
+		return m.title("Environment details", "")
+	case "doctor":
+		return m.title("Doctor", "Read-only checks")
 	case "profile":
 		title := "Profile"
 		if m.state.Context != "" {
@@ -267,9 +259,9 @@ func (m model) header() []string {
 		}
 		return rows
 	case "providers":
-		rows := m.title("Providers", fmt.Sprintf("%d saved", m.state.Progress.Providers))
+		rows := m.title("Providers", countLabel(m.state.KeyCount, "key")+" stored")
 		if m.height >= 17 {
-			rows = append(rows, m.wrap("Choose how powerful you want your agent to be.")...)
+			rows = append(rows, m.wrap("Add or replace keys in this environment.")...)
 			rows = append(rows, "")
 		}
 		if m.filtering || m.query != "" {
@@ -293,12 +285,24 @@ func (m model) header() []string {
 		return m.title("Another key", "")
 	case "agents":
 		count := 0
+		added := 0
 		for _, t := range m.agents.Targets {
+			if t.Added {
+				added++
+			}
 			if !t.Added && t.Issue == "" {
 				count += strings.Count(t.Addition, "\n")
 			}
 		}
-		return m.title("Agents", p.good.Render(fmt.Sprintf("+%d", count))+" "+p.bad.Render("−0"))
+		rows := m.title("Agents", p.good.Render(fmt.Sprintf("+%d", count))+" "+p.bad.Render("−0"))
+		if count == 0 {
+			rows = m.title("Agents", countLabel(added, "note")+" added")
+		}
+		command := m.styledWrap(m.command("agents", "--print"), p.muted)
+		if len(command) <= m.height-len(m.scopeLines())-len(rows)-10 {
+			rows = append(rows, command...)
+		}
+		return rows
 	case "faq":
 		return m.title("Help / FAQ", "")
 	case "faq_text":
@@ -313,6 +317,8 @@ func (m model) body() []string {
 	w := m.innerWidth()
 	rows := []string{}
 	switch m.page {
+	case "business", "contexts", "environments", "environment_new", "scope_name", "scope_details", "doctor":
+		return m.managementBody()
 	case "profile":
 		if m.state.ProfileError != "" {
 			return m.styledWrap(m.state.ProfileError, p.warn)
@@ -513,6 +519,12 @@ func (m model) footer() []string {
 	switch m.page {
 	case "providers":
 		hint = "↑↓ move  ·  / search  ·  Enter open  ·  Esc back"
+	case "scope_name":
+		hint = "Enter create  ·  Esc back"
+	case "contexts", "environments":
+		hint = "↑↓ move  ·  Enter select  ·  Tab details  ·  Esc back"
+	case "scope_details":
+		hint = "↑↓ scroll  ·  Enter select  ·  Esc back"
 	case "profile_field":
 		hint = "Enter save  ·  Ctrl-U clear  ·  /clear remove  ·  Esc back"
 	case "key":
@@ -538,12 +550,28 @@ func (m model) footer() []string {
 		} else {
 			hint = "↑↓ scroll  ·  c copy  ·  Esc back"
 		}
-	case "faq_text":
+	case "faq_text", "doctor":
 		hint = "↑↓ / PgDn scroll  ·  Esc back"
+	}
+	if m.innerWidth() < 48 {
+		switch m.page {
+		case "contexts", "environments":
+			hint = "↑↓ Enter · Tab details · Esc back"
+		case "scope_details":
+			hint = "↑↓ scroll · Enter select · Esc back"
+		}
+	}
+	if m.innerWidth() < 36 {
+		switch m.page {
+		case "contexts", "environments":
+			hint = "↑↓ Enter · Tab details\nEsc back"
+		case "scope_details":
+			hint = "↑↓ · Enter select\nEsc back"
+		}
 	}
 	rows = append(rows, "")
 	rows = append(rows, m.styledWrap(hint, p.muted)...)
-	if m.page == "agents" || m.page == "faq_text" || m.page == "key" {
+	if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" || m.page == "key" {
 		total := len(m.body())
 		available := max(1, m.height-len(m.header())-len(rows)-2)
 		if total > available {
@@ -567,7 +595,7 @@ func (m model) inputFits() bool {
 	if m.page == "key" {
 		return len(m.header())+len(m.footer())+3 <= m.height
 	}
-	if m.page == "profile_field" {
+	if m.page == "profile_field" || m.page == "scope_name" {
 		return len(m.header())+len(m.body())+len(m.footer())+2 <= m.height
 	}
 	return true
@@ -575,10 +603,14 @@ func (m model) inputFits() bool {
 func (m model) agentLines() []string {
 	p := m.palette()
 	rows := []string{}
+	copyBlock := m.agents.CopyBlock
+	if copyBlock == "" {
+		copyBlock = m.agents.Block
+	}
 	if len(m.agents.Targets) == 0 {
 		rows = append(rows, m.wrap("No agent folders found. Add this note to your agent's instructions.")...)
 		rows = append(rows, "")
-		for _, row := range strings.Split(strings.TrimSuffix(m.agents.Block, "\n"), "\n") {
+		for _, row := range strings.Split(strings.TrimSuffix(copyBlock, "\n"), "\n") {
 			rows = append(rows, m.wrap(row)...)
 		}
 		return rows
@@ -623,6 +655,10 @@ func (m model) agentLines() []string {
 			rows = append(rows, m.styledWrap("+ "+row, p.good)...)
 		}
 	}
+	rows = append(rows, "", p.title.Render("Copy for this task"))
+	for _, row := range strings.Split(strings.TrimSuffix(copyBlock, "\n"), "\n") {
+		rows = append(rows, m.wrap(row)...)
+	}
 	return rows
 }
 
@@ -637,7 +673,7 @@ func (m *model) noteReview() {
 }
 func (m *model) clampScroll() { m.scroll = min(max(0, m.scroll), max(0, len(m.body())-m.bodyRoom())) }
 func (m model) listScroll(lines []string, room int) int {
-	if m.page == "agents" || m.page == "faq_text" || m.page == "key" || m.page == "profile_field" {
+	if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" || m.page == "key" || m.page == "profile_field" || m.page == "scope_name" {
 		return min(max(0, m.scroll), max(0, len(lines)-room))
 	}
 	// A selected row stays in the viewport even when a description occupies another row.
@@ -659,7 +695,7 @@ func (m model) screenLines() []string {
 	}
 	head, body, foot := m.header(), m.body(), m.footer()
 	room := m.bodyRoom()
-	if (m.page == "key" || m.page == "profile_field") && !m.inputFits() {
+	if (m.page == "key" || m.page == "profile_field" || m.page == "scope_name") && !m.inputFits() {
 		return append(m.styledWrap("Enlarge the terminal to review the full edit.", m.palette().warn), "", m.palette().muted.Render("Esc back"))
 	}
 	top := m.listScroll(body, room)

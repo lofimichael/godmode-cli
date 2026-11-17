@@ -162,12 +162,20 @@ func New(home string) (*Client, error) {
 }
 
 func NewForContext(home, context string) (*Client, error) {
+	return NewForSelection(home, context, "")
+}
+
+// NewForSelection keeps business and key-file selection private to this client.
+func NewForSelection(home, context, environment string) (*Client, error) {
 	args := []string{"__ui"}
 	if home != "" {
 		args = append([]string{"--home", home}, args...)
 	}
 	if context != "" {
 		args = append([]string{"--context", context}, args...)
+	}
+	if environment != "" {
+		args = append([]string{"--env", environment}, args...)
 	}
 	cmd, reader, writer, err := command(args, uiEnvironment())
 	if err != nil {

@@ -5,11 +5,10 @@ import tempfile
 import time
 import unittest
 
-from test_native_cli import NativeTerminal
+from test_native_cli import BINARY, NativeTerminal
 from license_support import provision
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = Path(os.environ.get('GODMODE_TEST_NATIVE_BINARY', ROOT / 'target/godmode-native-test'))
 
 
 @unittest.skipUnless(BINARY.exists(), 'Build the native candidate first.')
@@ -89,7 +88,7 @@ class NativeInput(unittest.TestCase):
 
     def test_menu_paste_is_ignored_and_exit_drops_queued_tail(self):
         terminal = self.tty()
-        terminal.expect('Setup 0%')
+        terminal.expect('Business: Automatic')
         terminal.paste('synthetic_PRIVATE_MENU\n\n')
         terminal.settle(.1)
         terminal.send(b'\x1b[F\r')  # End selects Done; Enter exits.

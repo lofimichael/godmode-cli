@@ -21,7 +21,7 @@ TITLE = '~/.godmode/.env.godmode'
 APPEND = "$ printf '%s\\n' "
 DOTS = '•••••'
 MENU = '↑↓ move'
-SUMMARY = 'Setup '  # The exit receipt of godmode and of the standalone provider list.
+SUMMARY = 'Profile '  # The exit receipt of godmode and of the standalone provider list.
 SERVICE_ACCOUNT = {'type':'service_account','project_id':'demo-project','private_key_id':'abc123',
                    'private_key':'-----BEGIN PRIVATE KEY-----\nSYNTHETICKEYMATERIAL\n-----END PRIVATE KEY-----\n',
                    'client_email':'agent@demo-project.iam.gserviceaccount.com','client_id':'1',
@@ -166,7 +166,7 @@ class CLI(unittest.TestCase):
         self.assertEqual((screen.count(TITLE),screen.count('Cloudflare'),screen.count('GitHub · Access token')),(0,0,0))
         self.assertEqual(screen.count('✓ Saved GH_TOKEN=sealed(git•••••d34)'),1)
         self.assertIn('  ✓ Saved GH_TOKEN=sealed(git•••••d34)',screen.lines())  # At the two-column margin.
-        self.assertIn('33%', '\n'.join(screen.lines()))
+        self.assertIn('1 key saved', '\n'.join(screen.lines()))
         self.assertNotIn('Done. Your keys are in',plain(terminal.capture))
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
         self.assertNotIn(token.encode(),terminal.capture)
@@ -423,7 +423,7 @@ class CLI(unittest.TestCase):
         terminal.send(b'\x1b');terminal.after(mark,MENU)
         self.assertTrue(self.pointed(terminal).startswith('GitHub'))  # Nothing saved: the pointer stays.
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
-        self.assertIn('Setup 0% · Profile 0/6 · 0 providers saved · 0 agents added',plain(terminal.capture))
+        self.assertIn('Profile 0 optional fields · 0 keys saved · 0 agents added',plain(terminal.capture))
         self.assertIn('godmode setup',plain(terminal.capture))
         self.assertNotIn('GH_TOKEN',values(self.file))
         failing,_=self.opener('exit 1\n')
@@ -514,7 +514,7 @@ class CLI(unittest.TestCase):
             self.assertTrue(self.pointed(terminal).startswith(name),name)
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
         # A key outside the catalog counts as a provider: three ready providers and ACME_API_TOKEN.
-        self.assertIn('Setup 33% · Profile 0/6 · 4 providers saved · 0 agents added',plain(terminal.capture))
+        self.assertIn('Profile 0 optional fields · 4 keys saved · 0 agents added',plain(terminal.capture))
         self.assertEqual(values(self.file)['ACME_API_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
 
@@ -731,9 +731,9 @@ class CLI(unittest.TestCase):
         full=self.terminal(['setup']);full.expect(MENU)
         self.assertEqual(self.pointed(full),'Done')
         full.send(b'\r');full.expect(SUMMARY);full.done()
-        # Every provider and nothing else is one third: the meter counts three providers at most.
+        # The receipt counts saved keys, independent of optional profile fields.
         lines=Screen(100).feed(full.capture).lines()
-        self.assertIn('  Setup 33% · Profile 0/6 · 12 providers saved · 0 agents added',lines)
+        self.assertIn('  Profile 0 optional fields · %d keys saved · 0 agents added' % len(values(self.file)),lines)
         self.assertIn('  godmode agents',lines)
         self.assertNotIn('Done. Your keys are in',plain(full.capture))
 
@@ -844,7 +844,7 @@ class CLI(unittest.TestCase):
         self.assertTrue(self.pointed(move).startswith('Vercel'))  # The moved keys count as saved.
         self.assertIn('  Providers',Screen(100).feed(move.capture).lines())
         move.send(b'\x1b');move.expect(SUMMARY);move.done()
-        self.assertIn('Setup 33% · Profile 0/6 · 2 providers saved · 0 agents added',plain(move.capture))
+        self.assertIn('Profile 0 optional fields · 2 keys saved · 0 agents added',plain(move.capture))
         self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text())
         self.assertNotIn(b'SYNTHETIC',move.capture+keep.capture)
         self.assertEqual(values(self.file)['GH_TOKEN'],'ghp_SYNTHETIC_value_000000000002')
@@ -1167,35 +1167,24 @@ class CLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout.strip().splitlines()[-1]), result.stdout
 
-    def test_meter_matches_every_worked_example(self):
-        every = [key['name'] for provider in self.providers.values() for key in provider['key']
-                 if provider['id'] not in ('stripe', 'google', 'prodigi')]
-        every += ['STRIPE_TEST_SECRET_KEY', 'GOOGLE_ADS_SERVICE_ACCOUNT_JSON', 'PRODIGI_SANDBOX_API_KEY']
+    def test_summary_reports_saved_facts_without_a_completion_score(self):
         trio = ['GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'HIGGSFIELD_API_KEY_ID']
-        cases = (('new', (), 0, False, 0), ('one profile field', (), 1, False, 5),
-                 ('Cloudflare only', ['CLOUDFLARE_API_TOKEN'], 0, False, 33),
-                 ('Cloudflare and an agent', ['CLOUDFLARE_API_TOKEN'], 0, True, 66),
-                 ('two providers, a half pair, 4 fields', trio, 4, False, 55),
-                 ('the same and an agent', trio, 4, True, 88),
-                 ('the pair finished', trio + ['HIGGSFIELD_API_KEY_SECRET'], 4, True, 88),
-                 ('everything', ['GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'VERCEL_TOKEN'], 6, True, 100),
-                 ('all twelve providers only', every, 0, False, 33),
-                 ('Stripe live secret only', ['STRIPE_LIVE_SECRET_KEY'], 0, False, 33),
-                 ('Stripe publishable keys only', ['STRIPE_TEST_PUBLISHABLE_KEY', 'STRIPE_LIVE_PUBLISHABLE_KEY'], 0, False, 0),
-                 ('one custom key', ['ACME_TOKEN'], 0, False, 33),
-                 ('one provider completes setup', ['GH_TOKEN'], 6, True, 100),
-                 ('six fields only', (), 6, False, 33))
-        for label, keys, fields, agent, percent in cases:
+        cases = (('new', (), 0, False, 'godmode setup'),
+                 ('optional profile only', (), 1, False, 'godmode setup'),
+                 ('Cloudflare only', ['CLOUDFLARE_API_TOKEN'], 0, False, 'godmode agents'),
+                 ('Cloudflare and an agent', ['CLOUDFLARE_API_TOKEN'], 0, True, None),
+                 ('a partial pair', trio, 4, False, 'godmode setup higgsfield'),
+                 ('pair finished', trio + ['HIGGSFIELD_API_KEY_SECRET'], 4, True, None),
+                 ('Stripe live secret only', ['STRIPE_LIVE_SECRET_KEY'], 0, False, 'godmode agents'),
+                 ('one custom key', ['ACME_TOKEN'], 0, False, 'godmode agents'))
+        for label, keys, fields, agent, expected_next in cases:
             with self.subTest(case=label):
                 state, output = self.meter_for(keys, fields, agent)
-                self.assertEqual(state['percent'], percent)
-                self.assertIn('Setup %d%%' % percent, output)
-                self.assertEqual(state['next'] is None, percent == 100)
+                self.assertEqual(state['fields'], fields)
+                self.assertEqual(state['next'], expected_next)
+                self.assertIn('Profile %d optional fields' % fields, output)
+                self.assertNotIn('Setup ', output)
                 self.assertNotIn('meter_DEMO_ONLY', output)
-        state, output = self.meter_for(trio, 4, True)
-        self.assertEqual(state['next'], 'godmode setup higgsfield')  # Finish what was started first.
-        state, _ = self.meter_for(['CLOUDFLARE_API_TOKEN'], 0, False)
-        self.assertEqual(state['next'], 'godmode agents')
 
     def test_provider_state_follows_ready_sets(self):
         cli = load_cli()

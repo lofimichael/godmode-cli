@@ -14,7 +14,9 @@ from pty_support import Terminal, plain
 from license_support import provision
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = Path(os.environ.get('GODMODE_TEST_NATIVE_BINARY', ROOT / 'target/godmode-native-test'))
+# Ordinary UI tests exercise the production candidate. The separate signed-key
+# fixture belongs only to test_license_native.py.
+BINARY = Path(os.environ.get('GODMODE_TEST_NATIVE_BINARY', ROOT / 'target/godmode-native'))
 
 
 class NativeTerminal(Terminal):
@@ -138,7 +140,7 @@ class NativeCLI(unittest.TestCase):
 
     def test_menu_pastes_never_open_a_section(self):
         terminal = self.tty()
-        terminal.expect('Setup 0%')
+        terminal.expect('Business: Automatic')
         terminal.paste('synthetic_PASTED_MENU_SECRET\n\n')
         terminal.settle(.15)
         self.assertNotIn(b'PASTED_MENU_SECRET', terminal.capture)
@@ -146,6 +148,105 @@ class NativeCLI(unittest.TestCase):
         self.assertFalse((self.home / 'profile.json').exists())
         terminal.send(b'\x03')
         terminal.done(130)
+
+    def test_environment_copy_form_selects_an_independent_key_file(self):
+        self.assertEqual(self.command('set', 'DEMO_TOKEN', '--stdin', data='synthetic_COPY_SOURCE').returncode, 0)
+        self.assertEqual(self.command('context', 'create', 'acme').returncode, 0)
+        terminal = self.tty('--context', 'acme')
+        terminal.expect('Esc quit')
+        terminal.send(b'e\r')
+        terminal.expect('New environment')
+        terminal.send(b'\x1b[B\r')
+        terminal.expect('Copy current')
+        terminal.send(b'\x1b[B\r')
+        terminal.send(b'acme-test')
+        terminal.expect('Later edits stay separate.')
+        self.assertFalse((self.home / '.env.godmode.acme-test').exists())
+        terminal.send(b'\r')
+        terminal.expect('Created acme-test.')
+        terminal.send(b'\t')
+        terminal.settle(.1)  # Bubble Tea may update only the changed title suffix.
+        terminal.send(b'\x1b')
+        terminal.settle(.1)
+        terminal.send(b'\x1b')
+        terminal.settle(.1)
+        terminal.send(b'\x1b')
+        terminal.done()
+        result = self.command('--env', 'acme-test', 'list')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'DEMO_TOKEN')
+        self.assertEqual(self.command('--env', 'acme-test', 'set', 'DEMO_TOKEN', '--stdin', data='synthetic_COPY_CHANGED').returncode, 0)
+        unchanged = self.command('run', 'DEMO_TOKEN', '--', sys.executable, '-c',
+                                 'import os; assert os.environ["DEMO_TOKEN"] == "synthetic_COPY_SOURCE"')
+        self.assertEqual(unchanged.returncode, 0, unchanged.stderr)
+
+    def test_new_business_form_and_profile_return(self):
+        terminal = self.tty()
+        terminal.expect('Esc quit')
+        terminal.send(b'\r')
+        terminal.expect('Edit profile')
+        terminal.send(b'\x1b[B\x1b[B\r')
+        terminal.expect('Profile starts empty.')
+        terminal.send(b'acme')
+        self.assertFalse((self.home / 'contexts/acme/context.json').exists())
+        terminal.send(b'\r')
+        terminal.expect('Created acme.')
+        terminal.send(b'\r')
+        terminal.expect('optional fields')
+        terminal.send(b'\x1b')
+        terminal.settle(.1)
+        terminal.send(b'\x1b')
+        terminal.settle(.1)
+        terminal.send(b'\x1b')
+        terminal.done()
+        result = self.command('context', 'show', 'acme')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('contexts/acme/profile.json', result.stdout)
+
+    def test_installed_agents_keep_selected_task_instruction(self):
+        self.assertEqual(self.command('env', 'create', 'acme-test').returncode, 0)
+        self.assertEqual(self.command('context', 'create', 'acme').returncode, 0)
+        target = self.root / '.codex/AGENTS.md'
+        target.parent.mkdir()
+        original = '<!-- godmode:start -->\nSynthetic existing note.\n<!-- godmode:end -->\n'
+        target.write_text(original)
+        terminal = self.tty('--env', 'acme-test', '--context', 'acme', 'agents')
+        terminal.expect('already added')
+        terminal.expect('Copy for this task')
+        terminal.expect('--env acme-test')
+        terminal.expect('c copy')
+        terminal.send(b'\x1b')
+        terminal.done()
+        self.assertEqual(target.read_text(), original)
+        note = self.command('--env', 'acme-test', '--context', 'acme', 'agents', '--print')
+        self.assertEqual(note.returncode, 0, note.stderr)
+        self.assertIn('--env acme-test --context acme help', note.stdout)
+        self.assertIn('.env.godmode.acme-test', note.stdout)
+
+    def test_doctor_button_and_update_version_dispatch(self):
+        terminal = self.tty()
+        terminal.expect('Esc quit')
+        terminal.send(b'd\r')
+        terminal.expect('Read-only checks')
+        terminal.expect('Python')
+        terminal.send(b'\x1b')
+        terminal.settle(.1)
+        terminal.send(b'\x1b')
+        terminal.done()
+        # The test binary has no managed install receipt; update must reach the
+        # updater gate, not interpret its requested release as CLI --version.
+        result = self.command('update', '--version', 'v0.18.0')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('recorded install', result.stderr)
+        self.assertEqual(result.stdout, '')
+        terminal = self.tty()
+        terminal.expect('Esc quit')
+        terminal.send(b'u\r')
+        terminal.done(2)
+        restored = terminal.capture.find(b'\x1b[?1049l')
+        refused = terminal.capture.find(b'A recorded install is required')
+        self.assertGreaterEqual(restored, 0)
+        self.assertGreater(refused, restored, 'updater ran before terminal restoration')
 
 
 if __name__ == '__main__':

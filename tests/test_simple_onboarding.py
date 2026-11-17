@@ -121,11 +121,13 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
         complete_intro(session)
-        self.choice(session, "Profile")
+        self.choice(session, "Business")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Profile", "Providers", "Agents", "Done", "Setup 0%", "0/6", "0 saved", "0 added"):
+        for label in ("Business", "Providers", "Agents", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
+        session.send(b"\r")
+        self.choice(session, "Edit profile")
         session.send(b"\r")
         self.open_choice(session, LABELS[0])
         # Enter on an empty field skips it and opens the next empty one: one Enter per field.
@@ -139,9 +141,11 @@ class ModularOnboardingTests(unittest.TestCase):
         self.choice(session, "Back")
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
-        self.choice(session, "Providers")  # Home moves on to the next row.
+        self.choice(session, "Edit profile")
         session.send(b"\x1b")
-        session.expect("Setup 0%")
+        self.choice(session, "Business")  # Home keeps the section that was opened.
+        session.send(b"\x1b")
+        session.expect("Profile 0 optional fields")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
 
@@ -185,7 +189,7 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
         complete_intro(session)
-        self.choice(session, "Profile")
+        self.choice(session, "Business")
         session.send(b"\x1b")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
@@ -466,7 +470,7 @@ class ModularOnboardingTests(unittest.TestCase):
         session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], env)
         self.addCleanup(session.close)
         session.expect("I added it")
-        self.assertIn("Print the note", plain(session.capture))
+        self.assertIn("Print task instructions", plain(session.capture))
         before = self.snapshot()
         session.send(b"\x1b")
         session.done()

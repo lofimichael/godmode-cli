@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestRoutesKeepAutomationAndChildFlagsDirect(t *testing.T) {
 	t.Setenv("GODMODE_PLAIN", "")
@@ -28,6 +31,29 @@ func TestRoutesKeepAutomationAndChildFlagsDirect(t *testing.T) {
 		if route.command == "run" && route.plain {
 			t.Fatal("child's --plain became a global option")
 		}
+	}
+}
+
+func TestEnvironmentSelectionAndExternalActionsKeepScope(t *testing.T) {
+	r := selectRoute([]string{"--context", "acme", "--env=acme-test", "setup", "stripe"})
+	if r.context != "acme" || r.environment != "acme-test" || !r.interactive || r.command != "setup" {
+		t.Fatal("selected setup lost scope")
+	}
+	for _, args := range [][]string{{"--env=", "profile"}, {"--env", "a", "--env", "b"}, {"--env"}} {
+		if !selectRoute(args).envError {
+			t.Fatal("invalid environment entered UI")
+		}
+	}
+	child := selectRoute([]string{"run", "TOKEN", "--", "tool", "--env", "other"})
+	if child.envSelected {
+		t.Fatal("child environment flag selected parent")
+	}
+	r.home = "/tmp/example"
+	if want := []string{"--home", "/tmp/example", "--context", "acme", "--env", "acme-test", "update"}; !reflect.DeepEqual(selectedArgs(r, "update"), want) {
+		t.Fatal("external update lost scope")
+	}
+	if want := []string{"source"}; !reflect.DeepEqual(commandWords([]string{"--env", "acme-test", "--context=acme", "source"}), want) {
+		t.Fatal("scope flags became command words")
 	}
 }
 

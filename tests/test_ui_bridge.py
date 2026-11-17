@@ -19,6 +19,8 @@ from godmode_bridge import UIBridge
 
 class BridgeTests(unittest.TestCase):
     def setUp(self):
+        cli.ACTIVE_CONTEXT = None
+        cli.ACTIVE_ENVIRONMENT = 'default'
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
         self.home = self.root / '.godmode'
@@ -28,6 +30,8 @@ class BridgeTests(unittest.TestCase):
         self.bridge = UIBridge(vars(cli), self.home)
 
     def tearDown(self):
+        cli.ACTIVE_CONTEXT = None
+        cli.ACTIVE_ENVIRONMENT = 'default'
         self.env.stop()
         self.temp.cleanup()
 
@@ -115,6 +119,62 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(process.returncode, 0)
         self.assertNotIn(b'SECRET', process.stdout + process.stderr)
         self.assertFalse(json.loads(process.stdout)['ok'])
+
+    def test_environment_switch_scopes_keys_profile_and_invalidates_previews(self):
+        self.bridge.store.set('DEMO_KEY', 'synthetic-original')
+        self.call('state')
+        self.call('profile_save', field='business_name', value='Original business')
+        plan = self.call('key_plan', name='DEMO_KEY')
+        self.call('key_check', id=plan['id'], value='synthetic-new')
+        state = self.call('environment_create', name='client-test', copy='default')
+        self.assertEqual(state['environment'], 'client-test')
+        self.assertEqual(state['profile'], {})
+        self.assertEqual(state['states']['DEMO_KEY'], 'set')
+        with self.assertRaisesRegex(ValueError, 'expired'):
+            self.call('key_save', id=plan['id'], value='synthetic-new')
+        self.assertEqual(self.call('environment_list')['environments'][1]['keys'], 1)
+        self.call('profile_save', field='business_name', value='Client business')
+        state = self.call('environment_select', name='default')
+        self.assertEqual(state['profile']['business_name'], 'Original business')
+        with self.assertRaisesRegex(ValueError, 'not saved'):
+            self.call('environment_select', name='not-here')
+        self.assertEqual(self.call('state')['environment'], 'default')
+
+    def test_business_reused_across_environments_and_mapped_write_preview_is_exact(self):
+        self.call('environment_create', name='client-test')
+        self.call('context_create', name='client')
+        self.call('profile_save', field='business_name', value='Client Inc')
+        cli.ACTIVE_CONTEXT.map('STRIPE_SECRET_KEY', 'CLIENT_STRIPE_KEY')
+        self.call('context_select', name='client')
+        plan = self.call('key_plan', name='STRIPE_SECRET_KEY')
+        check = self.call('key_check', id=plan['id'], value='sk_test_synthetic', pasted=True)
+        self.assertTrue(check['assignment'].startswith('CLIENT_STRIPE_KEY='))
+        self.call('key_save', id=plan['id'], value='sk_test_synthetic', pasted=True)
+        self.assertEqual(cli.Store(self.home, environment='client-test').names(), ['CLIENT_STRIPE_KEY'])
+        self.call('environment_create', name='client-live')
+        state = self.call('state')
+        self.assertEqual(state['profile']['business_name'], 'Client Inc')
+        self.assertNotEqual(state['states'].get('STRIPE_SECRET_KEY'), 'set')
+        self.assertEqual(self.call('context_list')['contexts'][0]['name'], '')
+
+    def test_agent_copy_is_scoped_but_global_append_stays_generic(self):
+        target = self.root / '.codex' / 'AGENTS.md'
+        target.parent.mkdir()
+        self.call('environment_create', name='acme-live')
+        self.call('context_create', name='acme')
+        plan = self.call('agents_plan')
+        self.assertIn('--env acme-live', plan['copy_block'])
+        self.assertIn('--context acme', plan['copy_block'])
+        self.assertNotIn('--env acme-live', plan['block'])
+        self.call('agents_apply', id=plan['id'])
+        self.assertNotIn('--env acme-live', target.read_text())
+        installed = self.call('agents_plan')
+        self.assertTrue(installed['targets'][0]['added'])
+        self.assertEqual(installed['copy_block'], plan['copy_block'])
+        with patch.dict(vars(cli), clipboard=lambda: ['/synthetic/clipboard']), \
+                patch('godmode_bridge.subprocess.run') as copier:
+            self.call('copy_agent', id=installed['id'])
+            self.assertEqual(copier.call_args.kwargs['input'].decode(), plan['copy_block'])
 
 
 if __name__ == '__main__':

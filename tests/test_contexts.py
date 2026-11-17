@@ -68,10 +68,14 @@ class ContextTests(unittest.TestCase):
         self.command('--context', 'acme', 'run', 'STRIPE_SECRET_KEY', '--', sys.executable,
                      '-c', 'import os; assert os.environ["STRIPE_SECRET_KEY"] == "synthetic-base"')
 
-    def test_context_selection_never_mutates_shared_keys(self):
+    def test_context_set_updates_only_the_resolved_saved_name(self):
         self.command('context', 'create', 'acme')
-        self.command('--context', 'acme', 'set', 'SHARED', '--stdin', input='must-not-save', expected=2)
-        self.assertFalse((self.home / '.env.godmode').exists())
+        self.command('set', 'STRIPE_SECRET_KEY', '--stdin', input='synthetic-default')
+        self.command('context', 'map', 'acme', 'STRIPE_SECRET_KEY', 'ACME_STRIPE')
+        self.command('--context', 'acme', 'set', 'STRIPE_SECRET_KEY', '--stdin', input='synthetic-acme')
+        self.command('run', 'STRIPE_SECRET_KEY', 'ACME_STRIPE', '--', sys.executable, '-c',
+                     'import os; assert os.environ["STRIPE_SECRET_KEY"] == "synthetic-default"; '
+                     'assert os.environ["ACME_STRIPE"] == "synthetic-acme"')
         self.command('--context=', 'profile', 'show', expected=2)
         self.command('--context', 'acme', '--context', 'acme', 'profile', 'show', expected=2)
         self.command('--context', 'missing', 'profile', 'show', expected=2)
