@@ -1642,7 +1642,11 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
 				yseq = cud
 			}
-			if !s.flags.Contains(tFullscreen) || n < len(yseq) { // n is the cost of using newline characters
+			// GODMODE: fullscreen movement must preserve the column even when
+			// a host PTY or terminal maps LF to CRLF (ONLCR/LNM). Inline mode
+			// retains newlines because advancing may intentionally scroll.
+			// See vendor/PATCHES.md and terminal_renderer_godmode_test.go.
+			if !s.flags.Contains(tFullscreen) {
 				yseq = strings.Repeat("\n", n)
 				if s.flags.Contains(tMapNewline) {
 					fx = 0

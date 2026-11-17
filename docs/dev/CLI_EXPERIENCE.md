@@ -10,7 +10,7 @@ Godmode stores profile fields and provider keys, then supplies selected keys to 
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses aligned rows for Active setup, Providers, Agents, Business details, Doctor, Update, Help / FAQ, Music and Done. Business and keys stay visible across pages. Active setup leads to separate key-environment and business-profile pickers and saves the complete pair. The intro has an immediate warning-to-empowerment transition, finite gradient animation and no forced wait. Selected rows pulse briefly; delayed loading indicators appear only during real work. See [active setup](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
+Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses aligned rows for Active setup, Providers, Agents, Business details, Doctor, Update, Help / FAQ, Music and Done. Business and keys stay visible across pages. Active setup leads to separate key-environment and business-profile pickers and saves the complete pair. The intro has an immediate warning-to-empowerment transition, a repeating gradient animation and no forced wait. Selected rows pulse briefly; delayed loading indicators appear only during real work. See [active setup](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
 ```mermaid
 flowchart LR

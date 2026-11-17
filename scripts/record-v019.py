@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 from datetime import date
 
 REPO = Path(__file__).resolve().parents[1]
@@ -56,6 +57,13 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     font = NATIVE.DEMO.font_path(args.font)
     evidence = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "screens": [], "checks": []}
+    warning_cells = None
+
+    def fixed_cells(capture):
+        # Only these decorative connector cells change. Logo letters, layout
+        # and every word must stay at the same actual terminal coordinates.
+        return tuple(row.replace("▪", "─").replace("◆", "─").replace("▶", "─")
+                     for row in capture.screen.display)
 
     def environment(root, theme="dark", motion=False, colors=True):
         env = {"HOME": str(root), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -86,7 +94,7 @@ def main():
         evidence["screens"].append({"file": name + ".png", "columns": cols, "rows": rows,
                                     "theme": theme, "reduced_motion": True})
 
-    for cols, rows, theme, colors in ((80, 24, "dark", True), (40, 18, "dark", True),
+    for cols, rows, theme, colors in ((80, 24, "dark", True), (40, 18, "dark", True), (110, 36, "dark", True),
                                       (80, 24, "light", True), (80, 24, "dark", False)):
         with tempfile.TemporaryDirectory(prefix="godmode-v019-intro-") as temp:
             root = Path(temp).resolve()
@@ -97,6 +105,8 @@ def main():
                 capture.wait_for("Enter I understand")
                 assert not (root / ".godmode").exists(), "intro created files before acknowledgement"
                 shot(capture, "intro-warning-" + suffix, cols, rows, theme)
+                if (cols, rows, theme, colors) == (80, 24, "dark", True):
+                    warning_cells = fixed_cells(capture)
                 if not colors:
                     assert not re.search(rb"\x1b\[[0-9:;]*m", bytes(terminal.capture)), "NO_COLOR emitted styled text"
                     assert not any(cell.underscore for row in capture.screen.buffer.values()
@@ -136,19 +146,53 @@ def main():
         terminal, capture = recorder(env, ["intro"], 80, 24, "dark")
         # Capture real in-flight terminal frames; the default recorder waits
         # until output settles, which is appropriate only for stills.
-        capture.settle = lambda: (terminal.drain(.035), capture.sync())
+        next_frame = time.monotonic()
+
+        def live_frame():
+            nonlocal next_frame
+            next_frame += .040
+            while time.monotonic() < next_frame:
+                terminal.drain(max(0, min(.010, next_frame - time.monotonic())))
+            capture.sync()
+
+        capture.settle = live_frame
         try:
             capture.wait_for("Enter I understand")
             for stage in range(2):
-                for frame in range(48):
-                    capture.capture(50)
+                next_frame = time.monotonic()
+                for frame in range(96):
+                    capture.capture(40)
                 if stage == 0:
                     terminal.send(b"\r")
                     capture.wait_for("Enter finish")
             terminal.send(b"\r")
             terminal.done()
             capture.write(output / "intro.gif")
-            evidence["checks"].append("4.8-second motion recording from actual PTY frames")
+            evidence["checks"].append("7.68-second motion recording from actual PTY frames")
+        finally:
+            terminal.close()
+
+    with tempfile.TemporaryDirectory(prefix="godmode-v019-loop-") as temp:
+        root = Path(temp).resolve()
+        terminal, capture = recorder(environment(root, motion=True), ["intro"], 80, 24, "dark")
+        try:
+            capture.wait_for("Enter I understand")
+            started = time.monotonic()
+            later_styles = set()
+            while time.monotonic() - started < 9:
+                terminal.drain(.040)
+                capture.sync()
+                assert fixed_cells(capture) == warning_cells, "looping intro left misplaced glyphs"
+                if time.monotonic() - started > 7.68:
+                    later_styles.add(tuple((capture.screen.buffer[y][x].fg,
+                                            capture.screen.buffer[y][x].bg,
+                                            capture.screen.buffer[y][x].bold)
+                                           for y in range(24) for x in range(80)))
+            assert len(later_styles) >= 3, "intro stopped changing after two cycles"
+            assert not (root / ".godmode/intro.seen").exists(), "loop acknowledged itself"
+            terminal.send(b"\x1b")
+            terminal.done()
+            evidence["checks"].append("motion continues after two cycles with unchanged terminal cell layout")
         finally:
             terminal.close()
 

@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Motion is decorative, finite and independent of input. Nothing in the intro
+// Motion is decorative, repeating and independent of input. Nothing in the intro
 // waits for an animation or pretends to scan a machine or grant permissions.
-const introAnimationFrames = 48
+const introCycleFrames = 96
 
 var introDangerDark = []string{"#FF556D", "#FF6273", "#FF747A", "#FF8B86", "#FFA58F", "#FFC09D"}
 var introDangerLight = []string{"#A41438", "#AE1B3A", "#B6263C", "#BF343E", "#A83E2D", "#90441D"}
@@ -17,8 +17,10 @@ var introPowerDark = []string{"#BE8CFF", "#B89CFF", "#AAAFFF", "#92C3FF", "#76D7
 var introPowerLight = []string{"#7034BA", "#6543B6", "#5056AE", "#35699E", "#197686", "#087C68"}
 
 func (m model) introMotionActive() bool {
-	return m.page == "intro" && m.colors && !m.opts.NoMotion && m.tick < introAnimationFrames
+	return m.page == "intro" && m.colors && !m.opts.NoMotion && !m.quitting
 }
+
+func (m model) introPhase() int { return m.tick % introCycleFrames }
 
 func (m model) introArt() []string {
 	art := smallLogo
@@ -38,22 +40,33 @@ func (m model) introArt() []string {
 			colors = introPowerLight
 		}
 	}
-	styles := make([]lipgloss.Style, len(colors))
+	styles := make([]lipgloss.Style, len(colors), len(colors)+3)
 	for i, color := range colors {
 		styles[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
 	}
-	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFF3E7")).Bold(true)
+	// Feather the sweep rather than flashing a hard white band. The head moves
+	// one cell per frame and leaves the art before the cycle wraps around.
+	sheen := []string{"#FFF3E7", "#FFDBC8", "#FFB5A6"}
+	if m.introStage > 0 {
+		sheen = []string{"#F3FDFF", "#CDF5F5", "#A5D8EE"}
+	}
 	if !m.dark {
-		highlight = lipgloss.NewStyle().Foreground(lipgloss.Color("#24123F")).Bold(true)
+		sheen = []string{"#24123F", "#58304B", "#92414B"}
+		if m.introStage > 0 {
+			sheen = []string{"#161C42", "#293E69", "#395C89"}
+		}
+	}
+	for _, color := range sheen {
+		styles = append(styles, lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true))
 	}
 	rows := make([]string, 0, len(art))
+	motion, head := m.introMotionActive(), m.introPhase()-12
 	for y, row := range art {
 		if !m.colors {
 			rows = append(rows, m.introCenter(row))
 			continue
 		}
-		// A diagonal sheen travels over the letters once, then leaves a quiet
-		// gradient. Render whole runs of the same color, not one ANSI reset per
+		// Render whole runs of the same color, not one ANSI reset per
 		// cell. The letterforms never flicker, disappear or change meaning.
 		var line strings.Builder
 		rowWidth := ansi.StringWidth(row)
@@ -63,19 +76,15 @@ func (m model) introArt() []string {
 			if run == "" {
 				return
 			}
-			if last == len(styles) {
-				line.WriteString(highlight.Render(run))
-			} else {
-				line.WriteString(styles[max(0, last)].Render(run))
-			}
+			line.WriteString(styles[max(0, last)].Render(run))
 			run = ""
 		}
 		for _, ch := range row {
-			ink := min(len(styles)-1, (x+y*3)*len(styles)/max(1, rowWidth+len(art)*3))
-			if m.introMotionActive() {
-				head := m.tick*2 - 12
-				if x+y >= head-2 && x+y <= head+2 {
-					ink = len(styles)
+			ink := min(len(colors)-1, (x+y*3)*len(colors)/max(1, rowWidth+len(art)*3))
+			if motion {
+				distance := max(x+y-head, head-x-y)
+				if distance < len(sheen) {
+					ink = len(colors) + distance
 				}
 			}
 			if ink != last {
@@ -116,8 +125,14 @@ func (m model) introRail() string {
 	}
 	runes := []rune("╶" + strings.Repeat("─", w-2) + "╴")
 	if m.introMotionActive() {
-		head := (m.tick * 2) % (w - 4)
-		runes[head+1], runes[head+2] = '▪', '◆'
+		// Enter and leave through invisible cells. At the wrap boundary both
+		// frames show the quiet rail, so the pulse never jumps across the view.
+		head := m.introPhase()*(w+8)/introCycleFrames - 4
+		for offset, ch := range []rune{'▪', '◆'} {
+			if at := head + offset; at > 0 && at < w-1 {
+				runes[at] = ch
+			}
+		}
 	}
 	style := m.palette().bad
 	if m.introStage > 0 {
@@ -139,10 +154,10 @@ func (m model) introCircuit() []string {
 			cells := []rune(rows[1])
 			// Only the connector cells move. Labels remain readable on every
 			// frame and indicate a relationship, never completed work.
-			for _, start := range []int{13, 35} {
-				at := start + (m.tick/2)%7
-				if at < len(cells) {
-					cells[at] = '▶'
+			head := m.introPhase()*24/introCycleFrames - 4
+			for segment, start := range []int{13, 35} {
+				if offset := head - segment*8; offset >= 0 && offset < 8 {
+					cells[start+offset] = '▶'
 				}
 			}
 			rows[1] = string(cells)

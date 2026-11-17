@@ -10,6 +10,7 @@ includes vendored libraries and their licenses.
 ```sh
 scripts/build-native.sh
 go test -mod=vendor ./...
+go test -mod=vendor ./vendor/github.com/charmbracelet/ultraviolet -run TestGodmode
 python3 -m unittest discover -s tests -p 'test_*.py'
 target/godmode-native --version
 target/godmode-native source > target/installed-core.py
@@ -22,6 +23,19 @@ shellcheck -s sh install.sh scripts/build-native.sh tests/install.sh tests/insta
 Tests use synthetic keys and temporary homes. Native PTY tests require the
 candidate at `target/godmode-native`. Python 3.9 remains the minimum for the
 embedded engine; test both that interpreter and the current local interpreter.
+
+The explicit vendor test protects the fullscreen newline-mapping patch described
+in [vendor/PATCHES.md](../../vendor/PATCHES.md); `go test ./...` excludes vendor tests.
+For renderer changes, install `scripts/demo-requirements.txt` in the demo virtual
+environment and run the real-PTY regressions as well:
+
+```sh
+GODMODE_TEST_NATIVE_BINARY="$PWD/target/godmode-native" target/demo-venv/bin/python -m unittest discover -s tests -p test_native_renderer.py -v
+```
+
+These tests enable ONLCR on a disposable PTY or LNM in its emulator after the first
+intro frame, then compare logo cells across more than two animation cycles and
+verify terminal restoration. They never change the operator's terminal settings.
 
 ## Package
 

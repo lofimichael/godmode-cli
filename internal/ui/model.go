@@ -447,8 +447,8 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.dark = msg.IsDark()
 		return m, nil
 	case tickMsg:
-		m.tick++
 		if m.introMotionActive() {
+			m.tick = (m.tick + 1) % introCycleFrames
 			return m, introTick()
 		}
 		return m, nil
@@ -508,9 +508,8 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "enter" && m.introFits() {
 				if m.introStage == 0 {
 					m.introStage, m.tick = 1, 0
-					if m.introMotionActive() {
-						return m, introTick()
-					}
+					// Init owns the one repeating clock. Its pending tick advances
+					// this scene too; starting another would accelerate each loop.
 					return m, nil
 				}
 				if m.call("accept_intro", nil, nil) {

@@ -33,7 +33,12 @@ PREFIX = b'# Existing agent rules\r\nKeep this exact text and line ending.'
 
 
 class NativeScreen(DEMO.pyte.Screen):
-    """Add the VT scroll operations used by Bubble Tea's native renderer."""
+    """Add VT scrolling and backward tabs used by Bubble Tea's renderer."""
+
+    def cursor_backward_tab(self, count=1):
+        for _ in range(min(count or 1, self.columns)):
+            self.cursor.x = max((stop for stop in self.tabstops if stop < self.cursor.x), default=0)
+
     def scroll_up(self, count=1):
         top, bottom = self.margins or (0, self.lines - 1)
         previous = self.cursor.y
@@ -52,8 +57,8 @@ class NativeScreen(DEMO.pyte.Screen):
 
 
 class NativeStream(DEMO.pyte.Stream):
-    csi = dict(DEMO.pyte.Stream.csi, S='scroll_up', T='scroll_down')
-    events = DEMO.pyte.Stream.events | frozenset(('scroll_up', 'scroll_down'))
+    csi = dict(DEMO.pyte.Stream.csi, S='scroll_up', T='scroll_down', Z='cursor_backward_tab')
+    events = DEMO.pyte.Stream.events | frozenset(('scroll_up', 'scroll_down', 'cursor_backward_tab'))
 
 
 class Recorder(DEMO.Recorder):
@@ -69,6 +74,12 @@ def check_terminal_model():
     stream.feed('A\r\nB\r\nC\r\nD\x1b[2;4r\x1b[2;3H\x1b[1S')
     assert [line.strip() for line in screen.display] == ['A', 'C', 'D', '']
     assert (screen.cursor.y, screen.cursor.x) == (1, 2)
+    tabs = NativeScreen(30, 4)
+    tab_stream = NativeStream(tabs)
+    tab_stream.feed('\x1b[1;25H\x1b[2Z')
+    assert (tabs.cursor.y, tabs.cursor.x) == (0, 8)
+    tab_stream.feed('\x1b[9Z')
+    assert tabs.cursor.x == 0
     stream.feed('\x1b[1T')
     assert [line.strip() for line in screen.display] == ['A', '', 'C', 'D']
     assert (screen.cursor.y, screen.cursor.x) == (1, 2)
