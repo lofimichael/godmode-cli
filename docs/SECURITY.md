@@ -6,9 +6,8 @@ Any program running as you can still ask godmode for a key.
 Anyone with both files has every key.
 Profile and key commands work offline without activation. Legacy license
 activation and deactivation contact godmode.build; `godmodeup` downloads releases from it;
-provider links open in your browser; Picard downloads media on request. A command
-started with `godmode run` has its own network access. Music uses local Darunia
-tools and local song files.
+provider links open in your browser. A command
+started with `godmode run` has its own network access.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
@@ -68,19 +67,6 @@ uses release archives rather than a package registry. Source builds use the
 vendored dependencies. [Licensing](LICENSING.md) covers activation, signed
 entitlements, network data and offline use.
 
-## Optional music
-
-`lib/godmode_music.py` contains the music adapter. It receives local paths and
-never receives a credential store. Darunia code, fonts, tools and songs stay
-outside Godmode's release. Their licenses remain separate.
-
-```sh
-scripts/build-native.sh --without-music
-```
-
-This removes the music adapter from the native command while keeping profile and key
-commands. [Music](MUSIC.md) lists the local files, cache and removal commands.
-
 ## The key file
 
 - Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag. `seal.key` holds a random 32-byte key; each value gets a fresh nonce, and the key's name is bound into the tag, so a value cannot be moved to another name. The code is in [godmode_store.py](../lib/godmode_store.py).
@@ -118,6 +104,5 @@ commands. [Music](MUSIC.md) lists the local files, cache and removal commands.
 
 - Profile input is visible and saved as plain JSON. Terminal control characters are escaped while you type and refused in saved fields; the mailing address allows line breaks.
 - A provider page opens only when you press Enter on an empty key prompt. The browser opener runs in the background with a small ordinary environment, not your keys; nano gets the same.
-- `godmode picard` downloads its pinned image and audio from YTMND only when asked, and never opens the key file. See [Picard](PICARD.md).
 - The installer and `godmodeup` check each download's SHA-256 against `SHA256SUMS` and replace only files they installed. A checksum cannot protect against a compromised publisher. Shell startup files change only with `--path`, and updates never touch your profile or keys.
 - In a problem report, use synthetic keys. Never include real keys, OAuth grants or unredacted recordings. Deleting a key here does not revoke it; revoke an exposed key at the provider.

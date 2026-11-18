@@ -36,7 +36,7 @@ The recording uses a temporary HOME, config and state directory and a deliberate
 synthetic Cloudflare token. The temporary file is created before recording so
 the short animation can focus on entering a key. First-run confirmation and
 cancellation are exercised separately by `tests/test_simple_cli.py`. Input stays masked.
-It never loads the ordinary Godmode configuration, launches a browser, requests Picard media, authenticates with a
+It never loads the ordinary Godmode configuration, launches a browser, authenticates with a
 provider, or changes an installed executable. The raw terminal transcript remains
 in memory and is checked for accidental credential echo. The script verifies the
 synthetic save, clean terminal exit, GIF frame durations and looping before reporting

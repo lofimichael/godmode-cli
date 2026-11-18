@@ -218,9 +218,6 @@ func (m model) actions() []action {
 	if len(m.state.RecentSetups) > 0 {
 		items = append(items, action{"Recent setups", "Reuse a business and key environment", "history switch pair", "recent_setups", ""})
 	}
-	if m.state.MusicIncluded {
-		items = append(items, action{"Music", "Optional Music Pack", "songs audio synthesizer", "music", ""})
-	}
 	for _, p := range m.state.Providers {
 		items = append(items, action{p.Name, "Provider · " + p.About, providerSearchText(p) + " setup token key", "provider", p.ID})
 	}
@@ -267,8 +264,6 @@ func (m *model) chooseAction() tea.Cmd {
 		m.loadEnvironments()
 	case "doctor":
 		return m.loadDoctor()
-	case "music":
-		return m.external(ErrMusic)
 	case "active":
 		m.startActive()
 	default:
@@ -311,7 +306,6 @@ func (m model) homeDescription() string {
 		"Choose the business and key environment for new commands.",
 		"Appearance, local checks and updates.",
 		"Quickstart, keyboard controls and common questions.",
-		"Install the optional Music Pack, or open its player.",
 		"Return to your terminal. Saved changes stay saved.",
 	}
 	if m.selected >= 0 && m.selected < len(text) {

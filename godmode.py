@@ -39,7 +39,6 @@ SELECTION_SOURCE = 'default'
 ACTIVE_HOME = None
 STARTUP_SOURCES = {'environment': 'default', 'context': 'default'}
 UI_REQUESTED = False
-MUSIC_INCLUDED = None  # The native/source builder sets this optional feature flag.
 PROVIDERS = None  # The build script inserts the plain provider data here.
 LOGO = ['█▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀', '█▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄']
 PRINTED = {'blank': False, 'pages': set()}  # Whether the last line was empty; long addresses printed.
@@ -1409,7 +1408,7 @@ def summary(state):
 HOME_ROWS = (('Business', 'godmode profile'),
              ('Providers', 'godmode setup'),
              ('Agents', 'godmode agents'))
-HOME_ENVIRONMENTS, HOME_DOCTOR, HOME_UPDATE, HOME_HELP, HOME_MUSIC, HOME_DONE = 0, 5, 6, 7, 8, 9
+HOME_ENVIRONMENTS, HOME_DOCTOR, HOME_UPDATE, HOME_HELP, HOME_DONE = 0, 5, 6, 7, 8
 
 
 def home_items(state):
@@ -1552,8 +1551,7 @@ def onboard(home=None):
             items = [('Active setup', ACTIVE_ENVIRONMENT, (ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else 'Automatic') if detailed else ''),
                      status[1], status[2], ('Business details', status[0][1], status[0][2]), None,
                      ('Doctor', '', 'local checks' if detailed else ''), ('Update', '', ''),
-                     ('Help / FAQ', '', 'godmode faq' if detailed else ''),
-                     ('Music', '', 'godmode music' if detailed else ''), ('Done', '', '')]
+                     ('Help / FAQ', '', 'godmode faq' if detailed else ''), ('Done', '', '')]
             try:
                 at = read_menu(items, at, menu_hint('quit'), gap=bool(gap()) and screen_rows() > 14,
                                header=home_header(state, home), row_spacing=0)
@@ -1580,8 +1578,6 @@ def onboard(home=None):
                     break
                 elif at == HOME_HELP:
                     faq(home)
-                elif at == HOME_MUSIC:
-                    music_command(home, args=[])
             except Back:
                 pass
             except ValueError as error:
@@ -1759,9 +1755,7 @@ def faq_entries(home=None):
         ('Does Godmode make network calls?', [
             'Profile, key and doctor commands run locally. Doctor does not verify provider access.',
             'License activation, deactivation, godmode update and godmodeup contact godmode.build. Provider links open '
-            'in your browser. Picard downloads media '
-            'on request. Commands launched with godmode run can use the network.',
-            'The optional Music Pack includes its synth. You supply local song files.']),
+            'in your browser. Commands launched with godmode run can use the network.']),
         ('How do I inspect a release?', [
             'Godmode uses Bubble Tea and Lip Gloss for its interface. The Python file engine uses standard '
             'libraries. No packages are installed at startup.',
@@ -1795,26 +1789,6 @@ def faq(home=None):
             if at >= len(entries):
                 return
             read_document(*entries[at])
-
-
-def music_command(home=None, args=None, command='music'):
-    try:
-        from godmode_music_pack import music_pack_main
-        handler = music_pack_main
-    except (ImportError, NameError):
-        # The optional section is absent from a --without-music build.
-        handler = globals().get('music_pack_main')
-    if handler is None:
-        raise ValueError('Music is not included in this build.')
-    if not args and command == 'music' and not os.environ.get('GODMODE_NO_MOTION'):
-        # Pass the shared display preference across the optional boundary;
-        # the music module itself has no dependency on profile/settings code.
-        try:
-            if not ui_preferences(globals(), home)['motion']:
-                os.environ['GODMODE_NO_MOTION'] = '1'
-        except (OSError, ValueError):
-            os.environ['GODMODE_NO_MOTION'] = '1'
-    return handler(args or [], home=profile_home(home), command=command)
 
 
 def help_table(rows):
@@ -1969,8 +1943,8 @@ def run_with_keys(store, argv):
         raise ValueError('Cannot run ' + command[0] + '.') from None
 
 
-COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'jingle', 'settings', 'setup', 'list', 'run', 'set',
-            'help', 'migrate', 'edit', 'path', 'picard', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
+COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'settings', 'setup', 'list', 'run', 'set',
+            'help', 'migrate', 'edit', 'path', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
 
 USAGE = """Usage: godmode [COMMAND]
 
@@ -2003,8 +1977,6 @@ For you
                                switch keys and business details for new commands
   godmode active               show the current selection
   godmode intro                replay the welcome
-  godmode music                optional Music Pack: install, player, remove
-  godmode jingle play          play an original notification cue (Music Pack)
   godmode settings             inspect or change Motion
 
   A key environment has its own keys; missing keys never use another environment.
@@ -2055,37 +2027,6 @@ COMMAND_HELP = {
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
     'faq': 'Usage: godmode faq\n\nHow to start, connect your agent, switch setup and check local files.\nAlso covers provider access, network use, sealing and source.',
     'help': 'Usage: godmode help [COMMAND]\n\nWithout a command, print the agent guide and saved key names.\nUse godmode for interactive setup or godmode --help for the command reference.\n\n  godmode help agents\n  godmode help setup',
-    'music': """GODMODE BEATZ — optional Music Pack.
-
-Usage: godmode music install                 Install the Music Pack
-       godmode music setup --songs DIR      Build its included synth; link .ootrs
-       godmode music                        Open library, queue, and player
-       godmode music play NAME              Play in the background
-       godmode music stop                   Stop audio and preparation
-       godmode music remove                 Remove pack, runtime, and cache
-
-The pack owns its player interface, synth, instruments, and original jingles.
-Your source songs stay outside its managed files. No Darunia checkout needed.
-Playback needs mpv. One-time synth setup needs Python 3.9+, C/C++, CMake,
-and FFmpeg (macOS: brew install mpv ffmpeg cmake).
-
-Controls: pause, resume, next, previous, seek SECONDS, volume 0..100,
-          repeat off|one|all, shuffle on|off, queue, status [--json].
-Enter submits search; a second Enter plays. a appends; c opens a collection;
-A appends the whole collection. Space pauses. Esc goes back. q closes the
-view while playback continues. x stops music. ? shows every control.
-
-play accepts --seconds 1..3600 (default 180) and --render-only.
-clear removes cached renders; queue clear clears the queue.
-Local previews: music install --file PACK --sha256 SHA256.
-""",
-    'jingle': """Usage: godmode jingle play [ready|success|attention] [--volume 0..100]
-       godmode jingle list
-
-Original short cues from the optional Music Pack. Needs mpv, but no synth
-setup or local tracks. Current music and queue stay unchanged.
-Install with godmode music install; remove with godmode music remove.
-""",
     'setup': "Usage: godmode setup [PROVIDER]\n\nArrow keys choose a provider; / searches. Enter opens its key page or saves\na pasted key. Tab shows the shell command. Esc returns.\n\n  godmode setup cloudflare\n  godmode --plain setup",
     'set': "Usage: godmode set NAME [--stdin]\n\nSave or replace one key. Interactive input stays masked. --stdin reads a\nvalue from a pipe or file.\n\n  godmode set GH_TOKEN\n  godmode set ACME_AUTH_JSON --stdin < credential.json",
     'list': "Usage: godmode list\n\nPrint saved key names, one per line. Values stay hidden.\nUnreadable or duplicate entries produce an error and a nonzero exit status.",
@@ -2098,7 +2039,6 @@ Install with godmode music install; remove with godmode music remove.
     'build-info': "Usage: godmode build-info\n\nPrint the native command's compiler, dependencies and embedded engine hash.",
     'edit': "Usage: godmode edit\n\nOpen the key file in nano. Sealed values remain encrypted.\nSave or replace values with godmode set NAME.",
     'migrate': "Usage: godmode migrate\n\nSeal plain-text keys from an older install.\nUpdate tools that read the old file to use godmode run NAME -- command.",
-    'picard': "Usage: godmode picard [link | open | show | play | stop]\n\nlink prints the media link; open opens it in the browser. show displays\nthe image; play starts audio; stop ends playback. Media downloads on request.",
 }
 
 
@@ -2193,10 +2133,6 @@ def main():
         return 0
     if argv[:1] == ['settings']:
         return settings_command(home, argv[1:])
-    # Optional music has its own state and process owner. It never resolves a
-    # business/key selection or opens a credential store, including for Stop.
-    if argv[:1] in (['music'], ['jingle']):
-        return music_command(home, argv[1:], command=argv[0])
     if selected_environment is not None:
         environment_name(selected_environment)
     if selected_context is not None:
@@ -2274,13 +2210,12 @@ def main():
     parser = Arguments(description='Your business profile and API keys in one local place for your coding agents.',
                        add_help=False)
     parser.add_argument('command', nargs='?', default='onboard')
-    parser.add_argument('name', nargs='?', help='provider, key name, or Picard action')
+    parser.add_argument('name', nargs='?', help='provider or key name')
     parser.add_argument('field', nargs='?', help='profile field for get, set, or unset')
     parser.add_argument('--home', '--config-dir', dest='home', default=home, help='Godmode home; existing legacy home is detected')
     parser.add_argument('--stdin', action='store_true', help='read one value from a pipe instead of the masked prompt')
     parser.add_argument('--version', action='version', version='godmode ' + VERSION)
     parser.add_argument('--accept-disclaimer', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--state-dir', help=argparse.SUPPRESS)
     parser.add_argument('--no-motion', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):
@@ -2304,11 +2239,6 @@ def main():
         return 0
     if args.command == 'onboard' and not args.name and not args.stdin:
         return onboard(args.home) or 0
-    if args.command == 'picard':
-        # Optional media code never receives a Store or opens the credential file.
-        from godmode_picard import picard
-        media_state = args.state_dir or (str(Path(args.home) / 'state') if args.home else None)
-        return picard(args.name or 'link', media_state)
     store = effective_store(args.home)
     explicit = bool(args.home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'))
     if args.command == 'path' and not args.name:

@@ -211,7 +211,6 @@ class UIBridge:
                       'startup_sources': dict(a.get('STARTUP_SOURCES', {})),
                       'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
-                      'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
                       'fields': [dict(name=name, label=label, description=description)
                                  for name, (label, description) in zip(a['PROFILE_FIELDS'], a['PROFILE_LABELS'])],
@@ -364,14 +363,6 @@ class UIBridge:
         if action == 'open_url':
             return {'opened': a['open_page'](self._text(request, 'url'))}
         raise ValueError('Unknown UI operation.')
-
-    def _music_source_exists(self):
-        # Modular development has a neighboring adapter; assembled builds use globals.
-        module_file = self.api.get('__file__')
-        if not module_file:
-            return False
-        from pathlib import Path
-        return (Path(module_file).parent / 'lib' / 'godmode_music.py').is_file()
 
 
 def ui_bridge(home=None, namespace=None):

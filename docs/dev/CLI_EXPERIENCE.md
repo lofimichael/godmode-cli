@@ -1,8 +1,10 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the current native source candidate; its navigation changes are not released yet. Direct commands and the Python plain/compatibility interface retain their own output contracts. The [navigation audit](NAVIGATION_AUDIT.md) records the current routes, evidence, and the remaining final review handoffs. The images below are historical 0.19 examples, not screenshots of the current candidate.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the current native source candidate; its navigation changes are not released yet. Direct commands and the Python plain/compatibility interface retain their own output contracts. The [navigation audit](NAVIGATION_AUDIT.md) records the earlier navigation work and its evidence. The home capture below shows the current candidate.
 
-![Godmode home](../images/v019/home.png)
+![Godmode home](../images/current/home.png)
+
+The setup and key-edit images are historical examples.
 
 ![Godmode active setup](../images/v019/active-setup.png)
 
@@ -10,7 +12,7 @@ Godmode stores profile fields and provider keys, then supplies selected keys to 
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. Home leads with Provider keys, Connect agent and Business details, followed by Switch setup, Settings, Help, Music and Exit. The active business and key environment remain visible. Switch setup stages both choices until Use this setup saves the pair. Recent setups recalls up to five used pairs and requires a review before applying one. Ctrl-K finds an action; / filters providers or opens the finder from other menus. Esc returns to the actual parent, retaining focus and query; q quits from menus and remains text in an input. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
+Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. Home leads with Provider keys, Connect agent and Business details, followed by Switch setup, Settings, Help and Exit. The active business and key environment remain visible. Switch setup stages both choices until Use this setup saves the pair. Recent setups recalls up to five used pairs and requires a review before applying one. Ctrl-K finds an action; / filters providers or opens the finder from other menus. Esc returns to the actual parent, retaining focus and query; q quits from menus and remains text in an input. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
 ```mermaid
 flowchart LR
@@ -19,9 +21,6 @@ flowchart LR
     Engine --> Keys[.env.godmode + seal.key]
     Engine --> Notes[Guarded agent-note appends]
     Direct[Direct and plain commands] --> Engine
-    Terminal -->|close UI before handoff| Music[Optional Python music interface]
-    Music --> Darunia[Local Darunia tools and songs]
-    Darunia --> Cache[Cached WAV + PCM visualizer]
 ```
 
 The Go interface temporarily holds newly entered text. The Python engine validates it, supplies masked key previews, retains file snapshots and performs writes. It never returns a stored plaintext secret to the interface. One Python process serves each native UI session; the executable embeds its source and passes it on a descriptor separate from request input.
@@ -59,7 +58,6 @@ flowchart TD
     Settings --> Confirm[Update confirmation]
     Confirm -->|Explicit update| Shell[Restore terminal before updater]
     Home --> Help[Quickstart and FAQ]
-    Home --> Music[External local music interface]
     Home -->|Exit / q / Esc| Shell
     Finder[Ctrl-K action finder] --> Destination[Selected route]
     Destination -->|Esc retains query| Finder
@@ -76,7 +74,7 @@ Back restores provider, help, scope and agent-target identity as well as menu po
 | Surface | Visible content | Action and return |
 | --- | --- | --- |
 | Welcome | Original block lettering and account-access consequences | Enter advances only while the required statement/action fit. Esc exits without recording completion. |
-| Home | Three primary tasks, secondary setup/settings/help, Music and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
+| Home | Three primary tasks, secondary setup/settings/help and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
 | Provider keys | Names, saved state, selected description and overflow position | / filters locally. Esc clears active filtering first. No-match Enter cannot open a provider or URL. |
 | Provider key | Guidance, shortened link, masked input, destination and change preview | Empty Enter can open the provider page. Paste never submits. Valid input saves on explicit Enter only when review fits; Esc abandons it. |
 | Multiple-key provider | Key checklist and saved states | Choose a key; returning preserves its list context. |
@@ -90,7 +88,6 @@ Back restores provider, help, scope and agent-target identity as well as menu po
 | Recent setups | Up to five applied environment/business pairs | Choose a pair, review both names, then Enter uses it. Cancel preserves active state and any unapplied manual draft. |
 | Settings | Motion, Check setup, Update Godmode, Replay intro | Motion persists in ui.json; command no-motion overrides do not rewrite it. Update requires confirmation before external handoff. |
 | Help | Quickstart first, then connection/scope/files/source topics | Enter opens a topic; Esc returns to its list or finder origin. ? opens keyboard help from menus. |
-| Music | Existing local song picker, cached synthesis and spectrum | The native terminal is restored before handoff. Failures remain visible; successful return reopens Home. |
 
 The profile fields are `operator_name`, `business_name`, `legal_name`, `website`, `public_email`, and `business_mailing_address`. A provider instruction must still name the correct scope, account and page. Brief copy does not remove information needed for a decision.
 
@@ -121,12 +118,10 @@ The profile fields are `operator_name`, `business_name`, `legal_name`, `website`
 | `godmode settings motion on\|off`, `settings --json` | Save Motion; inspect preference and local ui.json path |
 | `godmode path`, `edit`, `migrate` | Print key-file path; open nano; verify and seal compatible legacy keys |
 | `godmode source`, `build-info` | Embedded Python source; core hash, compiler and dependency metadata |
-| `godmode music [init\|list\|play\|status\|clear\|forget]` | Explicit optional local synthesis and playback; see [Music](../MUSIC.md) |
-| `godmode picard [link\|open\|show\|play\|stop]` | Explicit optional Picard media |
 | `godmode --version` | Version only |
 | `godmode init` | Compatibility alias for onboarding |
 
-`--home DIR`, `--config-dir`, `GODMODE_HOME` and `GODMODE_CONFIG_DIR` retain their existing core selection behavior. `init --accept-disclaimer` remains a compatibility route. `--state-dir` selects Picard state; music state is under the selected Godmode home. None of these controls expands a key's authority.
+`--home DIR`, `--config-dir`, `GODMODE_HOME` and `GODMODE_CONFIG_DIR` retain their existing core selection behavior. `init --accept-disclaimer` remains a compatibility route. None of these controls expands a key's authority.
 
 The native launcher handles guided routes only with both input and output attached to a suitable terminal. `--plain`, `GODMODE_PLAIN=1`, an empty/dumb `TERM`, and redirected operation use the Python path. Plain key entry displays a masked review after Enter and saves on a second Enter. The compatibility menu may advance through fields differently from the native list; it is not the native renderer without color.
 
@@ -152,7 +147,7 @@ The shell installer selects a compatible native release for macOS/Linux ARM64 or
 
 The native task menu does not use a completion percentage. Business fields and unused providers are optional. `Saved` means stored locally; an appended note means the specified file changed. Neither proves provider access, agent instruction loading or successful execution. Current-task copying is its own operation and does not mark file installation complete.
 
-The native interface uses Unicode block art, arrows, separators and bars. It currently has no complete ASCII substitution layer; use plain mode for ASCII-oriented terminals. Light/dark palettes adapt to terminal background information. `NO_COLOR=1` and `CLICOLOR=0` retain selection text and symbols without color. Motion can be saved in Settings or with `godmode settings motion off`. `--no-motion` or `GODMODE_NO_MOTION=1` overrides it for the current command; the native welcome also skips its reveal when colors are disabled. Plain mode provides static sequential output. Music has its own monochrome visualizer and no-motion behavior.
+The native interface uses Unicode block art, arrows, separators and bars. It currently has no complete ASCII substitution layer; use plain mode for ASCII-oriented terminals. Light/dark palettes adapt to terminal background information. `NO_COLOR=1` and `CLICOLOR=0` retain selection text and symbols without color. Motion can be saved in Settings or with `godmode settings motion off`. `--no-motion` or `GODMODE_NO_MOTION=1` overrides it for the current command; the native welcome also skips its reveal when colors are disabled. Plain mode provides static sequential output.
 
 File previews carry meaning in text and signs, not color alone. Native keys show `+ Add` or `± Replace` with a masked assignment. Agent appends show plus-prefixed additions and a zero removal count. Ordinary field entry has no spinner or invented progress animation. Direct outputs remain complete and pipeable.
 
@@ -167,7 +162,6 @@ File previews carry meaning in text and signs, not color alone. Native keys show
 | Full-catalog completion target | Not required; only chosen services need setup |
 | Agent append review | Chosen target paths and append block must be reviewed before write; task copy is separate; existing file text is preserved |
 | Color versus plain mode | Distinct controls; plain mode changes interaction, not only styling |
-| Optional music | Local synth integration, separate process and removable adapter; no tools/fonts/songs bundled |
 
 The [0.15 verification record](UX_VERIFICATION.md) is historical. The current [navigation audit](NAVIGATION_AUDIT.md#validation-checkpoints-actually-completed) records executed candidate checks and separates frozen reviewer checkpoints from the unreleased final candidate. No public release or installation was performed by that audit.
 
@@ -182,6 +176,6 @@ The [0.15 verification record](UX_VERIFICATION.md) is historical. The current [n
 | Navigation | Search/no match, Escape behavior, Ctrl-C, profile return selection, multi-key checklist and direct-route exit |
 | Agent changes | Exact preview, scroll gate, width-change re-review, prior note, guarded append and partial failure |
 | Commands | Stable names/JSON/guides, stdin, child streams/signals/exit codes, source/build-info |
-| Preservation | Existing keys/profile/instructions, terminal state, unrelated files, updater backup and removable music |
+| Preservation | Existing keys/profile/instructions, terminal state, unrelated files, updater backup |
 
 Use synthetic keys and temporary homes. Record native and compatibility checks separately. Screenshots, successful local storage and protocol tests do not prove provider permissions, paid demand or screen-reader usability. Executed results belong in the release verification record.

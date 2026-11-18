@@ -58,7 +58,7 @@ GODMODE_BINARY_SHA=$(shasum -a 256 target/godmode-native | awk '{print $1}')
 sh install.sh --binary target/godmode-native --sha256 "$GODMODE_BINARY_SHA"
 ```
 
-The source archive includes pinned vendored Go dependencies. For an offline build, the exact pinned Go 1.26.7 compiler must already be installed and selected by `go` on PATH (`go version` confirms it); run the build with `GOPROXY=off GOSUMDB=off`. An older `go` on PATH may try to download or verify the pinned toolchain instead. The installer's `--archive` and `--binary` modes download nothing. Add `--without-music` to the build command to omit the optional music adapter.
+The source archive includes pinned vendored Go dependencies. For an offline build, the exact pinned Go 1.26.7 compiler must already be installed and selected by `go` on PATH (`go version` confirms it); run the build with `GOPROXY=off GOSUMDB=off`. An older `go` on PATH may try to download or verify the pinned toolchain instead. The installer's `--archive` and `--binary` modes download nothing.
 
 ## Inspect the source
 
@@ -87,8 +87,6 @@ The separate source archive contains the matching Go and Python sources, build s
   agent.added                   empty; you added the Agents text by hand
   license.json                  signed entitlement and deactivation token, mode 0600
   installation.json             optional legacy activation ID, mode 0600
-  state/picard/                 optional Picard media cache
-  state/music/                  optional local music settings and render cache
 ```
 
 `godmode use --env NAME --context NAME` saves the active setup. `godmode active` shows it; `--context -` selects the environment’s own profile. See [Businesses and environments](CONTEXTS.md) for precedence and scoped agent commands.

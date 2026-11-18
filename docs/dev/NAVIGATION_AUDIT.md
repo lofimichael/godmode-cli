@@ -1,5 +1,9 @@
 # Navigation audit
 
+This is a historical navigation audit. Its frozen reviews and screenshots describe
+the candidates tested at the time, including the since-removed Music menu.
+Current command and menu behavior is described in [CLI experience](CLI_EXPERIENCE.md).
+
 Date: 2026-11-17. Status: **reviewed source candidate; unreleased**. No public release or installation was performed during the audit phase. The subsequent requested [local installation and test run](NAVIGATION_LOCAL_INSTALL.md) is recorded separately. Both final reviewer checkpoints are complete; their scores and coverage are recorded below.
 
 This work reorganizes the existing local credential/profile editor around three tasks: save a provider key, give an existing agent instructions, and edit optional business details. It keeps the Go/Bubble Tea interface, embedded Python file engine, file formats, source-available licensing, provider-login boundary, and distribution model. It does not establish provider access or turn Godmode into an agent runner.
@@ -54,7 +58,6 @@ Home
     Update Godmode -> review confirmation -> updater after terminal restoration
     Replay intro -> intro -> Settings
   Help -> How do I start? / connection / scope / checks / files / source
-  Music -> external local music interface
   Exit -> terminal
 
 From menus: Ctrl-K opens Find an action; / does the same outside Provider keys.
@@ -172,7 +175,7 @@ This does not detect arbitrary project instruction files, install agents, launch
 
 Motion uses optional nonsecret `ui.json`. Inspection does not create it. Writes use the existing ownership, permissions, snapshot, locking and atomic-replace checks; unknown fields remain. Invalid preferences produce an actionable error rather than changing keys or business data. `--no-motion`/`GODMODE_NO_MOTION` override the current command without rewriting the saved preference.
 
-Check setup/Doctor inspects local state, not provider permissions. Update is a confirmation followed by a handoff after the terminal is restored. The tested unmanaged candidate reaches the existing install-receipt refusal rather than an installation. Music similarly hands the terminal to its existing local interface; failures remain visible. Architecture, licensing and network/distribution rules are unchanged by this audit.
+Check setup/Doctor inspects local state, not provider permissions. Update is a confirmation followed by a handoff after the terminal is restored. The tested unmanaged candidate reaches the existing install-receipt refusal rather than an installation. Architecture, licensing and network/distribution rules are unchanged by this audit.
 
 ## Validation checkpoints actually completed
 

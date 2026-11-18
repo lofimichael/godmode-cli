@@ -8,15 +8,12 @@ distinguishes code inspection from release verification and performance tests.
 
 **Go with Bubble Tea v2 and Lip Gloss v2 owns Godmode's default interactive
 experience. The existing Python credential/profile implementation remains the
-embedded file engine.** Direct commands and plain mode use that engine. Darunia
-synthesis remains optional and separately removable.
+embedded file engine.** Direct commands and plain mode use that engine.
 
 The visual experience takes priority over preserving the old Python interface.
 Bubble Tea's event/update/view model and Lip Gloss's styling support the NFO
 welcome, typography, brief animation and responsive previews. The native home,
-provider, key, profile, agent and FAQ views live in `internal/ui`. Music is a
-deliberate handoff to the Python adapter: the Go UI closes before the music
-picker/visualizer runs and reopens afterward.
+provider, key, profile, agent and FAQ views live in `internal/ui`.
 
 The native executable embeds the assembled readable Python source. During an
 interactive session, Go owns input and rendering; one session-owned Python
@@ -24,7 +21,7 @@ subprocess handles bounded JSON-line requests over private pipes. Its in-memory
 preview IDs retain snapshots until a save or cancellation. The Python engine
 reads/writes the store, validates edits, computes masked key previews and checks
 for concurrent file changes. The existing Python terminal code remains embedded
-for plain mode, compatibility routes and optional media; the native default no
+for plain mode and compatibility routes; the native default no
 longer uses it for the main guided interface.
 
 A full Go rewrite would require reproducing the credential store's
@@ -65,12 +62,6 @@ pinned Go toolchain; installing a native archive does not.
   `scripts/package-native.py`: pinned dependencies, build flags and archive contents.
 - `godmode.py`, `README.md`, `docs/dev/CLI_EXPERIENCE.md`: guided and direct
   routes, sparse copy, local storage, literal previews and static output.
-- The local `darunias-cli` README, `synthesize.py` and `docs/SYNTHESIS.md`:
-  synthesis invokes local SEQ64/TinySoundFont tools and produces a cached WAV.
-  It is distinct from streaming/downloading a recording. The documented native
-  build was exercised on Apple Silicon macOS; that is not Linux audio proof.
-  [Private source](https://github.com/lofimichael/darunias-cli),
-  [synthesis notes](https://github.com/lofimichael/darunias-cli/blob/main/docs/SYNTHESIS.md).
 
 Comparisons below are engineering judgments, not measured speed, memory,
 accessibility or security results. The implementation audit read current code;
@@ -115,9 +106,9 @@ are different amounts of work and risk.
 | Existing stdlib Python | Can draw the art but owns all terminal machinery | Continued growth of private terminal framework | Most directly readable current artifact | Retain as fallback/compatibility path |
 | Python + Rich only | Strong styled output, insufficient input engine | Existing raw input machinery remains | Python plus Markdown/highlighting dependencies | Does not solve the right layer |
 | Python + Textual | Rich app/widget/animation system | UI app model | More Python dependencies; readable source | More application machinery than needed |
-| Rust + Ratatui/Crossterm | Excellent cell rendering and visualizer potential | UI plus operations or another process boundary | Native artifacts; Rust graph/toolchain review | More migration cost without a UI advantage here |
+| Rust + Ratatui/Crossterm | Excellent cell rendering | UI plus operations or another process boundary | Native artifacts; Rust graph/toolchain review | More migration cost without a UI advantage here |
 | TypeScript + Ink | Strong React rendering and screen-reader primitives | UI plus operations or another process boundary | Node/React/Yoga graph or bundled runtime | No existing React reuse to offset cost |
-| TypeScript + Clack | Strong focused installer prompts | UI and custom stage/visualizer | Node plus prompt dependencies | Less suited to the requested expressive stage |
+| TypeScript + Clack | Strong focused installer prompts | UI and custom stage | Node plus prompt dependencies | Less suited to the requested expressive stage |
 
 ### Python
 
@@ -161,7 +152,7 @@ timed messages, scoped drawing and good composition. Bubbles has password/hidden
 echo modes and paste messages. Bubble Tea supplies terminal restoration and
 panic recovery, but application errors must still avoid printing secret-bearing
 values. Huh offers an explicit accessible mode that switches forms to standard
-prompts; custom intro, diff and music views still need their own plain path.
+prompts; custom intro and diff views still need their own plain path.
 [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [text input source](https://github.com/charmbracelet/bubbles/blob/v2.0.0/textinput/textinput.go),
 [Huh accessibility](https://github.com/charmbracelet/huh#accessibility).
@@ -170,8 +161,8 @@ An entirely native rewrite could remove the target machine's Python requirement;
 the selected Go UI with embedded Python core retains it. Both need
 per-OS/architecture release artifacts and a compiled artifact users cannot read
 directly. Publish corresponding source, locked modules, license inventory, build
-recipe and verification hashes. The current build disables Cgo and keeps audio
-native tooling outside it. Huh and Bubbles are not dependencies of this app;
+recipe and verification hashes. The current build disables Cgo.
+Huh and Bubbles are not dependencies of this app;
 Godmode uses its own views and input adapter on Bubble Tea and Lip Gloss.
 The tagged Bubble Tea 2.1.1 release fixes a terminal size-report vulnerability;
 “established framework” does not mean the dependency audit disappears.
@@ -181,7 +172,7 @@ The tagged Bubble Tea 2.1.1 release fixes a terminal size-report vulnerability;
 
 **Ratatui + Crossterm** provides excellent cell-level rendering, charts and
 backend control with native distribution. It would work well for a sophisticated
-visualizer. Ratatui deliberately leaves application/event architecture to the
+dashboard. Ratatui deliberately leaves application/event architecture to the
 developer; it is not a ready-made credential form system. Input editing,
 accessible sequential prompts and Godmode's domain behavior remain work.
 Feature selection can narrow the graph, but it cannot eliminate dependency and
@@ -205,14 +196,13 @@ audit or platform packaging cost. [Ink accessibility and lifecycle](https://gith
 
 **Clack** is the best narrow JavaScript choice for a friendly installer with
 focused prompts. It supports masked passwords, cancellation signals and Unicode
-fallbacks. Its opinionated prompt flow fits setup better than a custom NFO stage
-or synchronized music display. Adding Ink for the latter would recreate the
-two-renderer problem. A dedicated screen-reader mode was not established by the
+fallbacks. Its opinionated prompt flow fits setup better than a custom NFO stage.
+Adding Ink for the latter would recreate the two-renderer problem. A dedicated screen-reader mode was not established by the
 documentation inspected; do not infer it from no-color support.
 [Prompts](https://bomb.sh/docs/clack/packages/prompts/),
 [lower-level core](https://bomb.sh/docs/clack/packages/core/).
 
-## UI and audio architecture, independent of framework
+## UI architecture, independent of framework
 
 1. **One state model, two renderers.** Use simple view data for title, short
    instruction, selectable rows, proposed edits and receipt. The plain renderer
@@ -222,29 +212,15 @@ documentation inspected; do not infer it from no-color support.
    Operational views use a filename, `-` old value, `+` new value and one action.
    Mask keys before producing any display model. Profile/instruction edits show
    actual user-readable changes. Color reinforces signs; signs carry meaning.
-3. **Separate capabilities.** Color, Unicode, cursor control, motion and sound
+3. **Separate capabilities.** Color, Unicode, cursor control and motion
    are distinct settings. Plain mode is static. Reduced motion keeps useful
    final states and removes flicker, sweeps and moving bars. Direct commands
    remain complete and pipeable. A terminal does not provide a universally
    reliable browser-style reduced-motion signal; offer an explicit setting.
 4. **One terminal owner.** Do not mix Rich Live, a prompt_toolkit Application,
-   another TUI and a child player's terminal output. Background work returns
+   another TUI and a child process's terminal output. Background work returns
    bounded events. Cancellation closes the app, stops owned child processes and
    restores echo, cursor and paste modes. SIGKILL cannot run application cleanup.
-5. **Real PCM, honest synchronization.** Darunia's synthesized WAV can supply
-   windowed RMS/peak values for amplitude bars or a spectrum computed from its
-   samples. Random bars or beat-shaped timers are not an audio visualizer.
-   Sampling the rendered WAV using elapsed playback time is genuine
-   signal-derived visualization, but is only approximate synchronization with
-   an external player; it does not measure the speaker or device latency.
-6. **Optional local synth boundary.** Invoke the existing `synthesize.py` with
-   explicit local inputs and tools; do not import its catalog/download routes
-   into onboarding. Keep its code, cached WAVs and user-supplied fonts removable
-   without affecting credentials. Core startup must not require synthesis tools.
-   Neither terminal framework supplies audio or changes the synthesis dependency
-   licenses. The existing helper documents SEQ64 as GPL-3.0 and TinySoundFont as
-   MIT; inspect obligations before redistributing a native tool bundle.
-
 ## Implemented operation boundary and acceptance
 
 `cmd/godmode/main.go` selects the Go UI for interactive guided routes with a TTY.
@@ -294,15 +270,13 @@ zeroization in either Go or Python.
 
 The source pipe avoids executable temporary files and leaves stdin independent.
 The operation engine is noninteractive. It does not run a Python prompt under
-the Go renderer. Music starts only after the Go UI and its engine have closed;
-the launcher creates a new UI session when music returns. No dynamically
-downloaded code or package installation is needed. After an uncertain write,
+the Go renderer. No dynamically downloaded code or package installation is needed. After an uncertain write,
 refresh/reopen state rather than blindly repeating a mutation.
 
 ### Release checks
 
 Exercise the welcome, provider choice, one fake-key edit, profile edit and
-agent-note append in temporary homes. Feed the visualizer an existing local WAV.
+agent-note append in temporary homes.
 No real credential inventory is required to prove these paths. Keep the
 existing Python behavior tests and add meaningful cross-boundary checks for
 plan/apply drift, schema errors, cancellation and direct-command compatibility.
@@ -312,7 +286,7 @@ newline never saves; a cancelled/oversized fragmented paste cannot become shell
 input; hidden text is absent from output and logs; Ctrl-C, Escape, HUP and TERM
 restore terminal state; real resizes preserve the full preview; `NO_COLOR`,
 ASCII, 40-column and wide layouts remain legible; plain mode works with a screen
-reader; playback and rendering children stop on exit. Keep validation and the
+reader; owned children stop on exit. Keep validation and the
 atomic writer independent of the UI and preserve direct command output.
 
 Measure the packaged Go candidate against the current build for startup time,
@@ -321,7 +295,7 @@ embedded core, Go source and dependency inventory. Select native release
 artifacts by supported OS/architecture, verify hashes and preserve an updater
 rollback. Retain the Python floor in installer checks; do not advertise removal
 of the Python dependency. Verify `godmode source` matches the embedded source
-hash and that removal of optional music leaves ordinary setup functional.
+hash and that ordinary setup remains functional.
 
 Bubble Tea now owns the default interactive experience, while file operations
 remain in the Python engine. The acceptance checks above remain verification

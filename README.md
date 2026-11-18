@@ -6,7 +6,7 @@ GODMODE gives your agents the goddamn keys. Your business profile and keys are s
 Profile + API keys → Godmode → commands
 ```
 
-![Godmode native intro](docs/images/v019/intro.gif)
+![Godmode native intro](docs/images/current/intro.gif)
 
 ## Install
 
@@ -88,30 +88,6 @@ Already-running Godmode processes retain their selection. For an agent task, cop
 
 [Businesses and environments](docs/CONTEXTS.md) covers files, profiles and aliases. [Stripe accounts and sandboxes](docs/STRIPE_ENVIRONMENTS.md) covers account and webhook boundaries.
 
-## Music
-
-The optional **Music Pack** adds GODMODE BEATZ: collections, search, queue, and
-persistent playback. The core CLI contains its installer and router; the
-separate companion contains the music interface, synth, instruments, and
-original jingles. No Darunia checkout is needed. You supply local `.ootrs` songs.
-
-The current preview installs from a supplied local companion executable; a
-public Music Pack download has not been published:
-
-```sh
-godmode music install --file /path/to/godmode-music --sha256 SHA256
-godmode music setup --songs /path/to/local/music
-godmode music
-```
-
-Playback needs mpv. One-time synth setup also needs Python 3.9+, a C/C++ compiler,
-CMake, and FFmpeg. `godmode jingle play` needs only the installed pack and mpv.
-Closing the player keeps music playing; `godmode music stop` stops it from any
-terminal. `godmode music remove` stops playback and removes the pack, owned
-runtime, and cache while keeping external songs and shared dependencies. Close
-music views and setup first. See [Music](docs/MUSIC.md) for setup, collection
-shortcuts (`c` / `A`), headless controls, jingles, and the current cache limits.
-
 ## Commands
 
 | Command | What it does |
@@ -134,8 +110,6 @@ shortcuts (`c` / `A`), headless controls, jingles, and the current cache limits.
 | `godmode help` | The guide your agent reads, with what is saved |
 | `godmode help COMMAND` | Help for one command; also available as `COMMAND --help` |
 | `godmode faq` | Answers about Godmode |
-| `godmode music` | Local music and visualizer |
-| `godmode music clear` | Remove synthesized music from the cache |
 | `godmode source` | Print the embedded Python file engine |
 | `godmode build-info` | Compiler, dependencies and engine hash |
 | `godmode license status` | Inspect a legacy signed local entitlement |
@@ -156,4 +130,4 @@ Update with `godmodeup`. To uninstall, run `rm -rf ~/.godmode` (this deletes you
 
 Each release provides a separate source archive containing Go, Python and vendored dependencies. `godmode source` prints the native command's embedded file engine; `godmode build-info` lists its hash and the Go dependencies. `scripts/build-native.sh` rebuilds reviewed source for a byte-for-byte comparison. [Security](docs/SECURITY.md) covers release checksums, local files, and the trust in downloaded code.
 
-[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agents](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote machines](docs/REMOTE.md) · [Security](docs/SECURITY.md) · [Music](docs/MUSIC.md) · [Picard](docs/PICARD.md)
+[Installation](docs/INSTALLATION.md) · [Profile](docs/PROFILE.md) · [Agents](docs/AGENT_SETUP.md) · [Providers](docs/PROVIDERS.md) · [Remote machines](docs/REMOTE.md) · [Security](docs/SECURITY.md)

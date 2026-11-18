@@ -68,16 +68,6 @@ A February 2001 MetaFilter discussion about *All Your Base* contains enthusiasm,
 
 BitTorrent does not supply an exception. Bram Cohen's May 2003 paper describes an intentionally simple interface, file pieces, uploading and the courtesy of continuing to upload after a download. That explains distribution behavior. It does not prescribe the prose or appearance of everything circulated through it. Godmode is not a peer-to-peer client, so ratios, swarms, seeds and fake download activity do not belong in its credential status. [Cohen's paper](https://www.bittorrent.org/bittorrentecon.pdf).
 
-### Picard works as the actual reference
-
-A preserved AnandTech post dated December 8, 2004 simply links to `picard.ytmnd.com` in a thread requesting absurd clips with music. Another discussion dated November 21, 2005 includes confusion, dislike of background sound, and a recommendation to try Picard. These independently establish period circulation and varied reception. They do not independently establish the page's exact creation date. [December 2004 thread](https://forums.anandtech.com/threads/if-you-have-anything-so-stupid-with-a-funny-background-music-has-to-go-with-the-clip-please-post-here.1469810/), [November 2005 thread](https://forums.anandtech.com/threads/ytmnd-whining-away-message-girl.1747162/).
-
-YTMND's current metadata for site 508 reports creation on April 25, 2004 and identifies ShittyMcShit as the page creator. Its community history credits the music to DarkMateria. A **January 21, 2005 archived page** independently preserves the composition: a tiled JPEG, JavaScript-generated layers of large text, and a hidden looping WAV object. The picture is a still image, not an animated GIF; the layering script writes the text rather than supplying a timed animation. The current metadata is a present record of the creation date, not an independently recovered 2004 creation log. [Site metadata](https://picard.ytmnd.com/info/508/json), [community history](https://wiki.ytmnd.com/Picard_Song), [archived HTML](https://web.archive.org/web/20050121191446id_/http://picard.ytmnd.com/).
-
-Showing the source image and playing the source excerpt makes the reference available without making ordinary credential operations impersonate a meme. The browser composition also explains why an invented ASCII face, a modern reaction GIF, and the original Picard image are not interchangeable.
-
-The implementation should identify any terminal adaptation honestly. A color-cell rendering of the original image preserves its subject and composition at reduced resolution; it is not a recovered period ASCII portrait. A terminal image protocol may preserve more pixels but depends on the terminal. The original page remains the reference for its complete composition. Image and audio can be requested independently, stop controls stay apparent, and neither starts merely because someone is entering a key. Source assets, measured properties, rendering choices and attribution belong in [PICARD.md](../../PICARD.md).
-
 ## Writing rules for this CLI
 
 These are design decisions drawn from the comparisons above, not historical laws.
@@ -88,7 +78,7 @@ These are design decisions drawn from the comparisons above, not historical laws
 4. **Let the author's opinion attach to a concrete choice.** There is room to dislike redundant configuration layers. There is no need to invent an enemy, an imaginary hacker crew, or a personal history for the program.
 5. **Keep technical claims exact even when the surrounding prose is loose.** Local presence is not authentication. Mode 0600 is not encryption. Giving a command a restricted environment is not confining its filesystem access. A downloaded recording is a network operation.
 6. **Do not mechanically imitate typos, dialect or emoticons.** Period samples differ, and misspelling on purpose is an especially weak substitute for an interesting thought. Use contractions and familiar language naturally.
-7. **Give optional material somewhere to live.** The README can explain the design; the NFO can carry release and installation notes; Picard mode can display Picard. None of those needs to interrupt every successful operation.
+7. **Give optional material somewhere to live.** The README can explain the design; the NFO can carry release and installation notes. None of those needs to interrupt every successful operation.
 8. **Preserve readability and truthful identity.** Original ASCII decoration is fine. Real version numbers and file paths are useful. Borrowed group logos, invented affiliations, fake network activity and nostalgic terminal limitations are not required.
 
 A suitable original explanatory paragraph might read:
@@ -108,7 +98,6 @@ An audit must include more than the banner. These surfaces require the same edit
 | Board, footer and input dialog | Decorative slogans, fake filenames, excessive reminders | Selection, controls, paths, masks, scrolling and cancellation |
 | Save, unset, status and doctor | Celebrations or jokes attached to routine results | Key names, accurate local state and unchanged JSON/exit codes |
 | Provider catalog and custom-provider instructions | Sales language or unsupported capability claims | Setup steps, scope, test/live distinctions and source links |
-| Audio and image commands | Announcer voice or compulsory meme commentary | What is fetched, displayed, played, cached and stopped |
 | Installer and removal instructions | Marketing around installation or vague reassurance | Exact destination, overwrite refusal, checksums and preserved configuration |
 | README, NFO and security documentation | Repeated one-liners, inconsistent claims, old screenshots | A usable explanation of the actual program and its limitations |
 
@@ -139,9 +128,5 @@ Accessed **2026-11-04**. Dates below describe the artifact or stated revision, n
 | R19 | [Reubens / ACiD, SAUCE revision 5](https://www.acid.org/info/sauce/sauce.htm), **2013-11-12**, history beginning **1994-03-01** | Creator-maintained specification explains art metadata, code pages and aspect ratios. A later technical account of an older format. |
 | R20 | [Merriam-Webster, pwn](https://www.merriam-webster.com/dictionary/pwn), **current editorial entry** | Reports first known use in 1999 and probable typo origin. Not a reproduced 1999 message, and not proof of a specific inventor. |
 | R21 | [Die Datenschleuder 84](https://ds.ccc.de/pdfs/ds084.pdf), **2004**, printed p.7 / PDF p.9 | Period reproduction of TPB's DreamWorks reply; profanity in an adversarial performance. Reply header and quoted letter disagree on chronology; legal assertions not endorsed. PDF read directly after web-fetch timeout. |
-| R22 | [AnandTech clip-sharing thread](https://forums.anandtech.com/threads/if-you-have-anything-so-stupid-with-a-funny-background-music-has-to-go-with-the-clip-please-post-here.1469810/), **2004-12-08** | Preserved participant links directly to Picard; neighboring reply links the YTMND pattern. Modern forum rendering is not a 2004 screenshot. |
-| R23 | [AnandTech YTMND discussion](https://forums.anandtech.com/threads/ytmnd-whining-away-message-girl.1747162/), **2005-11-21** | Mixed reactions, dislike of background audio, and a recommendation for Picard. Evidence of these remarks, not population sentiment. |
-| R24 | [Picard site 508 metadata](https://picard.ytmnd.com/info/508/json) and [community history](https://wiki.ytmnd.com/Picard_Song), **current metadata; wiki revision 2012-04-19** | Metadata reports creation **2004-04-25 18:59:01**, creator and tiled JPEG/WAV assets; wiki credits DarkMateria. Metadata read through [Jina's text proxy](https://r.jina.ai/https://picard.ytmnd.com/info/508/json) after direct access failed. A present record of creation, not an independently recovered creation log. |
-| R25 | [Archived Picard HTML](https://web.archive.org/web/20050121191446id_/http://picard.ytmnd.com/), capture URL dated **2005-01-21 19:14:46** | Retrieved with curl; HTML identifies site 508, tiled `image.jpg`, generated static text layers and looping `sound.wav`. Confirms the page's construction by this capture; old asset paths alone do not prove byte identity with today's files. |
 
 No group affiliation, media ownership or historical authorship is implied by these references. Godmode's prose and decoration are original. Its historical influences should be recognizable from how the information is written and organized, even when the reader has never seen the sources.

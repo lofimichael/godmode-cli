@@ -2407,328 +2407,6 @@ def animate_entrance(rows):
             _draw([], drawn)
 
 
-# --- godmode_picard.py ---
-"""Optional Picard media. Nothing here loads the credential file."""
-import contextlib
-import fcntl
-import hashlib
-import os
-from pathlib import Path
-import shutil
-import signal
-import socket
-import stat
-import struct
-import subprocess
-import sys
-import tempfile
-import time
-
-PICARD_SOURCE_URL = "https://picard.ytmnd.com/"
-PICARD_MEDIA = {
-    "audio": ("https://users.content.ytmnd.com/d/0/3/d0330b0d03957ad58853427a6513e793.wav",
-              "d69a477ba3b9a8d454512db12b2ce3da05ec72ffa36d7ab313b0ed8aff764db8", 351860, "excerpt.wav"),
-    "image": ("https://users.content.ytmnd.com/f/8/c/f8cd26d2ab99e2f44562fb050d74c9a2.jpg",
-              "5f35ea6e9fb61e7091da79b8c6086fff53f5aefacf778ad076214fcf6b0455bf", 58375, "portrait.jpg"),
-}
-PICARD_LIMIT = 1048576
-
-
-class _PicardCancelled(Exception):
-    pass
-
-
-def _picard_directory(path, create=False):
-    for directory in reversed((path,) + tuple(path.parents)):
-        if create and not os.path.lexists(directory):
-            directory.mkdir(mode=0o700)
-        if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
-            raise ValueError("Picard cache paths must not contain symlinks.")
-    if path.exists():
-        info = path.stat()
-        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
-            raise ValueError("Picard cache must be yours and mode 0700.")
-
-
-def _picard_env():
-    names = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "TERM", "COLORTERM", "TMPDIR",
-             "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "PULSE_SERVER")
-    return {name: os.environ[name] for name in names if name in os.environ}
-
-
-def _picard_run(command, cancelled=lambda: False, timeout=25, output=subprocess.DEVNULL, limit_file=None):
-    """Wait on one owned child, and always reap it when interrupted."""
-    if cancelled():
-        raise _PicardCancelled()
-    child = subprocess.Popen(command, env=_picard_env(), stdin=subprocess.DEVNULL,
-                             stdout=output, stderr=subprocess.DEVNULL)
-    started = time.monotonic()
-    handlers = {}
-    def interrupt(signum, frame):
-        raise KeyboardInterrupt()
-    try:
-        for signum in (signal.SIGTERM, signal.SIGHUP):
-            handlers[signum] = signal.signal(signum, interrupt)
-        while child.poll() is None:
-            if cancelled():
-                raise _PicardCancelled()
-            if timeout is not None and time.monotonic() - started > timeout:
-                raise ValueError("Picard operation timed out.")
-            if limit_file is not None and limit_file.stat().st_size > PICARD_LIMIT:
-                raise ValueError("Picard download exceeded its size limit.")
-            time.sleep(0.05)
-        if child.returncode:
-            raise ValueError("Picard media command failed; use `godmode picard open`.")
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
-        if child.poll() is None:
-            child.terminate()
-            try:
-                child.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                child.kill()
-        child.wait()
-
-
-def _picard_verified(path, digest, size):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    with os.fdopen(fd, "rb") as source:
-        info = os.fstat(source.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
-                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
-            raise ValueError("Unsafe Picard cache file.")
-        data = source.read(PICARD_LIMIT + 1)
-    if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
-        raise ValueError("Picard cache failed its source checksum; remove that cache file to retry.")
-
-
-def _picard_cached(root, kind, cancelled=lambda: False):
-    if cancelled():
-        raise _PicardCancelled()
-    url, digest, size, name = PICARD_MEDIA[kind]
-    destination = root / name
-    if os.path.lexists(destination):
-        _picard_verified(destination, digest, size)
-        return destination
-    curl = shutil.which("curl")
-    if not curl:
-        raise ValueError("Picard downloads need curl; use `godmode picard open`.")
-    fd, raw_path = tempfile.mkstemp(prefix=".download-", dir=root)
-    os.close(fd)
-    temporary = Path(raw_path)
-    try:
-        _picard_run([curl, "--disable", "--fail", "--silent", "--location", "--proto", "=https",
-                     "--proto-redir", "=https", "--connect-timeout", "5", "--max-time", "20",
-                     "--max-filesize", str(PICARD_LIMIT), "--output", str(temporary), "--", url],
-                    cancelled, limit_file=temporary)
-        _picard_verified(temporary, digest, size)
-        os.link(temporary, destination)  # Never replace a cache file that appeared concurrently.
-        return destination
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _picard_bmp(data):
-    """Decode bounded, uncompressed 24/32-bit BMP produced by macOS sips."""
-    if len(data) < 54 or data[:2] != b"BM":
-        raise ValueError("Invalid converted Picard image.")
-    offset, header = struct.unpack_from("<II", data, 10)
-    width, height, planes, bits, compression = struct.unpack_from("<iiHHI", data, 18)
-    if (header < 40 or offset < 14 + header or not 0 < width <= 436
-            or not 0 < abs(height) <= 574 or planes != 1 or bits not in (24, 32) or compression != 0):
-        raise ValueError("Unsupported Picard bitmap dimensions or format.")
-    stride = ((width * bits + 31) // 32) * 4
-    if offset + stride * abs(height) > len(data):
-        raise ValueError("Truncated Picard bitmap.")
-    rows = []
-    for y in range(abs(height)):
-        row = y if height < 0 else abs(height) - y - 1
-        rows.append([tuple(reversed(data[offset + row * stride + x * (bits // 8):
-                                        offset + row * stride + x * (bits // 8) + 3])) for x in range(width)])
-    return rows
-
-
-def _picard_render(rows, columns, lines, monochrome):
-    scale = min(columns / len(rows[0]), (lines * 2) / len(rows))
-    width, height = max(1, int(len(rows[0]) * scale)), max(2, int(len(rows) * scale))
-    shades = " .:-=+*#%@"
-    for y in range(0, height - 1, 2):
-        cells = []
-        for x in range(width):
-            top = rows[min(len(rows) - 1, int(y / scale))][min(len(rows[0]) - 1, int(x / scale))]
-            bottom = rows[min(len(rows) - 1, int((y + 1) / scale))][min(len(rows[0]) - 1, int(x / scale))]
-            if monochrome:
-                luminance = sum((a + b) * weight for a, b, weight in zip(top, bottom, (299, 587, 114))) // 2000
-                cells.append(shades[luminance * (len(shades) - 1) // 255])
-            else:
-                cells.append("\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀" % (top + bottom))
-        print("".join(cells) + ("" if monochrome else "\033[0m"))
-
-
-def _picard_show(root):
-    if not sys.stdout.isatty():
-        raise ValueError("Picard's picture needs a terminal; use `godmode picard link`.")
-    chafa = shutil.which("chafa")
-    sips = Path("/usr/bin/sips") if sys.platform == "darwin" else None
-    if not chafa and not (sips and sips.is_file()):
-        raise ValueError("Terminal pictures need chafa on this machine; `godmode picard open` opens the original.")
-    _picard_directory(root, create=True)
-    image = _picard_cached(root, "image")
-    columns, lines = shutil.get_terminal_size((80, 24))
-    columns, lines = max(1, min(columns, 100)), max(1, min(lines - 3, 45))
-    monochrome = "NO_COLOR" in os.environ or os.environ.get("CLICOLOR") == "0" or os.environ.get("TERM") == "dumb"
-    if chafa:
-        args = [chafa, "--format", "symbols", "--size", "%dx%d" % (columns, lines)]
-        if monochrome:
-            args += ["--colors", "none", "--symbols", "ascii"]
-        _picard_run(args + [str(image)], output=None)
-    else:
-        with tempfile.TemporaryDirectory(prefix=".image-", dir=root) as temporary:
-            bitmap = Path(temporary) / "portrait.bmp"
-            _picard_run([str(sips), "-s", "format", "bmp", str(image), "--out", str(bitmap)])
-            if bitmap.stat().st_size > PICARD_LIMIT:
-                raise ValueError("Converted Picard image exceeds its size limit.")
-            _picard_render(_picard_bmp(bitmap.read_bytes()), columns, lines, monochrome)
-    print(PICARD_SOURCE_URL)
-
-
-def _picard_socket(path):
-    if not os.path.lexists(path):
-        return None
-    info = path.lstat()
-    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600:
-        raise ValueError("Unsafe Picard control socket.")
-    return info.st_dev, info.st_ino
-
-
-def _picard_receive(connection, count):
-    data = b""
-    while len(data) < count:
-        chunk = connection.recv(count - len(data))
-        if not chunk:
-            break
-        data += chunk
-    return data
-
-
-def _picard_stop(root):
-    _picard_directory(root)
-    path = root / "p.sock"
-    if _picard_socket(path) is None:
-        return False
-    with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(2)
-        try:
-            client.connect(str(path))
-        except (FileNotFoundError, ConnectionRefusedError):
-            return False
-        client.sendall(b"STOP\n")
-        if _picard_receive(client, 3) != b"OK\n":
-            raise ValueError("Picard did not confirm stopping; close its foreground terminal.")
-    return True
-
-
-def _picard_play(root):
-    backend = next(([path] + args for name, args in
-                    (("afplay", []), ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet"]), ("aplay", ["-q"]))
-                    for path in [shutil.which(name)] if path), None)
-    if not backend:
-        raise ValueError("Picard needs afplay, ffplay or aplay; use `godmode picard open`.")
-    _picard_directory(root, create=True)
-    directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    listener, pending, identity, handlers = None, None, None, {}
-    path = root / "p.sock"
-    stopped = False
-    def interrupt(signum, frame):
-        nonlocal stopped
-        stopped = True
-    def cancelled():
-        nonlocal pending
-        if stopped or pending is not None:
-            return True
-        try:
-            connection, _ = listener.accept()
-        except BlockingIOError:
-            return False
-        connection.settimeout(0.1)
-        try:
-            if _picard_receive(connection, 5) == b"STOP\n":
-                pending = connection
-                return True
-        except OSError:
-            pass
-        connection.close()
-        return False
-    try:
-        try:
-            fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise ValueError("Picard is already playing; use `godmode picard stop`.") from None
-        if _picard_socket(path) is not None:
-            with socket.socket(socket.AF_UNIX) as existing:
-                existing.settimeout(0.2)
-                try:
-                    existing.connect(str(path))
-                except (FileNotFoundError, ConnectionRefusedError):
-                    path.unlink()
-                else:
-                    raise ValueError("A Picard controller is already using this socket.")
-        listener = socket.socket(socket.AF_UNIX)
-        listener.bind(str(path))
-        os.chmod(path, 0o600)
-        identity = _picard_socket(path)
-        listener.listen(1)
-        listener.setblocking(False)
-        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            handlers[signum] = signal.signal(signum, interrupt)
-        audio = _picard_cached(root, "audio", cancelled)
-        print("Playing Picard. Ctrl-C or `godmode picard stop` stops it.", flush=True)
-        while not cancelled():
-            _picard_run(backend + [str(audio)], cancelled, timeout=None)
-    except _PicardCancelled:
-        pass
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
-        if listener is not None:
-            listener.close()
-        if identity is not None and _picard_socket(path) == identity:
-            path.unlink()
-        os.close(directory)
-        if pending is not None:
-            with contextlib.suppress(OSError):
-                pending.sendall(b"OK\n")
-            pending.close()
-
-
-def picard(action, state_dir=None):
-    """Public opt-in entry point. Link/open do not touch cache or credentials."""
-    if action == "link":
-        print(PICARD_SOURCE_URL)
-        return 0
-    if action == "open":
-        opener = "/usr/bin/open" if sys.platform == "darwin" else shutil.which("xdg-open")
-        if not opener:
-            raise ValueError("Open " + PICARD_SOURCE_URL + " in your browser.")
-        _picard_run([opener, PICARD_SOURCE_URL])
-        return 0
-    if action not in ("show", "play", "stop"):
-        raise ValueError("Use picard link, open, show, play or stop.")
-    selected = state_dir or os.environ.get("GODMODE_STATE_DIR") or Path(os.environ.get("GODMODE_HOME", str(Path.home() / ".godmode"))) / "state"
-    root = Path(os.path.abspath(os.path.expanduser(str(selected)))) / "picard"
-    try:
-        if action == "show":
-            _picard_show(root)
-        elif action == "play":
-            _picard_play(root)
-        else:
-            print("Picard stopped." if _picard_stop(root) else "No Picard player is running.")
-    except OSError:
-        raise ValueError("Cannot access Picard media or its local player.") from None
-    return 0
-
-
 # --- godmode_bridge.py ---
 """Private operation protocol for the native UI; file rules stay in the Python core.
 
@@ -2943,7 +2621,6 @@ class UIBridge:
                       'startup_sources': dict(a.get('STARTUP_SOURCES', {})),
                       'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
-                      'music_included': a.get('MUSIC_INCLUDED') if a.get('MUSIC_INCLUDED') is not None else self._music_source_exists(),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
                       'fields': [dict(name=name, label=label, description=description)
                                  for name, (label, description) in zip(a['PROFILE_FIELDS'], a['PROFILE_LABELS'])],
@@ -3097,14 +2774,6 @@ class UIBridge:
             return {'opened': a['open_page'](self._text(request, 'url'))}
         raise ValueError('Unknown UI operation.')
 
-    def _music_source_exists(self):
-        # Modular development has a neighboring adapter; assembled builds use globals.
-        module_file = self.api.get('__file__')
-        if not module_file:
-            return False
-        from pathlib import Path
-        return (Path(module_file).parent / 'lib' / 'godmode_music.py').is_file()
-
 
 def ui_bridge(home=None, namespace=None):
     bridge = UIBridge(namespace, home)
@@ -3150,443 +2819,6 @@ def ui_startup_error(message):
     return 2
 
 
-# --- godmode_music_pack.py ---
-"""Lightweight opt-in pack installer/router. No audio, synthesis, or key access."""
-import argparse
-import contextlib
-import fcntl
-import hashlib
-import json
-import os
-from pathlib import Path
-import platform
-import re
-import shutil
-import signal
-import stat
-import subprocess
-import tempfile
-import sys
-import uuid
-import urllib.error
-import urllib.request
-
-PACK_DOWNLOAD_LIMIT = 128 * 1024 * 1024
-PACK_RELEASE_ROOT = 'https://godmode.build/packs/music'
-
-
-class _PackNeedsRepair(ValueError):
-    """Owned pack contents are damaged; path/ownership failures use other errors."""
-
-
-def _pack_home(home):
-    return Path(os.path.abspath(os.path.expanduser(str(home or os.environ.get('GODMODE_HOME') or Path.home() / '.godmode'))))
-
-
-def _pack_dir(path, create=False):
-    for item in reversed((path,) + tuple(path.parents)):
-        if create and not os.path.lexists(item):
-            item.mkdir(mode=0o700)
-        if os.path.lexists(item) and not stat.S_ISDIR(item.lstat().st_mode):
-            raise ValueError('Music Pack paths must not contain symlinks.')
-    if path.exists():
-        info = path.stat()
-        if info.st_uid != os.geteuid() or info.st_mode & 0o022:
-            raise ValueError('Music Pack directories must be yours and not writable by others.')
-
-
-def _pack_read(path, limit=65536):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    with os.fdopen(fd, 'rb') as stream:
-        info = os.fstat(stream.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1
-                or info.st_mode & 0o022 or info.st_size > limit):
-            raise ValueError('Unsafe Music Pack file.')
-        return stream.read(limit + 1)
-
-
-def _pack_write(path, data, mode=0o600):
-    if os.path.lexists(path):
-        _pack_read(path, PACK_DOWNLOAD_LIMIT)
-    fd, tmp = tempfile.mkstemp(prefix='.pack-', dir=path.parent)
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(tmp, mode)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-
-
-@contextlib.contextmanager
-def _pack_lock(home, shared=False):
-    directory = home / 'packs'
-    _pack_dir(directory, True)
-    fd = os.open(directory / '.music.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
-    try:
-        info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1
-                or info.st_mode & 0o022):
-            raise ValueError('Unsafe Music Pack lock.')
-        # The foreground router owns the lease. Neither the companion nor its
-        # detached audio session may inherit it and prevent later removal.
-        os.set_inheritable(fd, False)
-        try:
-            fcntl.flock(fd, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
-        except BlockingIOError:
-            if shared:
-                raise ValueError('Music Pack installation or removal is running. Retry when it finishes.') from None
-            raise ValueError('Close Music Pack views or wait for setup/jingles or another install/removal '
-                             'to finish, then retry.') from None
-        yield fd
-    finally:
-        os.close(fd)
-
-
-def _pack_env(home):
-    names = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'COLORTERM',
-             'TMPDIR', 'NO_COLOR', 'CLICOLOR', 'COLORFGBG', 'DISPLAY', 'WAYLAND_DISPLAY',
-             'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'PULSE_SERVER', 'GODMODE_PLAIN', 'GODMODE_NO_MOTION')
-    env = {name: os.environ[name] for name in names if name in os.environ}
-    env['GODMODE_HOME'] = str(home)
-    return env
-
-
-def _pack_target():
-    system = platform.system().lower()
-    arch = {'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'amd64', 'amd64': 'amd64'}.get(platform.machine().lower())
-    if system not in ('darwin', 'linux') or arch is None:
-        raise ValueError('The Music Pack supports macOS and Linux on arm64/amd64.')
-    target = ('aarch64' if arch == 'arm64' else 'x86_64') + ('-apple-darwin' if system == 'darwin' else '-unknown-linux-gnu')
-    return system, arch, target
-
-
-def _pack_info(binary, home):
-    result = subprocess.run([str(binary), '__pack_info'], env=_pack_env(home), stdin=subprocess.DEVNULL,
-                            text=True, capture_output=True, timeout=5)
-    if result.returncode or len(result.stdout) > 4096:
-        raise ValueError('This file is not a compatible Godmode Music Pack.')
-    try:
-        info = json.loads(result.stdout)
-    except ValueError:
-        raise ValueError('This file is not a compatible Godmode Music Pack.') from None
-    system, arch, _ = _pack_target()
-    if (not isinstance(info, dict) or info.get('kind') != 'godmode-music-pack' or info.get('protocol') != 1
-            or info.get('platform') != system or info.get('arch') != arch
-            or not isinstance(info.get('version'), str)):
-        raise ValueError('Music Pack version or platform is incompatible.')
-    return info
-
-
-def _pack_installed(home):
-    directory = home / 'packs/music'
-    _pack_dir(directory)
-    # Inspect both known files before classifying damaged contents. A malformed
-    # receipt must not hide a linked, foreign-owned, or shared-writable binary.
-    files = {}
-    for name, limit in (('receipt.json', 65536), ('godmode-music', PACK_DOWNLOAD_LIMIT)):
-        try:
-            files[name] = _pack_read(directory / name, limit)
-        except FileNotFoundError:
-            pass
-    if not files and (not directory.exists() or not any(directory.iterdir())):
-        return None
-    if len(files) != 2:
-        raise _PackNeedsRepair('Music Pack installation is incomplete. Reinstall with godmode music install.')
-    try:
-        receipt = json.loads(files['receipt.json'])
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise _PackNeedsRepair('Music Pack receipt is invalid. Reinstall with godmode music install.') from None
-    if (not isinstance(receipt, dict) or type(receipt.get('schema')) is not int
-            or receipt.get('schema') != 1 or not isinstance(receipt.get('sha256'), str)
-            or not re.fullmatch(r'[a-f0-9]{64}', receipt['sha256'])):
-        raise _PackNeedsRepair('Music Pack receipt is invalid. Reinstall with godmode music install.')
-    if hashlib.sha256(files['godmode-music']).hexdigest() != receipt['sha256']:
-        raise _PackNeedsRepair('Music Pack checksum changed. Reinstall with godmode music install.')
-    binary = directory / 'godmode-music'
-    if not os.access(binary, os.X_OK):
-        raise _PackNeedsRepair('Music Pack is not executable. Reinstall with godmode music install.')
-    return binary, receipt
-
-
-def _pack_run(binary, home, args, capture=False):
-    if capture:
-        return subprocess.run([str(binary), '--home', str(home), *args], env=_pack_env(home),
-                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15, close_fds=True)
-    child = subprocess.Popen([str(binary), '--home', str(home), *args], env=_pack_env(home), close_fds=True)
-    previous = {}
-    def forward(signum, frame):
-        with contextlib.suppress(ProcessLookupError):
-            child.send_signal(signum)
-    try:
-        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            previous[signum] = signal.signal(signum, forward)
-        code = child.wait()
-        return 128 - code if code < 0 else code
-    finally:
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
-
-
-class _PackNoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-def _pack_download():
-    opener = urllib.request.build_opener(_PackNoRedirect())
-    _, _, target = _pack_target()
-    try:
-        with opener.open(PACK_RELEASE_ROOT + '/latest.json', timeout=20) as response:
-            data = response.read(65537)
-        if len(data) > 65536:
-            raise ValueError('Music Pack release manifest is too large.')
-        manifest = json.loads(data)
-        if not isinstance(manifest, dict):
-            raise ValueError('Invalid Music Pack release manifest.')
-        version = manifest.get('version', '')
-        if (manifest.get('schema') != 1 or not isinstance(version, str)
-                or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', version)):
-            raise ValueError('Invalid Music Pack release manifest.')
-        artifacts = manifest.get('artifacts')
-        if not isinstance(artifacts, list):
-            raise ValueError('Invalid Music Pack artifact list.')
-        matches = [entry for entry in artifacts if isinstance(entry, dict) and entry.get('platform') == target]
-        if len(matches) != 1:
-            raise ValueError('No Music Pack artifact matches this computer.')
-        item = matches[0]
-        name = 'godmode-music-v' + version + '-' + target
-        digest, size = item.get('sha256'), item.get('size')
-        if (item.get('file') != name or not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest)
-                or type(size) is not int or not 1 <= size <= PACK_DOWNLOAD_LIMIT):
-            raise ValueError('Invalid Music Pack artifact metadata.')
-        with opener.open(PACK_RELEASE_ROOT + '/' + version + '/' + name, timeout=30) as response:
-            data = response.read(size + 1)
-        if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
-            raise ValueError('Music Pack download checksum failed. Nothing was installed.')
-        return data, digest, {'kind': 'release', 'version': version}
-    except (urllib.error.URLError, OSError):
-        raise ValueError('Music Pack download is unavailable. For a local preview use: '
-                         'godmode music install --file PACK --sha256 SHA256') from None
-
-
-def _pack_external_source(path, home):
-    resolved = path.resolve()
-    for directory in (home / 'packs/music', home / 'state/music'):
-        if resolved == directory.resolve() or directory.resolve() in resolved.parents:
-            raise ValueError('Keep the local Music Pack artifact outside Godmode managed music folders '
-                             'so it remains available for reinstall.')
-
-
-def _pack_install(home, args):
-    parser = argparse.ArgumentParser(prog='godmode music install')
-    parser.add_argument('--file', type=Path)
-    parser.add_argument('--sha256')
-    options = parser.parse_args(args)
-    if options.sha256 and not re.fullmatch(r'[a-fA-F0-9]{64}', options.sha256):
-        parser.error('--sha256 needs 64 hexadecimal characters')
-    if options.sha256 and options.file is None:
-        parser.error('--sha256 belongs to --file')
-    source = None
-    if options.file:
-        options.file = options.file.expanduser().absolute()
-        _pack_external_source(options.file, home)
-        data = _pack_read(options.file, PACK_DOWNLOAD_LIMIT)
-        digest = hashlib.sha256(data).hexdigest()
-        if options.sha256 and digest != options.sha256.lower():
-            raise ValueError('Music Pack checksum failed. Nothing was installed.')
-        source = {'kind': 'local', 'file': str(options.file), 'sha256': digest}
-    else:
-        try:
-            existing = _pack_installed(home)
-        except _PackNeedsRepair:
-            directory = home / 'packs/music'
-            if directory.exists() and {p.name for p in directory.iterdir()} - {'godmode-music', 'receipt.json'}:
-                raise ValueError('Music Pack directory contains other files. No files replaced.')
-            existing = None
-        if existing:
-            print('Music Pack is already installed. Run godmode music or godmode jingle play.')
-            return 0
-        try:
-            source = json.loads(_pack_read(home / 'music-pack-source.json'))
-        except FileNotFoundError:
-            pass
-        else:
-            if not isinstance(source, dict) or source.get('kind') not in ('local', 'release'):
-                raise ValueError('Invalid Music Pack source. Reinstall with --file and --sha256.')
-        if source and source.get('kind') == 'local':
-            if not isinstance(source.get('file'), str) or not Path(source['file']).is_absolute():
-                raise ValueError('Invalid local Music Pack source.')
-            _pack_external_source(Path(source['file']), home)
-            data = _pack_read(Path(source['file']), PACK_DOWNLOAD_LIMIT)
-            digest = hashlib.sha256(data).hexdigest()
-            if digest != source.get('sha256'):
-                raise ValueError('The local preview artifact changed. Reinstall with --file and --sha256.')
-        else:
-            print('Downloading Music Pack…', flush=True)
-            data, digest, source = _pack_download()
-    with _pack_lock(home):
-        directory = home / 'packs/music'
-        _pack_dir(directory)
-        if directory.exists() and {p.name for p in directory.iterdir()} - {'godmode-music', 'receipt.json'}:
-            raise ValueError('Music Pack directory contains other files. No files replaced.')
-        with tempfile.TemporaryDirectory(prefix='.music-install-', dir=directory.parent) as work:
-            candidate = Path(work) / 'godmode-music'
-            _pack_write(candidate, data, 0o700)
-            info = _pack_info(candidate, home)
-            try:
-                existing = _pack_installed(home)
-            except _PackNeedsRepair:
-                existing = None
-            if existing or directory.exists():
-                # Never execute the old file while repairing it. The candidate
-                # has already passed byte verification and protocol/platform
-                # validation, and knows how to stop this home's music session.
-                stopped = _pack_run(candidate, home, ['music', 'stop'], capture=True)
-                if stopped.returncode:
-                    raise ValueError('Could not stop music with the replacement Music Pack. No files replaced.')
-            receipt = {'schema': 1, 'sha256': digest, 'version': info['version'], 'protocol': 1,
-                       'platform': info['platform'], 'arch': info['arch']}
-            _pack_write(Path(work) / 'receipt.json', (json.dumps(receipt, indent=2) + '\n').encode())
-            backup = directory.parent / ('.music-rollback-' + uuid.uuid4().hex)
-            had_previous = directory.exists()
-            if had_previous:
-                os.replace(directory, backup)
-            adopted = False
-            try:
-                os.replace(work, directory)
-                adopted = True
-                _pack_write(home / 'music-pack-source.json', (json.dumps(source, indent=2) + '\n').encode())
-            except BaseException:
-                if adopted:
-                    os.replace(directory, work)
-                if had_previous:
-                    os.replace(backup, directory)
-                raise
-            if had_previous:
-                shutil.rmtree(backup)
-    print('Music Pack installed. Jingles are ready with mpv: godmode jingle play')
-    print('Link your local tracks: godmode music setup --songs DIR')
-    return 0
-
-
-def _pack_validate_tree(directory):
-    _pack_dir(directory)
-    if not directory.exists():
-        return
-    for base, dirs, files in os.walk(directory, followlinks=False):
-        for name in dirs:
-            _pack_dir(Path(base) / name)
-        for name in files:
-            info = (Path(base) / name).lstat()
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or info.st_mode & 0o022:
-                raise ValueError('Music Pack contains an unsafe managed file. Nothing was removed.')
-
-
-def _pack_remove(home, args):
-    if args:
-        raise ValueError('Use: godmode music remove')
-    pack = _pack_installed(home)
-    if not pack:
-        print('Music Pack is not installed.')
-        return 0
-    with _pack_lock(home):
-        pack = _pack_installed(home)
-        if not pack:
-            print('Music Pack is not installed.')
-            return 0
-        stopped = _pack_run(pack[0], home, ['music', 'stop'], capture=True)
-        if stopped.returncode:
-            raise ValueError('Could not stop music. No pack files removed.')
-        state = home / 'state/music'
-        _pack_dir(state)
-        source_songs = None
-        try:
-            config = json.loads(_pack_read(state / 'config.json'))
-            if (not isinstance(config, dict) or not isinstance(config.get('songs'), str)
-                    or not Path(config['songs']).is_absolute()):
-                raise ValueError('Invalid source songs path.')
-            source_songs = Path(config['songs']).resolve()
-        except FileNotFoundError:
-            pass
-        except (ValueError, KeyError, TypeError):
-            raise ValueError('Cannot identify source songs from music config. No files removed.') from None
-        if source_songs:
-            for protected in (state, home / 'packs/music'):
-                try:
-                    source_songs.relative_to(protected.resolve())
-                except ValueError:
-                    pass
-                else:
-                    raise ValueError('Move source songs outside Godmode managed music folders before removing the pack.')
-        if {p.name for p in (home / 'packs/music').iterdir()} - {'godmode-music', 'receipt.json'}:
-            raise ValueError('Music Pack directory contains other files. No files removed.')
-        managed = [home / 'packs/music'] + [state / name for name in ('cache', 'runtime', 'session')]
-        for directory in managed:
-            _pack_validate_tree(directory)
-        for name in ('config.json', 'session.json', '.lock'):
-            if os.path.lexists(state / name):
-                _pack_read(state / name, 1024 * 1024)
-        for directory in managed:
-            if directory.exists():
-                shutil.rmtree(directory)
-        for name in ('config.json', 'session.json', '.lock'):
-            with contextlib.suppress(FileNotFoundError):
-                (state / name).unlink()
-        with contextlib.suppress(FileNotFoundError, OSError):
-            state.rmdir()
-    print('Music Pack removed, including its runtime and rendered cache. Source songs kept.')
-    return 0
-
-
-def music_pack_main(argv, home=None, command='music', **unused):
-    home = _pack_home(home)
-    if command == 'music' and argv == ['__manager']:
-        while True:
-            line = sys.stdin.buffer.readline(65537)
-            if not line:
-                break
-            oversized = len(line) > 65536
-            try:
-                if oversized or json.loads(line) != {'action': 'state'}:
-                    raise ValueError('Unknown Music Pack manager request.')
-                installed = _pack_installed(home)
-                reply = {'ok': True, 'data': {'installed': installed is not None}}
-            except (OSError, ValueError, TypeError):
-                reply = {'ok': False, 'error': 'Cannot inspect Music Pack. Run godmode music install to repair it.'}
-            print(json.dumps(reply), flush=True)
-            if oversized:
-                return 1
-        return 0
-    if command == 'music' and argv[:1] == ['install']:
-        return _pack_install(home, argv[1:])
-    if command == 'music' and argv[:1] in (['remove'], ['uninstall']):
-        return _pack_remove(home, argv[1:])
-    installed = _pack_installed(home)
-    if installed:
-        with _pack_lock(home, shared=True):
-            installed = _pack_installed(home)
-            if installed:
-                return _pack_run(installed[0], home, [command, *argv])
-    if command == 'music' and argv[:1] in (['stop'], ['status']):
-        if '--json' in argv:
-            print(json.dumps({'installed': False, 'state': 'stopped', 'track': None, 'queue': [], 'index': -1}))
-        else:
-            print('Music Pack is not installed. Nothing is playing.')
-        return 0
-    if command == 'music' and not argv:
-        print('GODMODE BEATZ · optional Music Pack')
-        print('Installs the music player, included synth, instruments, and original jingles.')
-        print('Install: godmode music install')
-        print('Then:    godmode music setup --songs DIR')
-        print('Remove:  godmode music remove')
-        return 0
-    raise ValueError('Music Pack is not installed. Run godmode music install first.')
-
-
 # --- command line and static provider guidance ---
 """Godmode: pick a key with the arrow keys, paste it, see the edit it makes, and keep it sealed in one file."""
 import sys
@@ -3617,7 +2849,6 @@ SELECTION_SOURCE = 'default'
 ACTIVE_HOME = None
 STARTUP_SOURCES = {'environment': 'default', 'context': 'default'}
 UI_REQUESTED = False
-MUSIC_INCLUDED = True
 PROVIDERS = [{'id': 'github',
   'name': 'GitHub',
   'about': 'repos, Actions, issues and pull requests',
@@ -5413,7 +4644,7 @@ def summary(state):
 HOME_ROWS = (('Business', 'godmode profile'),
              ('Providers', 'godmode setup'),
              ('Agents', 'godmode agents'))
-HOME_ENVIRONMENTS, HOME_DOCTOR, HOME_UPDATE, HOME_HELP, HOME_MUSIC, HOME_DONE = 0, 5, 6, 7, 8, 9
+HOME_ENVIRONMENTS, HOME_DOCTOR, HOME_UPDATE, HOME_HELP, HOME_DONE = 0, 5, 6, 7, 8
 
 
 def home_items(state):
@@ -5556,8 +4787,7 @@ def onboard(home=None):
             items = [('Active setup', ACTIVE_ENVIRONMENT, (ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else 'Automatic') if detailed else ''),
                      status[1], status[2], ('Business details', status[0][1], status[0][2]), None,
                      ('Doctor', '', 'local checks' if detailed else ''), ('Update', '', ''),
-                     ('Help / FAQ', '', 'godmode faq' if detailed else ''),
-                     ('Music', '', 'godmode music' if detailed else ''), ('Done', '', '')]
+                     ('Help / FAQ', '', 'godmode faq' if detailed else ''), ('Done', '', '')]
             try:
                 at = read_menu(items, at, menu_hint('quit'), gap=bool(gap()) and screen_rows() > 14,
                                header=home_header(state, home), row_spacing=0)
@@ -5584,8 +4814,6 @@ def onboard(home=None):
                     break
                 elif at == HOME_HELP:
                     faq(home)
-                elif at == HOME_MUSIC:
-                    music_command(home, args=[])
             except Back:
                 pass
             except ValueError as error:
@@ -5763,9 +4991,7 @@ def faq_entries(home=None):
         ('Does Godmode make network calls?', [
             'Profile, key and doctor commands run locally. Doctor does not verify provider access.',
             'License activation, deactivation, godmode update and godmodeup contact godmode.build. Provider links open '
-            'in your browser. Picard downloads media '
-            'on request. Commands launched with godmode run can use the network.',
-            'The optional Music Pack includes its synth. You supply local song files.']),
+            'in your browser. Commands launched with godmode run can use the network.']),
         ('How do I inspect a release?', [
             'Godmode uses Bubble Tea and Lip Gloss for its interface. The Python file engine uses standard '
             'libraries. No packages are installed at startup.',
@@ -5799,25 +5025,6 @@ def faq(home=None):
             if at >= len(entries):
                 return
             read_document(*entries[at])
-
-
-def music_command(home=None, args=None, command='music'):
-    try:
-        handler = music_pack_main
-    except (ImportError, NameError):
-        # The optional section is absent from a --without-music build.
-        handler = globals().get('music_pack_main')
-    if handler is None:
-        raise ValueError('Music is not included in this build.')
-    if not args and command == 'music' and not os.environ.get('GODMODE_NO_MOTION'):
-        # Pass the shared display preference across the optional boundary;
-        # the music module itself has no dependency on profile/settings code.
-        try:
-            if not ui_preferences(globals(), home)['motion']:
-                os.environ['GODMODE_NO_MOTION'] = '1'
-        except (OSError, ValueError):
-            os.environ['GODMODE_NO_MOTION'] = '1'
-    return handler(args or [], home=profile_home(home), command=command)
 
 
 def help_table(rows):
@@ -5972,8 +5179,8 @@ def run_with_keys(store, argv):
         raise ValueError('Cannot run ' + command[0] + '.') from None
 
 
-COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'jingle', 'settings', 'setup', 'list', 'run', 'set',
-            'help', 'migrate', 'edit', 'path', 'picard', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
+COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'settings', 'setup', 'list', 'run', 'set',
+            'help', 'migrate', 'edit', 'path', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
 
 USAGE = """Usage: godmode [COMMAND]
 
@@ -6006,8 +5213,6 @@ For you
                                switch keys and business details for new commands
   godmode active               show the current selection
   godmode intro                replay the welcome
-  godmode music                optional Music Pack: install, player, remove
-  godmode jingle play          play an original notification cue (Music Pack)
   godmode settings             inspect or change Motion
 
   A key environment has its own keys; missing keys never use another environment.
@@ -6058,37 +5263,6 @@ COMMAND_HELP = {
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
     'faq': 'Usage: godmode faq\n\nHow to start, connect your agent, switch setup and check local files.\nAlso covers provider access, network use, sealing and source.',
     'help': 'Usage: godmode help [COMMAND]\n\nWithout a command, print the agent guide and saved key names.\nUse godmode for interactive setup or godmode --help for the command reference.\n\n  godmode help agents\n  godmode help setup',
-    'music': """GODMODE BEATZ — optional Music Pack.
-
-Usage: godmode music install                 Install the Music Pack
-       godmode music setup --songs DIR      Build its included synth; link .ootrs
-       godmode music                        Open library, queue, and player
-       godmode music play NAME              Play in the background
-       godmode music stop                   Stop audio and preparation
-       godmode music remove                 Remove pack, runtime, and cache
-
-The pack owns its player interface, synth, instruments, and original jingles.
-Your source songs stay outside its managed files. No Darunia checkout needed.
-Playback needs mpv. One-time synth setup needs Python 3.9+, C/C++, CMake,
-and FFmpeg (macOS: brew install mpv ffmpeg cmake).
-
-Controls: pause, resume, next, previous, seek SECONDS, volume 0..100,
-          repeat off|one|all, shuffle on|off, queue, status [--json].
-Enter submits search; a second Enter plays. a appends; c opens a collection;
-A appends the whole collection. Space pauses. Esc goes back. q closes the
-view while playback continues. x stops music. ? shows every control.
-
-play accepts --seconds 1..3600 (default 180) and --render-only.
-clear removes cached renders; queue clear clears the queue.
-Local previews: music install --file PACK --sha256 SHA256.
-""",
-    'jingle': """Usage: godmode jingle play [ready|success|attention] [--volume 0..100]
-       godmode jingle list
-
-Original short cues from the optional Music Pack. Needs mpv, but no synth
-setup or local tracks. Current music and queue stay unchanged.
-Install with godmode music install; remove with godmode music remove.
-""",
     'setup': "Usage: godmode setup [PROVIDER]\n\nArrow keys choose a provider; / searches. Enter opens its key page or saves\na pasted key. Tab shows the shell command. Esc returns.\n\n  godmode setup cloudflare\n  godmode --plain setup",
     'set': "Usage: godmode set NAME [--stdin]\n\nSave or replace one key. Interactive input stays masked. --stdin reads a\nvalue from a pipe or file.\n\n  godmode set GH_TOKEN\n  godmode set ACME_AUTH_JSON --stdin < credential.json",
     'list': "Usage: godmode list\n\nPrint saved key names, one per line. Values stay hidden.\nUnreadable or duplicate entries produce an error and a nonzero exit status.",
@@ -6101,7 +5275,6 @@ Install with godmode music install; remove with godmode music remove.
     'build-info': "Usage: godmode build-info\n\nPrint the native command's compiler, dependencies and embedded engine hash.",
     'edit': "Usage: godmode edit\n\nOpen the key file in nano. Sealed values remain encrypted.\nSave or replace values with godmode set NAME.",
     'migrate': "Usage: godmode migrate\n\nSeal plain-text keys from an older install.\nUpdate tools that read the old file to use godmode run NAME -- command.",
-    'picard': "Usage: godmode picard [link | open | show | play | stop]\n\nlink prints the media link; open opens it in the browser. show displays\nthe image; play starts audio; stop ends playback. Media downloads on request.",
 }
 
 
@@ -6196,10 +5369,6 @@ def main():
         return 0
     if argv[:1] == ['settings']:
         return settings_command(home, argv[1:])
-    # Optional music has its own state and process owner. It never resolves a
-    # business/key selection or opens a credential store, including for Stop.
-    if argv[:1] in (['music'], ['jingle']):
-        return music_command(home, argv[1:], command=argv[0])
     if selected_environment is not None:
         environment_name(selected_environment)
     if selected_context is not None:
@@ -6277,13 +5446,12 @@ def main():
     parser = Arguments(description='Your business profile and API keys in one local place for your coding agents.',
                        add_help=False)
     parser.add_argument('command', nargs='?', default='onboard')
-    parser.add_argument('name', nargs='?', help='provider, key name, or Picard action')
+    parser.add_argument('name', nargs='?', help='provider or key name')
     parser.add_argument('field', nargs='?', help='profile field for get, set, or unset')
     parser.add_argument('--home', '--config-dir', dest='home', default=home, help='Godmode home; existing legacy home is detected')
     parser.add_argument('--stdin', action='store_true', help='read one value from a pipe instead of the masked prompt')
     parser.add_argument('--version', action='version', version='godmode ' + VERSION)
     parser.add_argument('--accept-disclaimer', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--state-dir', help=argparse.SUPPRESS)
     parser.add_argument('--no-motion', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):
@@ -6307,10 +5475,6 @@ def main():
         return 0
     if args.command == 'onboard' and not args.name and not args.stdin:
         return onboard(args.home) or 0
-    if args.command == 'picard':
-        # Optional media code never receives a Store or opens the credential file.
-        media_state = args.state_dir or (str(Path(args.home) / 'state') if args.home else None)
-        return picard(args.name or 'link', media_state)
     store = effective_store(args.home)
     explicit = bool(args.home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'))
     if args.command == 'path' and not args.name:
