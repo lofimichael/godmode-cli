@@ -1,5 +1,14 @@
 # Release notes
 
+## v0.20.0
+
+November 18, 2026
+
+- Navigate profiles, environments and contexts with clearer selection and history.
+- Review agent-note additions with more readable previews and preserved existing files.
+- Remove Music, jingles and Picard from the CLI and release source. Existing local music files are left untouched.
+- Check the engine, native interface, installer and release contracts through one test command, with explicit dependency checks and per-phase results.
+
 ## v0.18.0
 
 November 16, 2026

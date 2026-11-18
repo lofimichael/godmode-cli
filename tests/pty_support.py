@@ -37,7 +37,10 @@ class Terminal:
                    "code=subprocess.call(sys.argv[1:]); "
                    "print('__PTY_FLAGS=' + str(termios.tcgetattr(0)[3]) + '__', flush=True); "
                    "sys.exit(code)")
-        self.process = subprocess.Popen([sys.executable, '-c', wrapper, *command], stdin=self.slave, stdout=self.slave,
+        # Apple's Python can cache even its startup imports under HOME/Library.
+        # The harness must not create files that preservation tests attribute to
+        # the command under test. -B affects this wrapper, not the child command.
+        self.process = subprocess.Popen([sys.executable, '-B', '-c', wrapper, *command], stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env=env,
                                         preexec_fn=controlling_terminal)
 

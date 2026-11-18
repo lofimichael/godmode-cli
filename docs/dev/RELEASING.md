@@ -8,21 +8,19 @@ includes vendored libraries and their licenses.
 ## Check
 
 ```sh
-scripts/build-native.sh
-go test -mod=vendor ./...
-go test -mod=vendor ./vendor/github.com/charmbracelet/ultraviolet -run TestGodmode
-python3 -m unittest discover -s tests -p 'test_*.py'
-target/godmode-native --version
-target/godmode-native source > target/installed-core.py
-python3 scripts/build.py --verify target/installed-core.py
-sh tests/install.sh
-GODMODE_TEST_NATIVE_BINARY="$PWD/target/godmode-native" sh tests/install-update.sh
-shellcheck -s sh install.sh scripts/build-native.sh tests/install.sh tests/install-update.sh
+python3 -m venv .context/test-venv
+.context/test-venv/bin/python -m pip install -r scripts/demo-requirements.txt
+.context/test-venv/bin/python scripts/check.py --full --jobs 2 --require-shellcheck
 ```
 
-Tests use synthetic keys and temporary homes. Native PTY tests require the
-candidate at `target/godmode-native`. Python 3.9 remains the minimum for the
-embedded engine; test both that interpreter and the current local interpreter.
+The runner verifies generated source, builds the CLI and synthetic
+license candidate, then exercises Python, Go, native terminal and installer
+coverage without repeating discovery. Full checks add race detection and all
+four native build targets. See [TESTING.md](TESTING.md) for dependencies, timing
+reports, optional checks and the coverage boundaries.
+
+Tests use synthetic keys and temporary homes. Python 3.9 remains the minimum for
+the embedded engine; CI covers that interpreter on Linux and Python 3.14 on macOS.
 
 The explicit vendor test protects the fullscreen newline-mapping patch described
 in [vendor/PATCHES.md](../../vendor/PATCHES.md); `go test ./...` excludes vendor tests.
