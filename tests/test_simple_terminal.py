@@ -27,6 +27,13 @@ import hashlib, os, termios
 import godmode_terminal
 from godmode_terminal import read_secret, read_choice, read_menu, quiet, Cancelled, Prompt
 
+if 'INPUT_READ_LIMIT' in os.environ:
+    original_read = os.read
+    input_read_limit = int(os.environ['INPUT_READ_LIMIT'])
+    def fragmented_read(fd, size):
+        return original_read(fd, min(size, input_read_limit) if fd == 0 else size)
+    os.read = fragmented_read
+
 class Strict(Prompt):
     def enter(self, value):
         return ['ROWS_PRINTED_ABOVE'] if not value else value != 'not yet'
@@ -77,7 +84,8 @@ finally:
 
 
 class Session:
-    def __init__(self, mode="secret", limit=1024 * 1024, rows=24, start=0, plain=False, term="xterm-256color", width=80):
+    def __init__(self, mode="secret", limit=1024 * 1024, rows=24, start=0, plain=False, term="xterm-256color", width=80,
+                 input_read_limit=None):
         self.master, self.slave = os.openpty()
         # A new PTY starts at 0x0. Give it a real terminal geometry instead of
         # depending on Python-version-specific get_terminal_size fallbacks.
@@ -88,6 +96,8 @@ class Session:
                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "lib"),
                "TERM": term, "PROMPT_MODE": mode, "MAX_FIELD_SIZE": str(limit),
                "MENU_START": str(start), "GODMODE_PLAIN": "1" if plain else "0"}
+        if input_read_limit is not None:
+            env["INPUT_READ_LIMIT"] = str(input_read_limit)
         self.process = subprocess.Popen([sys.executable, "-c", TERM_HARNESS],
                                         stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env=env)
@@ -145,20 +155,18 @@ class Session:
 
 
 class TerminalTests(unittest.TestCase):
-    def start(self, mode="secret", limit=1024 * 1024):
-        session = Session(mode, limit)
+    def start(self, mode="secret", limit=1024 * 1024, **options):
+        session = Session(mode, limit, **options)
         self.addCleanup(session.close)
         return session
 
     def test_multiline_bracketed_paste_waits_for_enter_and_stays_hidden(self):
-        session = self.start()
+        session = self.start(input_read_limit=3)
         secret = '{\n  "key": "SYNTHETIC_ONLY_ä_42"\n}'
-        # Deliberately split both bracketed-paste markers across reads.
-        session.send(b"\x1b[20")
-        time.sleep(0.02)
-        session.send(b"0~" + secret.encode() + b"\x1b[20")
-        time.sleep(0.02)
-        session.send(b"1~")
+        # Cap actual PTY reads so both six-byte markers must span reads. Sending
+        # all bytes together avoids relying on the scheduler to resume this test
+        # within the keyboard's deliberate 80 ms incomplete-Escape timeout.
+        session.send(b"\x1b[200~" + secret.encode() + b"\x1b[201~")
         session.wait(DOTS)
         self.assertIsNone(session.process.poll())
         self.assertNotIn(b"ACCEPTED", session.output)
@@ -592,8 +600,17 @@ class TerminalTests(unittest.TestCase):
         session.send(b"/zzzz\r")
         session.wait(b"No matches")
         self.assertNotIn(b"ACCEPTED", session.output)
+        mark = len(session.output)
         session.send(b"\x1b")
-        session.drain()
+        # Escape is recognized only after its sequence grace period. Wait for
+        # the unfiltered menu to return before sending Enter, or a busy runner
+        # may deliver both bytes together as an ignored Alt+Enter sequence.
+        session.wait(b"Alpha", start=mark)
+        screen = "\n".join(Screen(80).feed(session.output).lines())
+        self.assertIn("❯ Alpha", screen)
+        self.assertNotIn("No matches", screen)
+        self.assertIsNone(session.process.poll())
+        self.assertNotIn(b"ACCEPTED", session.output)
         session.send(b"\r")
         session.accepted("0")
 

@@ -73,7 +73,11 @@ show_path() {
     esac
 }
 fail() { say '31' "godmode install: $*" >&2; exit 1; }
-need_value() { [ "$#" -ge 2 ] && [ -n "$2" ] || fail "missing option value"; }
+need_value() {
+    if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        fail "missing option value"
+    fi
+}
 valid_version() {
     # grep alone accepts a valid line followed by a newline and unsafe text.
     [ "${#1}" -le 40 ] || return 1
@@ -516,8 +520,12 @@ else
 fi
 
 if [ -n "$archive" ]; then
-    [ -z "$binary" ] && [ -z "$expected" ] && [ -n "$checksum" ] || fail "use --archive with --checksum only"
-    [ -f "$archive" ] && [ -f "$checksum" ] || fail "archive or checksum file is missing"
+    if [ -n "$binary" ] || [ -n "$expected" ] || [ -z "$checksum" ]; then
+        fail "use --archive with --checksum only"
+    fi
+    if [ ! -f "$archive" ] || [ ! -f "$checksum" ]; then
+        fail "archive or checksum file is missing"
+    fi
     artifact=$archive
     expected=$(awk -v name="$(basename "$archive")" '
         { filename=$2; sub(/^\*/, "", filename) }
@@ -525,7 +533,9 @@ if [ -n "$archive" ]; then
         END { if (matches != 1) exit 1; print digest }
     ' "$checksum") || fail "checksum file must contain exactly one entry for the archive"
 else
-    [ -n "$binary" ] && [ -n "$expected" ] && [ -z "$checksum" ] || fail "use --binary with --sha256, or --archive with --checksum"
+    if [ -z "$binary" ] || [ -z "$expected" ] || [ -n "$checksum" ]; then
+        fail "use --binary with --sha256, or --archive with --checksum"
+    fi
     [ -f "$binary" ] || fail "binary file is missing"
     artifact=$binary
 fi
@@ -540,7 +550,9 @@ lock_candidate=$bin_dir/.godmode-install-lock
 mkdir "$lock_candidate" 2>/dev/null || fail "another installation is in progress ($lock_candidate)"
 lock_dir=$lock_candidate
 # Recheck under the lock before changing a managed executable.
-[ ! -L "$destination" ] && [ ! -L "$updater" ] && [ ! -L "$receipt" ] || fail "an install destination became a symlink"
+if [ -L "$destination" ] || [ -L "$updater" ] || [ -L "$receipt" ]; then
+    fail "an install destination became a symlink"
+fi
 if [ "$existing" = yes ] && [ "$force" != yes ]; then
     managed_file "$destination" godmode || fail "binary changed during download; nothing replaced"
 fi
