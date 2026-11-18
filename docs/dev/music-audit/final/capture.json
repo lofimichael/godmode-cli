@@ -1,0 +1,13 @@
+{
+  "binary_sha256": "759952ebb39f41958d0aad831be9863983a35b3feb980809b7d24d12401e5a9e",
+  "pack_sha256": "9a6ff3e2044f70204eebe39df5ccbfb4597ee7e8a31af2cf0d99d366708f39d0",
+  "method": "Actual PTY cells, real local synthesis, player muted; no desktop capture.",
+  "screens": [
+    "player-120x36.png",
+    "player-80x24.png",
+    "player-40x18.png"
+  ],
+  "same_session_survived_three_ui_exits": true,
+  "state": "playing",
+  "clock_source": "mpv:audio-pts"
+}

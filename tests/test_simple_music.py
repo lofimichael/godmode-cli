@@ -58,8 +58,9 @@ class MusicTests(unittest.TestCase):
 
     def test_uninitialized_status_does_not_create_files(self):
         self.assertFalse(music.music_available(self.home))
-        with self.assertRaisesRegex(ValueError, "music init"):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
             music.music_main(["status"], self.home)
+        self.assertIn("music setup", output.getvalue())
         self.assertFalse(self.root.exists())
 
     def test_explicit_init_pins_local_script_and_ignores_network_player(self):
@@ -249,66 +250,70 @@ class MusicTests(unittest.TestCase):
         self.assertTrue(old.exists())
         self.assertFalse(new.exists())
 
-    def pty_player(self):
+    def test_play_returns_after_headless_session_accepts_request(self):
         self.init()
-        path = self.home / "fixture.wav"
-        self.wav(path, seconds=2)
-        bindir = self.home / "bin"
-        bindir.mkdir()
-        player = bindir / "afplay"
-        player.write_text("#!/bin/sh\nexec /bin/sleep 60\n")
-        player.chmod(0o700)
-        program = ("import sys;sys.path.insert(0," + repr(str(Path(music.__file__).parent)) + ")\n"
-                   "import godmode_music as m\n"
-                   "from pathlib import Path\n"
-                   "m._music_render=lambda *a,**k:(Path(" + repr(str(path)) + "),{'title':'Fixture','mode':'piano'},True)\n"
-                   "sys.exit(m.music_main(['play','Quiet','--seconds','60']," + repr(str(self.home)) + "))\n")
-        env = {"PATH": str(bindir) + ":/usr/bin:/bin", "HOME": str(self.home), "TERM": "xterm-256color"}
-        return Terminal([sys.executable, "-c", program], env, cols=80, rows=24)
+        import godmode_music_player as player
+        with mock.patch.object(player, "music_request", return_value={"message": "Preparing audio"}) as request:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = music.music_main(["play", "Quiet", "--seconds", "60"], self.home)
+        self.assertEqual(result, 0)
+        self.assertEqual(request.call_args.args[0], {"action": "play", "ids": ["Quiet.ootrs"], "index": 0, "seconds": 60.0})
+        self.assertIn("continues in the background", output.getvalue())
+        self.assertNotIn("q stop", output.getvalue())
 
-    def test_pty_long_fragmented_paste_never_quits_echoes_or_reaches_shell(self):
-        player = self.pty_player()
-        try:
-            player.seen("q stop")
-            secret = b"qSECRET_MUSIC_FIXTURE_" * 1000 + b"\necho NEVER_RUN\n"
-            before = len(player.capture)
-            player.send(b"\x1b[200~" + secret[:9000])
-            player.settle(0.2)
-            self.assertIsNone(player.process.poll())
-            # The animation keeps running while the paste is incomplete.
-            self.assertGreater(len(player.capture), before)
-            player.send(secret[9000:] + b"\x1b[201~")
-            player.settle(0.2)
-            self.assertIsNone(player.process.poll())
-            self.assertNotIn(b"SECRET_MUSIC_FIXTURE", player.capture)
-            self.assertNotIn(b"NEVER_RUN", player.capture)
-            player.send(b"q" + b"DO_NOT_ECHO" * 200)
-            player.done(130)
-            self.assertTrue(b"DO_NOT_ECHO" not in player.capture, "post-quit input was echoed")
-        finally:
-            player.close()
+    def test_bare_plain_music_is_bounded_static_summary_without_picker_or_owner(self):
+        import godmode_music_player as player
+        library = {"configured": True, "tracks": [{"id": "Track " + str(i)} for i in range(1620)]}
+        with mock.patch.object(player, "music_library", return_value=library), \
+                mock.patch.object(player, "_music_launch", side_effect=AssertionError("started owner")), \
+                mock.patch.object(music, "_music_select", side_effect=AssertionError("opened picker")), \
+                mock.patch.dict(os.environ, {"TERM": "dumb", "GODMODE_PLAIN": "1"}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            result = music.music_main([], self.home, menu=mock.Mock(side_effect=AssertionError("opened menu")))
+        text = output.getvalue()
+        self.assertEqual(result, 0)
+        self.assertIn("GODMODE BEATZ", text)
+        self.assertIn("1620 local tracks linked", text)
+        self.assertIn("list QUERY", text)
+        self.assertLess(len(text.splitlines()), 10)
+        self.assertLess(len(text), 500)
+        self.assertNotIn("Track 1619", text)
+        self.assertFalse(self.root.exists())
 
-    def test_pty_resize_clears_old_frame_and_recomputes_rows(self):
-        player = self.pty_player()
-        try:
-            player.seen("q stop")
-            for cols, rows in ((32, 12), (10, 8), (80, 24)):
-                mark = len(player.capture)
-                fcntl.ioctl(player.slave, terminal.termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-                os.killpg(player.process.pid, signal.SIGWINCH)
-                player.settle(0.35)
-                output = bytes(player.capture[mark:])
-                self.assertIn(b"\x1b[J", output)
-                complete = [plain(chunk) for chunk in output.split(b"\x1b[J")[1:] if "q stop" in plain(chunk)]
-                self.assertTrue(complete, "resize did not finish a frame")
-                last = complete[-1].split("q stop")[0] + "q stop"
-                self.assertLessEqual(len(last.splitlines()), rows - 1)
-                for line in last.splitlines():
-                    self.assertLessEqual(terminal.cells(line), cols - 1)
-            player.send(b"\x03")
-            player.done(130)
-        finally:
-            player.close()
+    def test_bare_unlinked_music_has_setup_hint_and_writes_nothing(self):
+        import godmode_music_player as player
+        with mock.patch.object(player, "_music_launch", side_effect=AssertionError("started owner")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(music.music_main([], self.home), 0)
+        self.assertIn("music setup --songs TRACK_FOLDER", output.getvalue())
+        self.assertFalse(self.root.exists())
+
+    def test_explicit_play_or_enqueue_without_name_never_opens_picker(self):
+        for args in (["play"], ["play", "--render-only"], ["queue", "add"]):
+            with self.subTest(args=args), mock.patch.object(music, "_music_select", side_effect=AssertionError("opened picker")), \
+                    contextlib.redirect_stderr(io.StringIO()) as output, self.assertRaises(SystemExit) as error:
+                music.music_main(args, self.home)
+            self.assertEqual(error.exception.code, 2)
+            self.assertIn("needs NAME", output.getvalue())
+        self.assertFalse(self.root.exists())
+
+    def test_queue_json_is_a_single_status_object_without_side_effects(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(music.music_main(["queue", "--json"], self.home), 0)
+        data = json.loads(output.getvalue())
+        self.assertEqual(data["queue"], [])
+        self.assertEqual(data["state"], "stopped")
+        self.assertFalse(self.root.exists())
+
+    def test_list_query_json_uses_same_case_insensitive_filter_as_text(self):
+        self.init()
+        (self.songs / "Loud.ootrs").write_bytes(b"fixture")
+        for query, expected in (("QUIET", ["Quiet.ootrs"]), ("missing", [])):
+            with self.subTest(query=query), contextlib.redirect_stdout(io.StringIO()) as output:
+                music.music_main(["list", query, "--json"], self.home)
+            data = json.loads(output.getvalue())
+            self.assertTrue(data["configured"])
+            self.assertEqual([track["id"] for track in data["tracks"]], expected)
 
 
 class KeyboardPollTests(unittest.TestCase):

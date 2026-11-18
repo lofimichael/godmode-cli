@@ -742,6 +742,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import shlex
 import subprocess
 import tempfile
 
@@ -755,6 +756,10 @@ def _profile_stamp(info):
             info.st_mode, info.st_uid, info.st_nlink)
 
 
+class ProfileDirectoryError(ValueError):
+    """The storage directory, rather than one of its files, needs repair."""
+
+
 def _profile_directories(path, create=False):
     # As for keys: symlinks above the home are resolved; the home itself must be a real directory.
     path = Path(os.path.realpath(path.parent)) / path.name
@@ -764,12 +769,16 @@ def _profile_directories(path, create=False):
         if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
             home, text = os.path.expanduser("~").rstrip(os.sep), str(directory)
             shown = "~" + text[len(home):] if text.startswith(home + os.sep) else text
-            raise ValueError(shown + " is a symlink or not a directory; Godmode needs a real directory "
+            raise ProfileDirectoryError(shown + " is a symlink or not a directory; Godmode needs a real directory "
                              "there. Use --home with the real path.")
     if path.exists():
         info = path.stat()
-        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
-            raise ValueError("The profile directory must be yours and mode 0700.")
+        if info.st_uid != os.geteuid():
+            raise ProfileDirectoryError("Godmode's directory belongs to another user: " + str(path)
+                                        + ". Use --home with a directory you own.")
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            raise ProfileDirectoryError("Godmode's directory needs mode 0700. Run: chmod 700 "
+                                        + shlex.quote(str(path)))
 
 
 def _profile_pairs(pairs):
@@ -1201,6 +1210,8 @@ def selection_saved(home=None):
     config = Profile(selection_home(home), filename='active.json')
     try:
         data = config.read()
+    except ProfileDirectoryError:
+        raise
     except ValueError as error:
         raise ValueError('Cannot read active.json. Repair the active selection file, or select both '
                          '--env NAME and --context NAME (--context - uses the environment profile). '
@@ -2731,6 +2742,91 @@ import subprocess
 import sys
 
 
+_PREFERENCES_UNCHANGED = object()
+_RECENT_SETUPS_LIMIT = 5
+
+
+def _ui_settings_file(namespace, home):
+    # Reuse the profile writer's ownership, mode, no-symlink, locking and
+    # atomic-replace rules for this separate nonsecret file.
+    config = namespace['Profile'](namespace['profile_home'](home))
+    config.path = config.home / 'ui.json'
+    try:
+        data = config.read()
+    except ValueError as error:
+        raise ValueError('Cannot read ui.json. ' + str(error)) from None
+    return config, data
+
+
+def _ui_motion(data):
+    if type(data.get('motion', True)) is not bool:
+        raise ValueError('ui.json must set motion to true or false. Fix it before changing preferences.')
+    return data.get('motion', True)
+
+
+def _recent_pair(namespace, pair):
+    try:
+        if (not isinstance(pair, dict) or set(pair) != {'environment', 'context'}
+                or not isinstance(pair['environment'], str) or not isinstance(pair['context'], str)):
+            raise ValueError()
+        namespace['environment_name'](pair['environment'])
+        if pair['context'] and namespace['selection_context'](pair['context']) != pair['context']:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError('ui.json has invalid recent setups. Each setup needs only valid environment '
+                         'and context names.') from None
+    return {'environment': pair['environment'], 'context': pair['context']}
+
+
+def _ui_recent_setups(namespace, data):
+    history = data.get('recent_setups', [])
+    if not isinstance(history, list) or len(history) > _RECENT_SETUPS_LIMIT:
+        raise ValueError('ui.json recent_setups must be a list of at most five setups.')
+    result = [_recent_pair(namespace, pair) for pair in history]
+    if len({(pair['environment'], pair['context']) for pair in result}) != len(result):
+        raise ValueError('ui.json recent_setups must not contain duplicate setups.')
+    return result
+
+
+def _write_ui_settings(config, data):
+    try:
+        config.write(data)
+    except ValueError as error:
+        raise ValueError('Could not save ui.json. ' + str(error)) from None
+
+
+def ui_preferences(namespace, home=None, motion=_PREFERENCES_UNCHANGED):
+    """Read or change Motion without opening keys or business profiles."""
+    if motion is not _PREFERENCES_UNCHANGED and type(motion) is not bool:
+        raise ValueError('Motion must be true or false.')
+    config, data = _ui_settings_file(namespace, home)
+    current_motion = _ui_motion(data)
+    if motion is not _PREFERENCES_UNCHANGED:
+        _ui_recent_setups(namespace, data)
+        data['motion'] = motion
+        _write_ui_settings(config, data)
+        current_motion = motion
+    return {'motion': current_motion, 'path': str(config.path)}
+
+
+def record_recent_selection(namespace, home, selected, previous):
+    """Record an already-applied pair. Never save active selection or open keys.
+
+    Callers must treat a history error as nonfatal after an active selection save.
+    """
+    selected, previous = _recent_pair(namespace, selected), _recent_pair(namespace, previous)
+    config, data = _ui_settings_file(namespace, home)
+    _ui_motion(data)
+    history = _ui_recent_setups(namespace, data)
+    recent = []
+    for pair in [selected, previous] + history:
+        if pair not in recent:
+            recent.append(pair)
+    data['recent_setups'] = recent[:_RECENT_SETUPS_LIMIT]
+    _write_ui_settings(config, data)
+    return data['recent_setups']
+
+
 class UIBridge:
     def __init__(self, namespace, home=None):
         self.api, self.home = namespace, home
@@ -2750,6 +2846,30 @@ class UIBridge:
 
     def _digest(self):
         return hashlib.sha256(self.store._read()[0].encode('utf-8')).hexdigest()
+
+    def _selected_state(self):
+        self.store = self.api['effective_store'](self.home)
+        self.profile = self.api['business_profile'](self.home)
+        self.profile_data = None
+        self.keys.clear()
+        self.agents.clear()
+        return self.call({'action': 'state'})
+
+    def _apply_selection(self, environment, context):
+        a = self.api
+        previous = {'environment': a.get('ACTIVE_ENVIRONMENT', 'default'),
+                    'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''}
+        a['set_active_selection'](self.home, environment, context)
+        history_error = None
+        try:
+            record_recent_selection(a, self.home, {'environment': environment, 'context': context}, previous)
+        except (ValueError, OSError) as error:
+            detail = str(error) if isinstance(error, ValueError) else 'Check access to ui.json.'
+            history_error = 'Active setup saved, but recent setups were not updated. ' + detail
+        state = self._selected_state()
+        if history_error:
+            state['history_error'] = history_error
+        return state
 
     def call(self, request):
         a = self.api
@@ -2772,8 +2892,17 @@ class UIBridge:
             return {'contexts': [dict(name='', profile_path=str(automatic.path))]
                                 + a['context_list'](a['profile_home'](self.home), missing_selected=selected),
                     'selected': selected}
+        if action == 'selection_save':
+            environment = a['environment_name'](self._text(request, 'environment'))
+            context = self._text(request, 'context')
+            if context == '-':
+                context = ''
+            return self._apply_selection(environment, context)
         if action in ('environment_select', 'environment_create', 'context_select', 'context_create'):
             name = self._text(request, 'name')
+            select = request.get('select', True)
+            if type(select) is not bool:
+                raise ValueError('select must be true or false.')
             if action.startswith('environment_'):
                 name = a['environment_name'](name)
                 if action == 'environment_create':
@@ -2793,15 +2922,14 @@ class UIBridge:
                            else a['Context'](directory, name) if name else None)
                 context_name = context.name if context is not None else ''
                 environment = a.get('ACTIVE_ENVIRONMENT', 'default')
+            if action.endswith('_create') and not select:
+                return self.call({'action': 'state'})
             # Save only after the entire pair validates. The live session changes
             # only after the atomic write succeeds; unrelated open sessions retain
             # their own already-resolved pair.
-            a['set_active_selection'](self.home, environment, context_name)
-            self.store = a['effective_store'](self.home)
-            self.profile = a['business_profile'](self.home)
-            self.profile_data = None
-            self.keys.clear()
-            self.agents.clear()
+            return self._apply_selection(environment, context_name)
+        if action == 'preferences_save':
+            ui_preferences(a, self.home, motion=request.get('motion'))
             return self.call({'action': 'state'})
         if action == 'doctor':
             return a['doctor_report'](self.store, self.profile, a, home=self.home)
@@ -2824,6 +2952,20 @@ class UIBridge:
                       'source_url': a['SOURCE_URL'], 'issue_url': a['ISSUE_URL'],
                       'nfo_logo': list(a['NFO_LOGO']),
                       'intro': [text for text, _ in a['INTRO_PAGES'][0][2]]}
+            result['preferences'], result['recent_setups'] = {'motion': True}, []
+            try:
+                _, preferences = _ui_settings_file(a, self.home)
+            except ValueError as error:
+                result['preferences_error'] = result['history_error'] = str(error)
+            else:
+                try:
+                    result['preferences'] = {'motion': _ui_motion(preferences)}
+                except ValueError as error:
+                    result['preferences_error'] = str(error)
+                try:
+                    result['recent_setups'] = _ui_recent_setups(a, preferences)
+                except ValueError as error:
+                    result['history_error'] = str(error)
             try:
                 result['states'] = self.store.states() if self.store.exists() else {}
                 base = getattr(self.store, 'store', self.store)
@@ -2885,9 +3027,9 @@ class UIBridge:
             field, value = self._text(request, 'field'), self._text(request, 'value')
             if field not in a['PROFILE_FIELDS'] or self.profile_data is None:
                 raise ValueError('Open the profile before editing.')
-            a['profile_value'](self.profile, self.profile_data, field, value)
+            changed = a['profile_value'](self.profile, self.profile_data, field, value)
             self.profile_data = self.profile.read()
-            return {}
+            return {'changed': changed}
         if action == 'agents_plan':
             block, targets = a['agent_block'](self.home), a['agent_targets']()
             copy_block = a['agent_instruction'](self.home)
@@ -2898,6 +3040,7 @@ class UIBridge:
                 if not target['added']:
                     try:
                         plan = a['agent_plan'](target['path'], block)
+                        plan['display_path'] = view['path']
                         pending.append(plan)
                         view.update(created=plan['created'], addition=plan['addition'].decode('utf-8'),
                                     real=a['home_path'](plan['real']))
@@ -2923,14 +3066,26 @@ class UIBridge:
                 return {'copied': False}
             return {'copied': True}
         if action == 'agents_apply':
-            plan = self.agents.pop(self._text(request, 'id'), None)
+            identifier = self._text(request, 'id')
+            plan = self.agents.get(identifier)
             if plan is None:
                 raise ValueError('The agent preview expired. Open Agents again.')
             block, pending, _ = plan
+            if 'targets' in request:
+                selected = request['targets']
+                if (not isinstance(selected, list) or not selected
+                        or any(not isinstance(path, str) for path in selected)
+                        or len(set(selected)) != len(selected)
+                        or not set(selected).issubset(item['display_path'] for item in pending)):
+                    raise ValueError('Choose one or more distinct targets from the reviewed agent preview.')
+                # Filter the server-held snapshots, never construct a path from
+                # user input. Invalid selections leave the preview reusable.
+                pending = [item for item in pending if item['display_path'] in selected]
+            self.agents.pop(identifier)
             added = []
             for item in pending:
                 if a['add_agent_text'](item['path'], block, item):
-                    added.append(a['home_path'](item['path']))
+                    added.append(item['display_path'])
             return {'added': added}
         if action == 'mark_agent':
             a['mark'](self.home, a['AGENT_MARKER'])
@@ -2995,531 +3150,441 @@ def ui_startup_error(message):
     return 2
 
 
-# --- godmode_music.py ---
-"""Optional local Darunia adapter. No network, downloaded code, catalog, or music assets.
-
-Remove this file and its command/build hooks to remove music. Nothing imports
-the key store. Darunia runs as a separate, explicitly initialized program.
-"""
+# --- godmode_music_pack.py ---
+"""Lightweight opt-in pack installer/router. No audio, synthesis, or key access."""
 import argparse
-import array
 import contextlib
 import fcntl
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
-import select
+import platform
+import re
 import shutil
 import signal
 import stat
 import subprocess
-import sys
 import tempfile
-import time
-import wave
+import sys
+import uuid
+import urllib.error
+import urllib.request
 
-MUSIC_SOURCE = "https://github.com/lofimichael/darunias-cli"
-MUSIC_LIMIT = 700 * 1024 * 1024
-MUSIC_CONFIG_LIMIT = 65536
-
-
-def _music_root(home=None):
-    selected = home or os.environ.get("GODMODE_HOME") or str(Path.home() / ".godmode")
-    return Path(os.path.abspath(os.path.expanduser(str(selected)))) / "state" / "music"
+PACK_DOWNLOAD_LIMIT = 128 * 1024 * 1024
+PACK_RELEASE_ROOT = 'https://godmode.build/packs/music'
 
 
-def _music_text(value):
-    # File names and upstream metadata cannot write terminal controls.
-    return "".join(c for c in str(value) if c.isprintable())
+class _PackNeedsRepair(ValueError):
+    """Owned pack contents are damaged; path/ownership failures use other errors."""
 
 
-def _music_directory(path, create=False):
-    for directory in reversed((path,) + tuple(path.parents)):
-        if create and not os.path.lexists(directory):
-            directory.mkdir(mode=0o700)
-        if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
-            raise ValueError("Music paths must not contain symlinks.")
+def _pack_home(home):
+    return Path(os.path.abspath(os.path.expanduser(str(home or os.environ.get('GODMODE_HOME') or Path.home() / '.godmode'))))
+
+
+def _pack_dir(path, create=False):
+    for item in reversed((path,) + tuple(path.parents)):
+        if create and not os.path.lexists(item):
+            item.mkdir(mode=0o700)
+        if os.path.lexists(item) and not stat.S_ISDIR(item.lstat().st_mode):
+            raise ValueError('Music Pack paths must not contain symlinks.')
     if path.exists():
         info = path.stat()
         if info.st_uid != os.geteuid() or info.st_mode & 0o022:
-            raise ValueError("Music files must be yours and not writable by other users.")
+            raise ValueError('Music Pack directories must be yours and not writable by others.')
 
 
-def _music_bytes(path, limit=MUSIC_CONFIG_LIMIT):
+def _pack_read(path, limit=65536):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    with os.fdopen(fd, "rb") as stream:
+    with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
-                or info.st_nlink != 1 or info.st_mode & 0o022 or info.st_size > limit):
-            raise ValueError("Unsafe music file: " + _music_text(path.name))
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1
+                or info.st_mode & 0o022 or info.st_size > limit):
+            raise ValueError('Unsafe Music Pack file.')
         return stream.read(limit + 1)
 
 
-def _music_sha(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for data in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(data)
-    return digest.hexdigest()
+def _pack_write(path, data, mode=0o600):
+    if os.path.lexists(path):
+        _pack_read(path, PACK_DOWNLOAD_LIMIT)
+    fd, tmp = tempfile.mkstemp(prefix='.pack-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 @contextlib.contextmanager
-def _music_lock(root):
-    _music_directory(root, True)
-    path = root / ".lock"
-    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+def _pack_lock(home, shared=False):
+    directory = home / 'packs'
+    _pack_dir(directory, True)
+    fd = os.open(directory / '.music.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
-            raise ValueError("Unsafe music lock.")
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1
+                or info.st_mode & 0o022):
+            raise ValueError('Unsafe Music Pack lock.')
+        # The foreground router owns the lease. Neither the companion nor its
+        # detached audio session may inherit it and prevent later removal.
+        os.set_inheritable(fd, False)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError("Music is running. Stop it before changing its cache.") from None
-        yield
+            if shared:
+                raise ValueError('Music Pack installation or removal is running. Retry when it finishes.') from None
+            raise ValueError('Close Music Pack views or wait for setup/jingles or another install/removal '
+                             'to finish, then retry.') from None
+        yield fd
     finally:
         os.close(fd)
 
 
-def _music_atomic(path, data):
-    if os.path.lexists(path):
-        _music_bytes(path)
-    fd, name = tempfile.mkstemp(prefix=".config-", dir=path.parent)
+def _pack_env(home):
+    names = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'COLORTERM',
+             'TMPDIR', 'NO_COLOR', 'CLICOLOR', 'COLORFGBG', 'DISPLAY', 'WAYLAND_DISPLAY',
+             'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'PULSE_SERVER', 'GODMODE_PLAIN', 'GODMODE_NO_MOTION')
+    env = {name: os.environ[name] for name in names if name in os.environ}
+    env['GODMODE_HOME'] = str(home)
+    return env
+
+
+def _pack_target():
+    system = platform.system().lower()
+    arch = {'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'amd64', 'amd64': 'amd64'}.get(platform.machine().lower())
+    if system not in ('darwin', 'linux') or arch is None:
+        raise ValueError('The Music Pack supports macOS and Linux on arm64/amd64.')
+    target = ('aarch64' if arch == 'arm64' else 'x86_64') + ('-apple-darwin' if system == 'darwin' else '-unknown-linux-gnu')
+    return system, arch, target
+
+
+def _pack_info(binary, home):
+    result = subprocess.run([str(binary), '__pack_info'], env=_pack_env(home), stdin=subprocess.DEVNULL,
+                            text=True, capture_output=True, timeout=5)
+    if result.returncode or len(result.stdout) > 4096:
+        raise ValueError('This file is not a compatible Godmode Music Pack.')
     try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+        info = json.loads(result.stdout)
+    except ValueError:
+        raise ValueError('This file is not a compatible Godmode Music Pack.') from None
+    system, arch, _ = _pack_target()
+    if (not isinstance(info, dict) or info.get('kind') != 'godmode-music-pack' or info.get('protocol') != 1
+            or info.get('platform') != system or info.get('arch') != arch
+            or not isinstance(info.get('version'), str)):
+        raise ValueError('Music Pack version or platform is incompatible.')
+    return info
 
 
-def _music_config(root, verify=True):
-    _music_directory(root)
-    try:
-        data = json.loads(_music_bytes(root / "config.json"))
-    except FileNotFoundError:
-        raise ValueError("Darunia is not linked. Run godmode music init SYNTH_FOLDER --songs TRACK_FOLDER.\n"
-                         + MUSIC_SOURCE) from None
-    if (not isinstance(data, dict) or data.get("version") != 1
-            or any(not isinstance(data.get(k), str) for k in ("backend", "songs", "sha256"))):
-        raise ValueError("Invalid music config. Run godmode music init DIR --songs DIR.")
-    backend, songs = Path(data["backend"]), Path(data["songs"])
-    if not backend.is_absolute() or not songs.is_absolute():
-        raise ValueError("Music paths must be absolute.")
-    _music_directory(backend)
-    _music_directory(songs)
-    if verify:
-        script = _music_bytes(backend / "synthesize.py", 1024 * 1024)
-        if hashlib.sha256(script).hexdigest() != data["sha256"]:
-            raise ValueError("Darunia's synth changed. Review it, then run godmode music init again.")
-    return data
-
-
-def music_available(home=None):
-    try:
-        _music_config(_music_root(home))
-        return True
-    except (OSError, ValueError, TypeError):
-        return False
-
-
-def _music_init(root, backend, songs):
-    backend = Path(os.path.abspath(os.path.expanduser(str(backend))))
-    songs = Path(os.path.abspath(os.path.expanduser(str(songs))))
-    _music_directory(backend)
-    _music_directory(songs)
-    if not songs.is_dir():
-        raise ValueError("The song folder does not exist.")
-    script = _music_bytes(backend / "synthesize.py", 1024 * 1024)
-    required = (backend / "tools/render_synth", backend / "tools/seq64/build/seq64_console",
-                backend / "tools/florestan-subset.sf2", backend / "oot-instruments.json")
-    if any(not p.is_file() for p in required) or not shutil.which("ffmpeg"):
-        raise ValueError("Darunia's synthesis tools are missing. Follow " + MUSIC_SOURCE + "/blob/main/docs/SYNTHESIS.md")
-    data = {"version": 1, "backend": str(backend), "songs": str(songs),
-            "sha256": hashlib.sha256(script).hexdigest()}
-    count = len(_music_songs(songs))
-    with _music_lock(root):
-        _music_atomic(root / "config.json", (json.dumps(data, indent=2) + "\n").encode())
-    print("Darunia's CLI linked. " + str(count) + " local tracks.")
-
-
-def _music_songs(base):
-    """Only local regular files; never walk symlinked directories."""
-    result = []
-    for directory, dirs, files in os.walk(base, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if not Path(directory, d).is_symlink())
-        for name in sorted(files):
-            path = Path(directory, name)
-            if path.suffix.lower() == ".ootrs" and not path.is_symlink() and path.is_file():
-                result.append(path)
-                if len(result) > 10000:
-                    raise ValueError("Music folders can hold at most 10,000 tracks.")
-    return sorted(result, key=lambda p: str(p.relative_to(base)).casefold())
-
-
-def _music_select(base, query, menu=None):
-    songs = _music_songs(base)
-    if query:
-        exact = [p for p in songs if str(p.relative_to(base)).casefold() == query.casefold()]
-        songs = exact or [p for p in songs if query.casefold() in str(p.relative_to(base)).casefold()]
-    if not songs:
-        raise ValueError("No local tracks match. Run godmode music list.")
-    if len(songs) == 1:
-        return songs[0]
-    if menu is not None and sys.stdin.isatty() and sys.stdout.isatty():
-        items = [(_music_text(p.stem), "", _music_text(str(p.relative_to(base).parent))) for p in songs]
-        items.append(("Back", "", ""))
-        choice = menu(items, title="Music", hint="↑↓ choose  Enter play  Esc back", searchable=True)
-        return None if choice is None or choice == len(songs) else songs[choice]
-    raise ValueError(str(len(songs)) + " tracks match. Use the path shown by godmode music list.")
-
-
-def _music_env():
-    names = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "TERM", "COLORTERM", "TMPDIR",
-             "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "PULSE_SERVER")
-    return {key: os.environ[key] for key in names if key in os.environ}
-
-
-def _music_animated():
-    return (sys.stdout.isatty() and sys.stdin.isatty() and os.environ.get("TERM", "dumb") not in ("", "dumb")
-            and os.environ.get("GODMODE_PLAIN", "").lower() in ("", "0", "false", "no")
-            and os.environ.get("GODMODE_NO_MOTION", "").lower() in ("", "0", "false", "no"))
-
-
-def _music_color(text, code):
-    if (sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("CLICOLOR") != "0"
-            and os.environ.get("TERM", "dumb") not in ("", "dumb")
-            and os.environ.get("GODMODE_PLAIN", "").lower() in ("", "0", "false", "no")):
-        return "\x1b[" + code + "m" + text + "\x1b[0m"
-    return text
-
-
-@contextlib.contextmanager
-def _music_controls(interactive, terminal):
-    keyboard_factory, _, cancelled = terminal
-    if interactive:
+def _pack_installed(home):
+    directory = home / 'packs/music'
+    _pack_dir(directory)
+    # Inspect both known files before classifying damaged contents. A malformed
+    # receipt must not hide a linked, foreign-owned, or shared-writable binary.
+    files = {}
+    for name, limit in (('receipt.json', 65536), ('godmode-music', PACK_DOWNLOAD_LIMIT)):
         try:
-            with keyboard_factory() as keyboard:
-                if _music_animated():
-                    sys.stdout.write("\x1b[?25l")
-                    sys.stdout.flush()
-                try:
-                    yield keyboard
-                finally:
-                    # A paste can span multiple OS writes. Keep echo off until
-                    # input has been quiet briefly, then _Keyboard flushes it.
-                    deadline = time.monotonic() + 0.5
-                    while time.monotonic() < deadline:
-                        if not select.select([keyboard.fd], [], [], 0.08)[0]:
-                            break
-                        if not os.read(keyboard.fd, 4096):
-                            break
-        except cancelled:
-            raise KeyboardInterrupt() from None
-        return
-    handlers = {}
-    def stop(signum, frame):
-        raise KeyboardInterrupt()
+            files[name] = _pack_read(directory / name, limit)
+        except FileNotFoundError:
+            pass
+    if not files and (not directory.exists() or not any(directory.iterdir())):
+        return None
+    if len(files) != 2:
+        raise _PackNeedsRepair('Music Pack installation is incomplete. Reinstall with godmode music install.')
     try:
-        for signum in (signal.SIGTERM, signal.SIGHUP):
-            handlers[signum] = signal.signal(signum, stop)
-        yield None
+        receipt = json.loads(files['receipt.json'])
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise _PackNeedsRepair('Music Pack receipt is invalid. Reinstall with godmode music install.') from None
+    if (not isinstance(receipt, dict) or type(receipt.get('schema')) is not int
+            or receipt.get('schema') != 1 or not isinstance(receipt.get('sha256'), str)
+            or not re.fullmatch(r'[a-f0-9]{64}', receipt['sha256'])):
+        raise _PackNeedsRepair('Music Pack receipt is invalid. Reinstall with godmode music install.')
+    if hashlib.sha256(files['godmode-music']).hexdigest() != receipt['sha256']:
+        raise _PackNeedsRepair('Music Pack checksum changed. Reinstall with godmode music install.')
+    binary = directory / 'godmode-music'
+    if not os.access(binary, os.X_OK):
+        raise _PackNeedsRepair('Music Pack is not executable. Reinstall with godmode music install.')
+    return binary, receipt
+
+
+def _pack_run(binary, home, args, capture=False):
+    if capture:
+        return subprocess.run([str(binary), '--home', str(home), *args], env=_pack_env(home),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15, close_fds=True)
+    child = subprocess.Popen([str(binary), '--home', str(home), *args], env=_pack_env(home), close_fds=True)
+    previous = {}
+    def forward(signum, frame):
+        with contextlib.suppress(ProcessLookupError):
+            child.send_signal(signum)
+    try:
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            previous[signum] = signal.signal(signum, forward)
+        code = child.wait()
+        return 128 - code if code < 0 else code
     finally:
-        for signum, handler in handlers.items():
+        for signum, handler in previous.items():
             signal.signal(signum, handler)
 
 
-def _music_quit(keyboard):
-    if keyboard is not None:
-        while True:
-            event = keyboard.poll()
-            if event is None:
-                break
-            kind, key = event
-            if (kind == "text" and key in (b"q", b"Q")) or (kind == "key" and key == "esc"):
-                return True
-            # Pasted bytes, including q/newlines, are data and are always ignored.
-    return False
+class _PackNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
-def _music_end(child):
-    # synthesize.py owns converter/renderer children; stop its whole process group.
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(child.pid, signal.SIGTERM)
-    if child.poll() is None:
-        try:
-            child.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            pass
-    # A converter can outlive its Python parent or ignore SIGTERM.
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(child.pid, signal.SIGKILL)
-    child.wait()
-
-
-def _music_run(command, frame=None, active=False, timeout=180, keyboard=None):
-    with tempfile.TemporaryFile() as output:
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
-                                 env=_music_env(), start_new_session=True)
-        started = time.monotonic()
-        try:
-            while child.poll() is None:
-                elapsed = time.monotonic() - started
-                if _music_quit(keyboard):
-                    raise KeyboardInterrupt()
-                if elapsed > timeout:
-                    raise ValueError("Music timed out.")
-                if os.fstat(output.fileno()).st_size > 1024 * 1024:
-                    raise ValueError("The music program produced too much output.")
-                if frame:
-                    frame(elapsed)
-                time.sleep(0.06)
-            output.seek(0)
-            log = output.read(65536).decode("utf-8", "replace")
-            if child.returncode:
-                raise ValueError("Darunia or the local audio player failed. Check godmode music status.")
-            return log
-        finally:
-            _music_end(child)
-
-
-def _music_validate_cache(cache):
-    _music_directory(cache)
-    if not cache.exists():
-        return
-    for directory, dirs, files in os.walk(cache, followlinks=False):
-        for name in dirs:
-            _music_directory(Path(directory, name))
-        for name in files:
-            path = Path(directory, name)
-            info = path.lstat()
-            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
-                    or info.st_nlink != 1 or info.st_mode & 0o022 or info.st_size > MUSIC_LIMIT):
-                raise ValueError("Unsafe music cache. No files changed.")
-
-
-def _music_print(text=""):
-    sys.stdout.write(str(text).replace("\n", "\r\n") + "\r\n")
-    sys.stdout.flush()
-
-
-def _music_render(root, config, source, seconds, active=False, keyboard=None, draw=None):
-    cache = root / "cache"
-    _music_directory(cache, True)
-    _music_validate_cache(cache)
-    original_locks = set(cache.glob("*.lock"))
-    # Darunia computes and verifies its own cache key from every input/tool/font.
-    # An export gives us an exact path/receipt without parsing terminal output.
-    with tempfile.TemporaryDirectory(prefix=".render-", dir=root) as work:
-        export = Path(work) / "track.wav"
-        command = [sys.executable, str(Path(config["backend"]) / "synthesize.py"), str(source),
-                   "--seconds", str(seconds), "--cache-dir", str(cache), "--output", str(export)]
-        spinner = ("|", "/", "-", "\\")
-        drawn = []
-        def frame(elapsed):
-            nonlocal drawn
-            width = shutil.get_terminal_size().columns
-            label = "Synthesizing " + _music_text(source.stem)[:max(1, width - 32)] + " · q stop"
-            if width < 30:
-                label = "Rendering · q stop"[:max(1, width - 5)]
-            drawn = draw(["  " + _music_color(spinner[int(elapsed * 8) % 4], "1;35") + " " + label], drawn)
-        if not active:
-            _music_print("Synthesizing " + _music_text(source.stem))
-        try:
-            log = _music_run(command, frame if active else None, active, keyboard=keyboard)
-        finally:
-            # SIGTERM can bypass Darunia's finally block. Only remove empty locks
-            # this invocation created, after all its child processes have stopped.
-            for lock in set(cache.glob("*.lock")) - original_locks:
-                if not lock.is_symlink() and lock.is_dir():
-                    with contextlib.suppress(OSError):
-                        lock.rmdir()
-            if active:
-                draw([], drawn)
-        details = json.loads(_music_bytes(export.with_suffix(".synthesis.json"), 1024 * 1024))
-        key = details.get("cache_key", "")
-        if len(key) != 64 or any(c not in "0123456789abcdef" for c in key):
-            raise ValueError("Darunia returned an invalid cache key.")
-        cached = cache / key / "render.wav"
-        _music_validate_cache(cache)
-        if (not cached.is_file() or cached.stat().st_size > MUSIC_LIMIT
-                or _music_sha(cached) != details.get("wav_sha256")):
-            raise ValueError("Music cache checksum failed. Run godmode music clear.")
-        return cached, details, "Cache hit:" in log
-
-
-def _music_levels(audio, elapsed, count=24):
-    """Log-spaced frequency bins from the PCM at the current playback position."""
-    rate, channels = audio.getframerate(), audio.getnchannels()
-    start = min(audio.getnframes(), max(0, int(elapsed * rate)))
-    audio.setpos(start)
-    values = array.array("h", audio.readframes(2048))
-    if sys.byteorder != "little":
-        values.byteswap()
-    step = max(1, rate // 11025)
-    mono = [sum(values[i:i + channels]) / (channels * 32768.0)
-            for i in range(0, len(values) - channels + 1, channels * step)][:512]
-    if not mono:
-        return [0.0] * count
-    size, sample_rate = len(mono), rate / step
-    window = [x * (0.5 - 0.5 * math.cos(2 * math.pi * i / max(1, size - 1))) for i, x in enumerate(mono)]
-    result = []
-    for index in range(count):
-        frequency = 70 * (min(4200, sample_rate * 0.45) / 70) ** (index / max(1, count - 1))
-        coefficient = 2 * math.cos(2 * math.pi * frequency / sample_rate)
-        first = second = 0.0
-        for sample in window:
-            current = sample + coefficient * first - second
-            second, first = first, current
-        power = max(0, first * first + second * second - coefficient * first * second)
-        amplitude = math.sqrt(power) / size
-        result.append(max(0.0, min(1.0, (20 * math.log10(amplitude + 1e-9) + 65) / 55)))
-    return result
-
-
-def _music_clock(seconds):
-    return str(int(seconds) // 60) + ":" + str(int(seconds) % 60).zfill(2)
-
-
-def music_visual_rows(levels, elapsed, duration, width=80, height=24):
-    """Inspectable visualizer frame, also used by screenshot verification."""
-    if width < 24 or height < 10:
-        return [(_music_clock(elapsed) + " / " + _music_clock(duration))[:max(1, width - 1)],
-                "q stop"[:max(1, width - 1)]]
-    count = max(1, min(len(levels), (width - 6) // 3))
-    tall = max(1, min(9, height - 9))
-    colors = ("35", "35", "36", "36", "32", "33", "33", "31", "31")
-    unicode = "utf" in (getattr(sys.stdout, "encoding", "") or "").lower() and os.environ.get("TERM") != "linux"
-    block = "██" if unicode else "##"
-    rows = []
-    for row in range(tall, 0, -1):
-        parts = [(_music_color(block, colors[min(8, row - 1)]) if level * tall >= row - 0.5 else "  ")
-                 for level in levels[:count]]
-        rows.append("  " + " ".join(parts))
-    columns = max(1, min(66, width - 6))
-    progress = int(columns * min(1, elapsed / duration)) if duration else 0
-    rows += ["", "  " + _music_color("━" * progress if unicode else "#" * progress, "36")
-             + _music_color("─" * (columns - progress) if unicode else "-" * (columns - progress), "2"),
-             "  " + _music_clock(elapsed) + " / " + _music_clock(duration), "", "  q stop"]
-    return rows
-
-
-def _music_play(path, details, active=False, keyboard=None, draw=None):
-    player = next(([exe] + flags for name, flags in
-                   (("afplay", ["-v", "0.35"]), ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "35"]),
-                    ("aplay", ["-q"])) for exe in [shutil.which(name)] if exe), None)
-    if not player:
-        raise ValueError("Playback needs afplay, ffplay or aplay. The WAV is cached.")
-    with wave.open(str(path), "rb") as audio:
-        if audio.getsampwidth() != 2 or audio.getnchannels() not in (1, 2) or audio.getcomptype() != "NONE":
-            raise ValueError("The music visualizer needs 16-bit PCM WAV audio.")
-        duration = audio.getnframes() / audio.getframerate()
-        drawn = []
-        def frame(elapsed):
-            nonlocal drawn
-            width, height = shutil.get_terminal_size((80, 24))
-            levels = _music_levels(audio, elapsed, max(1, min(24, (width - 6) // 3)))
-            rows = music_visual_rows(levels, elapsed, duration, width, height)
-            drawn = draw(rows, drawn)
-        _music_print("\n  " + _music_color(_music_text(details.get("title", path.stem)), "1;36"))
-        _music_print("  " + ("OoT instruments" if details.get("mode") == "oot" else "Piano") + "\n")
-        if not active:
-            _music_print("Playing " + _music_clock(duration) + ". Ctrl-C stops.")
-        try:
-            _music_run(player + [str(path)], frame if active else None, active, duration + 15, keyboard)
-        finally:
-            if active:
-                _music_print()
-
-
-def _music_clear(root):
-    _music_directory(root)
-    if not root.exists():
-        print("Music cache is empty.")
-        return
-    with _music_lock(root):
-        cache = root / "cache"
-        _music_validate_cache(cache)
-        if cache.exists():
-            shutil.rmtree(cache)
-    print("Music cache cleared.")
-
-
-def music_main(argv, home=None, menu=None, terminal=None):
-    if terminal is None:
-        # Source-module use resolves core primitives here. Bundled entry points
-        # inject these objects, so the removable adapter has no import hooks.
-        import godmode_terminal as _music_core_terminal
-        terminal = (_music_core_terminal._Keyboard, _music_core_terminal._draw, _music_core_terminal.Cancelled)
-    parser = argparse.ArgumentParser(prog="godmode music", description="Local music through Darunia's CLI.")
-    parser.add_argument("action", nargs="?", default="play", help="play, list, init, status, clear, or forget")
-    parser.add_argument("query", nargs="?", default="", help="track name, or Darunia folder for init")
-    parser.add_argument("--songs", type=Path, help="local .ootrs folder for init")
-    parser.add_argument("--seconds", type=float, default=180, help="audio length, from 1 to 3600 seconds")
-    parser.add_argument("--render-only", action="store_true", help="cache the WAV without playing")
-    parser.add_argument("--no-motion", action="store_true", help="play without the visualizer")
-    args = parser.parse_args(argv)
-    if not math.isfinite(args.seconds) or not 1 <= args.seconds <= 3600:
-        parser.error("--seconds must be from 1 to 3600")
-    if args.songs is not None and args.action != "init":
-        parser.error("--songs belongs to music init")
-    if args.action in ("clear", "forget", "status") and args.query:
-        parser.error("this command takes no track name")
-    root = _music_root(home)
-    if args.action == "init":
-        if not args.query or not args.songs:
-            parser.error("init needs a Darunia folder and --songs DIR")
-        _music_init(root, args.query, args.songs)
-        return 0
-    if args.action == "clear":
-        _music_clear(root)
-        return 0
-    if args.action == "forget":
-        _music_directory(root)
-        if root.exists():
-            with _music_lock(root):
-                config = root / "config.json"
-                if os.path.lexists(config):
-                    _music_bytes(config)
-                    config.unlink()
-        print("Darunia link removed.")
-        return 0
-    config = _music_config(root)
-    base = Path(config["songs"])
-    if args.action == "status":
-        print("Darunia  " + _music_text(config["backend"]))
-        print("Tracks   " + _music_text(base))
-        print("Cache    " + _music_text(root / "cache"))
-        print("Source   " + MUSIC_SOURCE)
-        return 0
-    if args.action == "list":
-        for song in _music_songs(base):
-            name = str(song.relative_to(base))
-            if args.query.casefold() in name.casefold():
-                print(_music_text(name))
-        return 0
-    query = args.query if args.action == "play" else args.action
-    source = _music_select(base, query, menu)
-    if source is None:
-        return 0
-    active = _music_animated() and not args.no_motion
+def _pack_download():
+    opener = urllib.request.build_opener(_PackNoRedirect())
+    _, _, target = _pack_target()
     try:
-        with _music_lock(root), _music_controls(sys.stdin.isatty() and sys.stdout.isatty(), terminal) as keyboard:
-            path, details, cached = _music_render(root, config, source, args.seconds, active, keyboard, terminal[1])
-            _music_print("  " + ("Cached" if cached else "Synthesized") + " · " + _music_clock(args.seconds))
-            if args.render_only:
-                _music_print(str(path))
-            else:
-                _music_play(path, details, active, keyboard, terminal[1])
-    except KeyboardInterrupt:
-        print("\nMusic stopped.")
-        return 130
+        with opener.open(PACK_RELEASE_ROOT + '/latest.json', timeout=20) as response:
+            data = response.read(65537)
+        if len(data) > 65536:
+            raise ValueError('Music Pack release manifest is too large.')
+        manifest = json.loads(data)
+        if not isinstance(manifest, dict):
+            raise ValueError('Invalid Music Pack release manifest.')
+        version = manifest.get('version', '')
+        if (manifest.get('schema') != 1 or not isinstance(version, str)
+                or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', version)):
+            raise ValueError('Invalid Music Pack release manifest.')
+        artifacts = manifest.get('artifacts')
+        if not isinstance(artifacts, list):
+            raise ValueError('Invalid Music Pack artifact list.')
+        matches = [entry for entry in artifacts if isinstance(entry, dict) and entry.get('platform') == target]
+        if len(matches) != 1:
+            raise ValueError('No Music Pack artifact matches this computer.')
+        item = matches[0]
+        name = 'godmode-music-v' + version + '-' + target
+        digest, size = item.get('sha256'), item.get('size')
+        if (item.get('file') != name or not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest)
+                or type(size) is not int or not 1 <= size <= PACK_DOWNLOAD_LIMIT):
+            raise ValueError('Invalid Music Pack artifact metadata.')
+        with opener.open(PACK_RELEASE_ROOT + '/' + version + '/' + name, timeout=30) as response:
+            data = response.read(size + 1)
+        if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
+            raise ValueError('Music Pack download checksum failed. Nothing was installed.')
+        return data, digest, {'kind': 'release', 'version': version}
+    except (urllib.error.URLError, OSError):
+        raise ValueError('Music Pack download is unavailable. For a local preview use: '
+                         'godmode music install --file PACK --sha256 SHA256') from None
+
+
+def _pack_external_source(path, home):
+    resolved = path.resolve()
+    for directory in (home / 'packs/music', home / 'state/music'):
+        if resolved == directory.resolve() or directory.resolve() in resolved.parents:
+            raise ValueError('Keep the local Music Pack artifact outside Godmode managed music folders '
+                             'so it remains available for reinstall.')
+
+
+def _pack_install(home, args):
+    parser = argparse.ArgumentParser(prog='godmode music install')
+    parser.add_argument('--file', type=Path)
+    parser.add_argument('--sha256')
+    options = parser.parse_args(args)
+    if options.sha256 and not re.fullmatch(r'[a-fA-F0-9]{64}', options.sha256):
+        parser.error('--sha256 needs 64 hexadecimal characters')
+    if options.sha256 and options.file is None:
+        parser.error('--sha256 belongs to --file')
+    source = None
+    if options.file:
+        options.file = options.file.expanduser().absolute()
+        _pack_external_source(options.file, home)
+        data = _pack_read(options.file, PACK_DOWNLOAD_LIMIT)
+        digest = hashlib.sha256(data).hexdigest()
+        if options.sha256 and digest != options.sha256.lower():
+            raise ValueError('Music Pack checksum failed. Nothing was installed.')
+        source = {'kind': 'local', 'file': str(options.file), 'sha256': digest}
+    else:
+        try:
+            existing = _pack_installed(home)
+        except _PackNeedsRepair:
+            directory = home / 'packs/music'
+            if directory.exists() and {p.name for p in directory.iterdir()} - {'godmode-music', 'receipt.json'}:
+                raise ValueError('Music Pack directory contains other files. No files replaced.')
+            existing = None
+        if existing:
+            print('Music Pack is already installed. Run godmode music or godmode jingle play.')
+            return 0
+        try:
+            source = json.loads(_pack_read(home / 'music-pack-source.json'))
+        except FileNotFoundError:
+            pass
+        else:
+            if not isinstance(source, dict) or source.get('kind') not in ('local', 'release'):
+                raise ValueError('Invalid Music Pack source. Reinstall with --file and --sha256.')
+        if source and source.get('kind') == 'local':
+            if not isinstance(source.get('file'), str) or not Path(source['file']).is_absolute():
+                raise ValueError('Invalid local Music Pack source.')
+            _pack_external_source(Path(source['file']), home)
+            data = _pack_read(Path(source['file']), PACK_DOWNLOAD_LIMIT)
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != source.get('sha256'):
+                raise ValueError('The local preview artifact changed. Reinstall with --file and --sha256.')
+        else:
+            print('Downloading Music Pack…', flush=True)
+            data, digest, source = _pack_download()
+    with _pack_lock(home):
+        directory = home / 'packs/music'
+        _pack_dir(directory)
+        if directory.exists() and {p.name for p in directory.iterdir()} - {'godmode-music', 'receipt.json'}:
+            raise ValueError('Music Pack directory contains other files. No files replaced.')
+        with tempfile.TemporaryDirectory(prefix='.music-install-', dir=directory.parent) as work:
+            candidate = Path(work) / 'godmode-music'
+            _pack_write(candidate, data, 0o700)
+            info = _pack_info(candidate, home)
+            try:
+                existing = _pack_installed(home)
+            except _PackNeedsRepair:
+                existing = None
+            if existing or directory.exists():
+                # Never execute the old file while repairing it. The candidate
+                # has already passed byte verification and protocol/platform
+                # validation, and knows how to stop this home's music session.
+                stopped = _pack_run(candidate, home, ['music', 'stop'], capture=True)
+                if stopped.returncode:
+                    raise ValueError('Could not stop music with the replacement Music Pack. No files replaced.')
+            receipt = {'schema': 1, 'sha256': digest, 'version': info['version'], 'protocol': 1,
+                       'platform': info['platform'], 'arch': info['arch']}
+            _pack_write(Path(work) / 'receipt.json', (json.dumps(receipt, indent=2) + '\n').encode())
+            backup = directory.parent / ('.music-rollback-' + uuid.uuid4().hex)
+            had_previous = directory.exists()
+            if had_previous:
+                os.replace(directory, backup)
+            adopted = False
+            try:
+                os.replace(work, directory)
+                adopted = True
+                _pack_write(home / 'music-pack-source.json', (json.dumps(source, indent=2) + '\n').encode())
+            except BaseException:
+                if adopted:
+                    os.replace(directory, work)
+                if had_previous:
+                    os.replace(backup, directory)
+                raise
+            if had_previous:
+                shutil.rmtree(backup)
+    print('Music Pack installed. Jingles are ready with mpv: godmode jingle play')
+    print('Link your local tracks: godmode music setup --songs DIR')
     return 0
+
+
+def _pack_validate_tree(directory):
+    _pack_dir(directory)
+    if not directory.exists():
+        return
+    for base, dirs, files in os.walk(directory, followlinks=False):
+        for name in dirs:
+            _pack_dir(Path(base) / name)
+        for name in files:
+            info = (Path(base) / name).lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or info.st_mode & 0o022:
+                raise ValueError('Music Pack contains an unsafe managed file. Nothing was removed.')
+
+
+def _pack_remove(home, args):
+    if args:
+        raise ValueError('Use: godmode music remove')
+    pack = _pack_installed(home)
+    if not pack:
+        print('Music Pack is not installed.')
+        return 0
+    with _pack_lock(home):
+        pack = _pack_installed(home)
+        if not pack:
+            print('Music Pack is not installed.')
+            return 0
+        stopped = _pack_run(pack[0], home, ['music', 'stop'], capture=True)
+        if stopped.returncode:
+            raise ValueError('Could not stop music. No pack files removed.')
+        state = home / 'state/music'
+        _pack_dir(state)
+        source_songs = None
+        try:
+            config = json.loads(_pack_read(state / 'config.json'))
+            if (not isinstance(config, dict) or not isinstance(config.get('songs'), str)
+                    or not Path(config['songs']).is_absolute()):
+                raise ValueError('Invalid source songs path.')
+            source_songs = Path(config['songs']).resolve()
+        except FileNotFoundError:
+            pass
+        except (ValueError, KeyError, TypeError):
+            raise ValueError('Cannot identify source songs from music config. No files removed.') from None
+        if source_songs:
+            for protected in (state, home / 'packs/music'):
+                try:
+                    source_songs.relative_to(protected.resolve())
+                except ValueError:
+                    pass
+                else:
+                    raise ValueError('Move source songs outside Godmode managed music folders before removing the pack.')
+        if {p.name for p in (home / 'packs/music').iterdir()} - {'godmode-music', 'receipt.json'}:
+            raise ValueError('Music Pack directory contains other files. No files removed.')
+        managed = [home / 'packs/music'] + [state / name for name in ('cache', 'runtime', 'session')]
+        for directory in managed:
+            _pack_validate_tree(directory)
+        for name in ('config.json', 'session.json', '.lock'):
+            if os.path.lexists(state / name):
+                _pack_read(state / name, 1024 * 1024)
+        for directory in managed:
+            if directory.exists():
+                shutil.rmtree(directory)
+        for name in ('config.json', 'session.json', '.lock'):
+            with contextlib.suppress(FileNotFoundError):
+                (state / name).unlink()
+        with contextlib.suppress(FileNotFoundError, OSError):
+            state.rmdir()
+    print('Music Pack removed, including its runtime and rendered cache. Source songs kept.')
+    return 0
+
+
+def music_pack_main(argv, home=None, command='music', **unused):
+    home = _pack_home(home)
+    if command == 'music' and argv == ['__manager']:
+        while True:
+            line = sys.stdin.buffer.readline(65537)
+            if not line:
+                break
+            oversized = len(line) > 65536
+            try:
+                if oversized or json.loads(line) != {'action': 'state'}:
+                    raise ValueError('Unknown Music Pack manager request.')
+                installed = _pack_installed(home)
+                reply = {'ok': True, 'data': {'installed': installed is not None}}
+            except (OSError, ValueError, TypeError):
+                reply = {'ok': False, 'error': 'Cannot inspect Music Pack. Run godmode music install to repair it.'}
+            print(json.dumps(reply), flush=True)
+            if oversized:
+                return 1
+        return 0
+    if command == 'music' and argv[:1] == ['install']:
+        return _pack_install(home, argv[1:])
+    if command == 'music' and argv[:1] in (['remove'], ['uninstall']):
+        return _pack_remove(home, argv[1:])
+    installed = _pack_installed(home)
+    if installed:
+        with _pack_lock(home, shared=True):
+            installed = _pack_installed(home)
+            if installed:
+                return _pack_run(installed[0], home, [command, *argv])
+    if command == 'music' and argv[:1] in (['stop'], ['status']):
+        if '--json' in argv:
+            print(json.dumps({'installed': False, 'state': 'stopped', 'track': None, 'queue': [], 'index': -1}))
+        else:
+            print('Music Pack is not installed. Nothing is playing.')
+        return 0
+    if command == 'music' and not argv:
+        print('GODMODE BEATZ · optional Music Pack')
+        print('Installs the music player, included synth, instruments, and original jingles.')
+        print('Install: godmode music install')
+        print('Then:    godmode music setup --songs DIR')
+        print('Remove:  godmode music remove')
+        return 0
+    raise ValueError('Music Pack is not installed. Run godmode music install first.')
 
 
 # --- command line and static provider guidance ---
@@ -5633,9 +5698,8 @@ def provider_list(store, providers, back=False):
             pass
 
 
-PROFILE_BLURB = ('Full sites that take payments usually require a business profile, terms of service '
-                 'and a privacy policy. Agents use these details to fill them in.')
-PROVIDERS_BLURB = 'Choose how powerful you want your agent to be.'
+PROFILE_BLURB = 'Optional business details for contact pages, terms, privacy policies and invoices.'
+PROVIDERS_BLURB = 'Save keys for your task. Saved does not mean verified.'
 SOURCE_URL = 'https://github.com/lofimichael/godmode-cli'
 ISSUE_URL = SOURCE_URL + '/issues/new'
 
@@ -5653,25 +5717,55 @@ def request_provider():
 def faq_entries(home=None):
     where = home_path(effective_store(home).env_path)
     return [
+        ('How do I start?', [
+            '1. Open Provider keys and save the keys needed for your task. You do not need every provider.',
+            '2. Open Connect agent. Review the listed instruction files and add the note, or copy it '
+            'into your existing agent task.',
+            '3. Open your project in that agent and ask for the result you want.',
+            'Business details are optional. Godmode stores keys and adds instructions; your existing agent '
+            'does the work. Saved means stored locally, not verified provider access.']),
+        ('What does Connect agent change?', [
+            'It appends a Godmode note to the listed agent instruction files. Your existing text and '
+            'any existing Godmode note stay unchanged. The preview shows each file and the lines to add.',
+            'Start a fresh agent session so it can load the saved instructions. For a task already '
+            'running, copy the task note and paste it into that conversation.',
+            'If no agent folders are found, copy the note into your agent task or instruction file. '
+            'Godmode does not install an agent or detect project instruction files.',
+            'godmode agents --print prints a note for the selected keys and business details.']),
+        ('Environments and businesses', [
+            'A key environment is an independent set of saved keys. Missing keys do not come from '
+            'another environment. A copied environment is a snapshot; later changes stay separate.',
+            'A business profile holds optional details such as a name, website and public email.',
+            "Automatic uses the selected key environment's own business details. Choose a named "
+            'business profile to use its details instead.',
+            'Switch setup changes the selection for new commands. Explicit command flags and shell '
+            'settings override it. Existing agent tasks keep the scope they captured.']),
+        ('How do I check setup?', [
+            'Open Settings → Check setup, or run godmode doctor. It checks local files and detected '
+            'agent instructions without showing keys. It cannot confirm that an agent loaded the note '
+            'or check manually chosen project instruction files.',
+            'Provider access is separate. Ask your agent to read godmode provider PROVIDER, confirm '
+            'the intended account and mode, and use the provider guide to verify access.']),
         ('What is sealed(...)?', [
-            'sealed(...) is the save preview. The file stores encrypted values.',
-            'An agent has to take extra steps to read a raw key. godmode run is the easier path: '
-            'it passes keys straight to commands.',
+            'sealed(...) is the save preview. The file stores encrypted values. godmode run passes '
+            'selected keys directly to a command.',
             'An agent running as you can still get the keys. Sealing does not block it.']),
-        ("I don't see my provider!", ["Open a GitHub issue! We'll get on it.", ISSUE_URL,
-            'Another key saves any key name. Provider guides are shortcuts.']),
+        ("How do I add another provider?", [
+            'Run godmode set NAME to save a custom key under the name your tool expects. '
+            'Provider guides are shortcuts; an unlisted provider can still use saved keys.',
+            'Request a provider guide:', ISSUE_URL]),
         ('Where are my tokens?', [where,
             'godmode path prints this path. godmode list prints key names. godmode run passes '
             'selected keys to a command. seal.key sits beside the key file.']),
         ('Where is the source code?', ['https://godmode.build',
             'The Go interface and Python file engine ship with source. godmode source prints the embedded '
-            'file engine. First-party code uses the Godmode Commercial Source License.']),
+            'file engine. First-party code is source-available under the Godmode Commercial Source License.']),
         ('Does Godmode make network calls?', [
             'Profile, key and doctor commands run locally. Doctor does not verify provider access.',
             'License activation, deactivation, godmode update and godmodeup contact godmode.build. Provider links open '
             'in your browser. Picard downloads media '
             'on request. Commands launched with godmode run can use the network.',
-            'Music uses your local Darunia installation and local song files.']),
+            'The optional Music Pack includes its synth. You supply local song files.']),
         ('How do I inspect a release?', [
             'Godmode uses Bubble Tea and Lip Gloss for its interface. The Python file engine uses standard '
             'libraries. No packages are installed at startup.',
@@ -5682,10 +5776,6 @@ def faq_entries(home=None):
             'Checksums detect changed bytes. A checksum from the same download source cannot prove '
             'the publisher is trustworthy. Pin a reviewed commit before building.',
             'docs/SECURITY.md in the source archive covers verification and local files.']),
-        ('Does Agents replace my instructions?', [
-            'Agents adds its note at the end of each listed file. Your existing text stays unchanged.',
-            'An existing Godmode note stays as written, including your edits. The preview lists new '
-            'and changed files. Green + lines show the text to add.']),
     ]
 
 
@@ -5711,15 +5801,23 @@ def faq(home=None):
             read_document(*entries[at])
 
 
-def music_command(home=None, args=None):
+def music_command(home=None, args=None, command='music'):
     try:
-        handler = music_main
+        handler = music_pack_main
     except (ImportError, NameError):
         # The optional section is absent from a --without-music build.
-        handler = globals().get('music_main')
+        handler = globals().get('music_pack_main')
     if handler is None:
         raise ValueError('Music is not included in this build.')
-    return handler(args or [], home=profile_home(home), menu=read_menu, terminal=(_Keyboard, _draw, Cancelled))
+    if not args and command == 'music' and not os.environ.get('GODMODE_NO_MOTION'):
+        # Pass the shared display preference across the optional boundary;
+        # the music module itself has no dependency on profile/settings code.
+        try:
+            if not ui_preferences(globals(), home)['motion']:
+                os.environ['GODMODE_NO_MOTION'] = '1'
+        except (OSError, ValueError):
+            os.environ['GODMODE_NO_MOTION'] = '1'
+    return handler(args or [], home=profile_home(home), command=command)
 
 
 def help_table(rows):
@@ -5785,7 +5883,10 @@ def guide(store, home=None):
         sealed, state = True, 'The file cannot be read as it is; fix it with godmode edit.'
     rows = ["Godmode holds the user's business profile and provider keys on this machine.",
             'Use them to finish the task without asking the user to repeat setup. Project',
-            'instructions still apply and take precedence.', '', 'Saved now'] + saved_block(store, home)
+            'instructions still apply and take precedence.', '',
+            'This is the agent guide. For interactive setup, run godmode in a terminal.',
+            'For the command reference, run godmode --help or godmode help COMMAND.', '',
+            'Saved now'] + saved_block(store, home)
     rows += ['', 'Profile'] + help_table((
         ('godmode profile get FIELD', 'print one field'),
         ('godmode profile show', 'print every field as JSON'))) + [
@@ -5871,27 +5972,47 @@ def run_with_keys(store, argv):
         raise ValueError('Cannot run ' + command[0] + '.') from None
 
 
-COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'setup', 'list', 'run', 'set',
+COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'jingle', 'settings', 'setup', 'list', 'run', 'set',
             'help', 'migrate', 'edit', 'path', 'picard', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
 
 USAGE = """Usage: godmode [COMMAND]
 
-Godmode keeps your business profile and API keys in one local place for your
-coding agents.
+Godmode stores provider keys and optional business details locally for your
+existing coding agent.
+
+Start
+  1. Run godmode. Open Provider keys and add only what your task needs.
+  2. Open Connect agent. Add the note to its instructions or copy it into a task.
+  3. Open your project in that agent and ask for the result you want.
+  Saved keys have not been verified with the provider.
+  Business details are optional.
+
+Interactive interface
+  Arrow keys move; Enter opens; Esc goes back; q quits from menus.
+  Ctrl-K finds an action. / filters the current list where offered.
+  Settings contains Motion, Check setup, Update and Replay intro.
+  --plain uses static text and numbered menus.
 
 For you
-  godmode                      set up your profile, providers and agents
+  godmode                      open the interactive interface
   godmode setup [PROVIDER]     add or replace a provider's keys
-  godmode profile              edit your profile
-  godmode context              list named business contexts
-  godmode env                  list complete named key files
+  godmode agents               add instructions for your existing agent
+  godmode profile              edit optional business details
+  godmode faq                  start here, setup checks, files and source
+  godmode help COMMAND         show help for one command
+  godmode env                  list independent sets of keys
+  godmode context              list named business profiles
   godmode use --env NAME --context NAME
-                               save the active key file and business
+                               switch keys and business details for new commands
   godmode active               show the current selection
-  godmode agents               add Godmode to your agents' instructions
   godmode intro                replay the welcome
-  godmode faq                  answers about files, keys and source
-  godmode music                local music and visualizer
+  godmode music                optional Music Pack: install, player, remove
+  godmode jingle play          play an original notification cue (Music Pack)
+  godmode settings             inspect or change Motion
+
+  A key environment has its own keys; missing keys never use another environment.
+  A business profile holds optional details. Automatic uses the key environment's
+  own details. Switch setup changes the saved selection for new commands.
 
 For agents
   godmode help                 the guide agents read, with what is saved
@@ -5923,32 +6044,82 @@ Update with godmodeup. Downloads and source: https://godmode.build"""
 
 class Arguments(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'godmode: invalid arguments; run godmode --help. Never put a key on the command line; '
-                     'pipe it with --stdin.\n')
+        self.exit(2, 'godmode: invalid arguments; run godmode --help.\n')
 
 
 COMMAND_HELP = {
     'use': 'Usage: godmode use [ENVIRONMENT] [--env NAME] [--context NAME]\n\nSave the active key file and business for future commands. Use --context - for the\nenvironment profile. Explicit flags and GODMODE_ENV/GODMODE_CONTEXT override the saved pair.\nNo keys or business fields are copied. Existing running processes keep their selection.',
     'active': 'Usage: godmode active [--json | --command]\n\nShow the resolved key environment and business without values. --command prints a\nfully scoped prefix for an agent task; --json includes paths and selection sources.',
     'env': 'Usage: godmode env [list [--json] | create NAME [--copy SOURCE] | show NAME]\n\nNamed environments are complete .env.godmode.NAME files; default is .env.godmode.\nCopies are independent snapshots. Missing keys never fall back to another file.\nSelect a file with godmode --env NAME run ... or godmode --env NAME set KEY.',
-    'doctor': 'Usage: godmode doctor [--json]\n\nInspect local installation, selected files and key names without revealing values.',
+    'doctor': 'Usage: godmode doctor [--json]\n\nCheck local installation, selected files and detected agent instructions without\nrevealing keys. This does not verify provider access or that an agent loaded its note.',
     'update': 'Usage: godmode update [--version vX.Y.Z]\n\nUpdate the installed command using its updater and installation receipt.',
+    'settings': 'Usage: godmode settings [--json | motion on | motion off]\n\nInspect Motion or save the preference for the interactive interface.\n--json includes the current preference and its local ui.json path.\n\n  godmode settings motion off',
     'context': 'Usage: godmode context [list | create NAME | show NAME | map NAME VARIABLE SAVED_KEY | unmap NAME VARIABLE]\n\nA context keeps its own business profile and maps selected key names to saved keys.\nUnmapped keys use the shared store. Select with godmode --context NAME run ...\nor godmode --context NAME profile. Use godmode use to save an active pair.',
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
-    'faq': 'Usage: godmode faq\n\nAnswers about keys, files, network use and source.',
-    'music': 'Usage: godmode music [init DIR --songs DIR | list | play NAME | clear | status]\n\nLocal Darunia music with a visualizer. Rendered songs stay cached. clear removes the music cache.',
+    'faq': 'Usage: godmode faq\n\nHow to start, connect your agent, switch setup and check local files.\nAlso covers provider access, network use, sealing and source.',
+    'help': 'Usage: godmode help [COMMAND]\n\nWithout a command, print the agent guide and saved key names.\nUse godmode for interactive setup or godmode --help for the command reference.\n\n  godmode help agents\n  godmode help setup',
+    'music': """GODMODE BEATZ — optional Music Pack.
+
+Usage: godmode music install                 Install the Music Pack
+       godmode music setup --songs DIR      Build its included synth; link .ootrs
+       godmode music                        Open library, queue, and player
+       godmode music play NAME              Play in the background
+       godmode music stop                   Stop audio and preparation
+       godmode music remove                 Remove pack, runtime, and cache
+
+The pack owns its player interface, synth, instruments, and original jingles.
+Your source songs stay outside its managed files. No Darunia checkout needed.
+Playback needs mpv. One-time synth setup needs Python 3.9+, C/C++, CMake,
+and FFmpeg (macOS: brew install mpv ffmpeg cmake).
+
+Controls: pause, resume, next, previous, seek SECONDS, volume 0..100,
+          repeat off|one|all, shuffle on|off, queue, status [--json].
+Enter submits search; a second Enter plays. a appends; c opens a collection;
+A appends the whole collection. Space pauses. Esc goes back. q closes the
+view while playback continues. x stops music. ? shows every control.
+
+play accepts --seconds 1..3600 (default 180) and --render-only.
+clear removes cached renders; queue clear clears the queue.
+Local previews: music install --file PACK --sha256 SHA256.
+""",
+    'jingle': """Usage: godmode jingle play [ready|success|attention] [--volume 0..100]
+       godmode jingle list
+
+Original short cues from the optional Music Pack. Needs mpv, but no synth
+setup or local tracks. Current music and queue stay unchanged.
+Install with godmode music install; remove with godmode music remove.
+""",
     'setup': "Usage: godmode setup [PROVIDER]\n\nArrow keys choose a provider; / searches. Enter opens its key page or saves\na pasted key. Tab shows the shell command. Esc returns.\n\n  godmode setup cloudflare\n  godmode --plain setup",
     'set': "Usage: godmode set NAME [--stdin]\n\nSave or replace one key. Interactive input stays masked. --stdin reads a\nvalue from a pipe or file.\n\n  godmode set GH_TOKEN\n  godmode set ACME_AUTH_JSON --stdin < credential.json",
     'list': "Usage: godmode list\n\nPrint saved key names, one per line. Values stay hidden.\nUnreadable or duplicate entries produce an error and a nonzero exit status.",
     'profile': "Usage: godmode profile [show | path | get FIELD | set FIELD | unset FIELD]\n\nNo action opens the form. show prints JSON; get prints one value.\nset accepts --stdin. All six fields are optional.\n\n  godmode profile get business_name\n  godmode profile set business_name --stdin < business-name.txt\n  godmode profile unset website",
-    'agents': "Usage: godmode agents [--print]\n\nReview the generic note and target files, then add it to detected agents.\n--print emits task instructions for the selected environment and business context.\n\n  godmode --env acme agents --print | pbcopy",
+    'agents': "Usage: godmode agents [--print]\n\nCopy instructions into your current agent chat, or choose detected agent files\nand review the note before appending. Start a fresh agent session for saved notes.\nGodmode does not install agents or detect project instruction files.\n--print emits a task note scoped to the selected keys and business details.\n\n  godmode agents --print\n  godmode --env acme agents --print | pbcopy",
     'provider': "Usage: godmode provider [PROVIDER]\n\nPrint provider names, or one provider's setup, verification and recovery guide.\n\n  godmode provider cloudflare",
     'intro': "Usage: godmode intro\n\nShow the welcome and account-access terms again.",
     'path': "Usage: godmode path\n\nPrint the key file path. No key values are printed.",
+    'source': "Usage: godmode source\n\nPrint the Python file engine embedded in the native command.\nThe release source also includes the Go interface.",
+    'build-info': "Usage: godmode build-info\n\nPrint the native command's compiler, dependencies and embedded engine hash.",
     'edit': "Usage: godmode edit\n\nOpen the key file in nano. Sealed values remain encrypted.\nSave or replace values with godmode set NAME.",
     'migrate': "Usage: godmode migrate\n\nSeal plain-text keys from an older install.\nUpdate tools that read the old file to use godmode run NAME -- command.",
     'picard': "Usage: godmode picard [link | open | show | play | stop]\n\nlink prints the media link; open opens it in the browser. show displays\nthe image; play starts audio; stop ends playback. Media downloads on request.",
 }
+
+
+def settings_command(home, args):
+    if args not in ([], ['--json'], ['motion', 'on'], ['motion', 'off']):
+        raise ValueError('Use: godmode settings [--json | motion on | motion off].')
+    preferences = (ui_preferences(globals(), home, motion=args[1] == 'on')
+                   if args[:1] == ['motion'] else ui_preferences(globals(), home))
+    if args == ['--json']:
+        print(json.dumps(preferences, indent=2, sort_keys=True))
+    else:
+        print('Motion: ' + ('on' if preferences['motion'] else 'off'))
+        command = ['godmode']
+        if home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'):
+            command += ['--home', str(profile_home(home))]
+        command += ['settings', 'motion', 'off' if preferences['motion'] else 'on']
+        print('Change with: ' + ' '.join(shlex.quote(word) for word in command))
+    return 0
 
 
 def main():
@@ -6015,9 +6186,20 @@ def main():
     if any(word in ('-h', '--help') for word in before_child):
         print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
         return 0
+    if argv[:1] == ['help'] and len(argv) > 1:
+        if len(argv) != 2 or argv[1] not in COMMAND_HELP:
+            raise ValueError('Use: godmode help COMMAND. Run godmode --help for the command reference.')
+        print(COMMAND_HELP[argv[1]])
+        return 0
     if '--version' in before_child and argv[:1] != ['update']:
         print('godmode ' + VERSION)
         return 0
+    if argv[:1] == ['settings']:
+        return settings_command(home, argv[1:])
+    # Optional music has its own state and process owner. It never resolves a
+    # business/key selection or opens a credential store, including for Stop.
+    if argv[:1] in (['music'], ['jingle']):
+        return music_command(home, argv[1:], command=argv[0])
     if selected_environment is not None:
         environment_name(selected_environment)
     if selected_context is not None:
@@ -6043,7 +6225,18 @@ def main():
     ACTIVE_SOURCES, SELECTION_SOURCE = selection['sources'], selection['selection_source']
     STARTUP_SOURCES = dict(ACTIVE_SOURCES)
     if argv[:1] == ['use']:
+        selected_pair = {'environment': ACTIVE_ENVIRONMENT, 'context': selection['context']}
+        try:
+            previous = selection_resolve(home, environ={})
+            previous_pair = {name: previous[name] for name in ('environment', 'context')}
+        except ValueError:
+            previous_pair = selected_pair
         set_active_selection(home, ACTIVE_ENVIRONMENT, selection['context'])
+        try:
+            record_recent_selection(globals(), home, selected_pair, previous_pair)
+        except (ValueError, OSError) as error:
+            detail = str(error) if isinstance(error, ValueError) else 'Check access to ui.json.'
+            print('Active setup saved, but recent setups were not updated. ' + detail, file=sys.stderr)
         print('Active setup saved. Keys: ' + ACTIVE_ENVIRONMENT + '  |  Business: ' + (selection['context'] or 'Automatic'))
         if 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ:
             print('This shell has selection overrides. New commands keep those overrides until they are unset.')
@@ -6071,8 +6264,6 @@ def main():
                   'as NAME under the variable VAR. Saved names: godmode list.')
             return 0
         return run_with_keys(effective_store(home), argv[1:])
-    if argv[:1] == ['music']:
-        return music_command(home, argv[1:])
     if any(word in ('-h', '--help') for word in argv):
         print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
         return 0
@@ -6081,7 +6272,7 @@ def main():
         # The word is never repeated: it could be a key pasted in the wrong place.
         close = difflib.get_close_matches(word, [c for c in COMMANDS if c not in ('onboard', 'init')], 1)
         raise ValueError('unknown command.' + (' Did you mean godmode ' + close[0] + '?' if close else '')
-                         + ' Run godmode --help. Never put a key on the command line; pipe it with --stdin.')
+                         + ' Run godmode --help.')
     argv = parsed_argv
     parser = Arguments(description='Your business profile and API keys in one local place for your coding agents.',
                        add_help=False)

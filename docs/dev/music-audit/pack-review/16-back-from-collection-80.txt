@@ -1,0 +1,24 @@
+ █▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀                              B E A T Z   /   0 1 
+ █▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄                             LOCAL SEQUENCE RADIO 
+ [ LIBRARY ]   QUEUE 0                                              1620 tracks 
+ SELECTED DETAILS · ↑↓ to scroll                                                
+ ────────────────────────────────────────────────────────────────────────────── 
+ Rocky's Message [Ocarina]                                                      
+                                                                                
+ Pocky & Rocky                                                                  
+                                                                                
+ Enter replaces queue; plays from here.                                         
+ a appends it to the queue.                                                     
+ c opens its collection.                                                        
+ A appends the whole collection.                                                
+                                                                                
+                                                                                
+                                                                                
+ Enter plays from here · replaces queue · a appends                             
+ NOW PLAYING / STOPPED ──────────────────────────────────────────────────────── 
+ Choose a track to begin                                                        
+ 0:00 / –:–– ───────────────────────────────────────────────────────────── 0%   
+ Repeat off · Shuffle off                                           Queue empty 
+ PCM / player clock  motion reduced                                             
+ c collection  A add collection                                                 
+ ↑↓ scroll  i/Esc back  q close                                                 

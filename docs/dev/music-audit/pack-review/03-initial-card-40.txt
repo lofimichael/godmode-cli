@@ -1,0 +1,18 @@
+                                        
+ GODMODE // BEATZ                       
+ OPTIONAL MUSIC PACK                    
+ ────────────────────────────────────── 
+ Install the music pack?                
+                                        
+ Player, library and queue              
+ Local synth and instruments            
+ Original jingles                       
+                                        
+ Music uses your local .ootrs tracks.   
+ Jingles only need mpv.                 
+                                        
+ Optional. Remove it at any time.       
+ ────────────────────────────────────── 
+ Enter install · Esc back               
+                                        
+                                        

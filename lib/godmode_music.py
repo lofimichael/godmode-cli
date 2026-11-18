@@ -1,7 +1,7 @@
 """Optional local Darunia adapter. No network, downloaded code, catalog, or music assets.
 
 Remove this file and its command/build hooks to remove music. Nothing imports
-the key store. Darunia runs as a separate, explicitly initialized program.
+the key store. The optional Music Pack owns its synth runtime and assets.
 """
 import argparse
 import array
@@ -85,9 +85,9 @@ def _music_lock(root):
         os.close(fd)
 
 
-def _music_atomic(path, data):
+def _music_atomic(path, data, limit=MUSIC_CONFIG_LIMIT):
     if os.path.lexists(path):
-        _music_bytes(path)
+        _music_bytes(path, limit)
     fd, name = tempfile.mkstemp(prefix=".config-", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as stream:
@@ -105,17 +105,19 @@ def _music_config(root, verify=True):
     try:
         data = json.loads(_music_bytes(root / "config.json"))
     except FileNotFoundError:
-        raise ValueError("Darunia is not linked. Run godmode music init SYNTH_FOLDER --songs TRACK_FOLDER.\n"
-                         + MUSIC_SOURCE) from None
+        raise ValueError("Music is not set up. Run godmode music setup --songs TRACK_FOLDER.") from None
     if (not isinstance(data, dict) or data.get("version") != 1
             or any(not isinstance(data.get(k), str) for k in ("backend", "songs", "sha256"))):
-        raise ValueError("Invalid music config. Run godmode music init DIR --songs DIR.")
+        raise ValueError("Invalid music config. Run godmode music setup --songs TRACK_FOLDER.")
     backend, songs = Path(data["backend"]), Path(data["songs"])
     if not backend.is_absolute() or not songs.is_absolute():
         raise ValueError("Music paths must be absolute.")
     _music_directory(backend)
     _music_directory(songs)
     if verify:
+        if data.get("runtime") == "owned":
+            from godmode_music_runtime import music_runtime_validate
+            music_runtime_validate(backend, data.get("runtime_manifest"))
         script = _music_bytes(backend / "synthesize.py", 1024 * 1024)
         if hashlib.sha256(script).hexdigest() != data["sha256"]:
             raise ValueError("Darunia's synth changed. Review it, then run godmode music init again.")
@@ -264,7 +266,7 @@ def _music_end(child):
     child.wait()
 
 
-def _music_run(command, frame=None, active=False, timeout=180, keyboard=None):
+def _music_run(command, frame=None, active=False, timeout=180, keyboard=None, cancel=None):
     with tempfile.TemporaryFile() as output:
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
                                  env=_music_env(), start_new_session=True)
@@ -272,6 +274,8 @@ def _music_run(command, frame=None, active=False, timeout=180, keyboard=None):
         try:
             while child.poll() is None:
                 elapsed = time.monotonic() - started
+                if cancel is not None and cancel.is_set():
+                    raise InterruptedError("Music preparation cancelled.")
                 if _music_quit(keyboard):
                     raise KeyboardInterrupt()
                 if elapsed > timeout:
@@ -310,7 +314,7 @@ def _music_print(text=""):
     sys.stdout.flush()
 
 
-def _music_render(root, config, source, seconds, active=False, keyboard=None, draw=None):
+def _music_render(root, config, source, seconds, active=False, keyboard=None, draw=None, cancel=None, quiet=False):
     cache = root / "cache"
     _music_directory(cache, True)
     _music_validate_cache(cache)
@@ -330,10 +334,13 @@ def _music_render(root, config, source, seconds, active=False, keyboard=None, dr
             if width < 30:
                 label = "Rendering · q stop"[:max(1, width - 5)]
             drawn = draw(["  " + _music_color(spinner[int(elapsed * 8) % 4], "1;35") + " " + label], drawn)
-        if not active:
+        if not active and not quiet:
             _music_print("Synthesizing " + _music_text(source.stem))
         try:
-            log = _music_run(command, frame if active else None, active, keyboard=keyboard)
+            options = {"keyboard": keyboard}
+            if cancel is not None:
+                options["cancel"] = cancel
+            log = _music_run(command, frame if active else None, active, **options)
         finally:
             # SIGTERM can bypass Darunia's finally block. Only remove empty locks
             # this invocation created, after all its child processes have stopped.
@@ -411,34 +418,6 @@ def music_visual_rows(levels, elapsed, duration, width=80, height=24):
     return rows
 
 
-def _music_play(path, details, active=False, keyboard=None, draw=None):
-    player = next(([exe] + flags for name, flags in
-                   (("afplay", ["-v", "0.35"]), ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "35"]),
-                    ("aplay", ["-q"])) for exe in [shutil.which(name)] if exe), None)
-    if not player:
-        raise ValueError("Playback needs afplay, ffplay or aplay. The WAV is cached.")
-    with wave.open(str(path), "rb") as audio:
-        if audio.getsampwidth() != 2 or audio.getnchannels() not in (1, 2) or audio.getcomptype() != "NONE":
-            raise ValueError("The music visualizer needs 16-bit PCM WAV audio.")
-        duration = audio.getnframes() / audio.getframerate()
-        drawn = []
-        def frame(elapsed):
-            nonlocal drawn
-            width, height = shutil.get_terminal_size((80, 24))
-            levels = _music_levels(audio, elapsed, max(1, min(24, (width - 6) // 3)))
-            rows = music_visual_rows(levels, elapsed, duration, width, height)
-            drawn = draw(rows, drawn)
-        _music_print("\n  " + _music_color(_music_text(details.get("title", path.stem)), "1;36"))
-        _music_print("  " + ("OoT instruments" if details.get("mode") == "oot" else "Piano") + "\n")
-        if not active:
-            _music_print("Playing " + _music_clock(duration) + ". Ctrl-C stops.")
-        try:
-            _music_run(player + [str(path)], frame if active else None, active, duration + 15, keyboard)
-        finally:
-            if active:
-                _music_print()
-
-
 def _music_clear(root):
     _music_directory(root)
     if not root.exists():
@@ -452,27 +431,135 @@ def _music_clear(root):
     print("Music cache cleared.")
 
 
+def music_bridge(home=None):
+    from godmode_music_player import music_session_bridge
+    return music_session_bridge(home)
+
+
+def music_serve(home=None):
+    from godmode_music_player import music_session_serve
+    return music_session_serve(home)
+
+
 def music_main(argv, home=None, menu=None, terminal=None):
+    from godmode_music_player import music_request, music_library
+    if argv and argv[0] in ("__bridge", "__serve"):
+        return music_bridge(home) if argv[0] == "__bridge" else music_serve(home)
+    if not argv:
+        # Native terminals have their own browser. The Python/plain fallback is
+        # deliberately static and bounded, even for libraries with many tracks.
+        library = music_library(home)
+        session = music_request({"action": "status"}, home)
+        print("GODMODE BEATZ")
+        if library["configured"]:
+            print(str(len(library["tracks"])) + " local tracks linked · " + _music_text(session["state"]))
+        else:
+            print("No local library linked · " + _music_text(session["state"]))
+            print("Setup: godmode music setup --songs TRACK_FOLDER")
+        print("Find:  godmode music list QUERY")
+        print("Play:  godmode music play NAME")
+        print("Queue: godmode music queue")
+        print("Stop:  godmode music stop")
+        return 0
     if terminal is None:
         # Source-module use resolves core primitives here. Bundled entry points
         # inject these objects, so the removable adapter has no import hooks.
         import godmode_terminal as _music_core_terminal
         terminal = (_music_core_terminal._Keyboard, _music_core_terminal._draw, _music_core_terminal.Cancelled)
     parser = argparse.ArgumentParser(prog="godmode music", description="Local music through Darunia's CLI.")
-    parser.add_argument("action", nargs="?", default="play", help="play, list, init, status, clear, or forget")
+    parser.add_argument("action", nargs="?", default="play", help="setup, play, list, queue, status, pause, resume, toggle, next, previous, seek, volume, repeat, shuffle, stop, init, clear, forget")
     parser.add_argument("query", nargs="?", default="", help="track name, or Darunia folder for init")
-    parser.add_argument("--songs", type=Path, help="local .ootrs folder for init")
+    parser.add_argument("--songs", type=Path, help="local .ootrs folder for setup or init")
     parser.add_argument("--seconds", type=float, default=180, help="audio length, from 1 to 3600 seconds")
     parser.add_argument("--render-only", action="store_true", help="cache the WAV without playing")
-    parser.add_argument("--no-motion", action="store_true", help="play without the visualizer")
+    parser.add_argument("extra", nargs="?", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--no-motion", action="store_true", help="disable animation in music views")
+    parser.add_argument("--json", action="store_true", help="print session or library data as JSON")
     args = parser.parse_args(argv)
     if not math.isfinite(args.seconds) or not 1 <= args.seconds <= 3600:
         parser.error("--seconds must be from 1 to 3600")
-    if args.songs is not None and args.action != "init":
-        parser.error("--songs belongs to music init")
-    if args.action in ("clear", "forget", "status") and args.query:
+    if args.songs is not None and args.action not in ("init", "setup"):
+        parser.error("--songs belongs to music setup or init")
+    if args.action in ("clear", "forget", "status", "pause", "resume", "toggle", "next", "previous", "stop") and args.query:
         parser.error("this command takes no track name")
+    if args.extra and args.action != "queue":
+        parser.error("too many command arguments")
+    if args.action == "play" and not args.query:
+        parser.error("play needs NAME. Find a track with godmode music list QUERY.")
     root = _music_root(home)
+    if args.action == "setup":
+        from godmode_music_runtime import music_setup
+        if args.query or not args.songs:
+            parser.error("setup needs --songs TRACK_FOLDER")
+        try:
+            music_setup(home, args.songs)
+        except KeyboardInterrupt:
+            print("\nMusic setup cancelled. Existing configuration preserved.")
+            return 130
+        return 0
+    if args.action == "status":
+        session = music_request({"action": "status"}, home)
+        if args.json:
+            print(json.dumps(session, ensure_ascii=True, allow_nan=False))
+            return 0
+        library = music_library(home)
+        print("Playback " + session["message"])
+        print("Player   " + (shutil.which("mpv") or "mpv not installed"))
+        if library["configured"]:
+            print("Engine   " + _music_text(library["backend"]))
+            print("Tracks   " + _music_text(library["songs"]))
+            print("Cache    " + _music_text(root / "cache"))
+        else:
+            print(library.get("error", "Darunia is not linked."))
+        if session["track"]:
+            print("Current  " + _music_text(session["track"]["title"]))
+            print("Position " + _music_clock(session["position"]) + " / " + _music_clock(session["duration"]))
+        return 0
+    if args.action in ("pause", "resume", "toggle", "next", "previous", "stop", "seek", "volume", "repeat", "shuffle"):
+        request = {"action": args.action}
+        if args.action in ("seek", "volume"):
+            try:
+                request["seconds" if args.action == "seek" else "value"] = float(args.query)
+            except ValueError:
+                parser.error(args.action + " needs a number")
+        elif args.action == "repeat":
+            request["value"] = args.query
+        elif args.action == "shuffle":
+            if args.query not in ("on", "off"):
+                parser.error("shuffle needs on or off")
+            request["value"] = args.query == "on"
+        data = music_request(request, home)
+        print(json.dumps(data, ensure_ascii=True, allow_nan=False) if args.json else data["message"])
+        return 0
+    if args.action == "queue":
+        if args.query == "add":
+            if not args.extra:
+                parser.error("queue add needs NAME. Find a track with godmode music list QUERY.")
+            config = _music_config(root)
+            source = _music_select(Path(config["songs"]), args.extra, menu)
+            if source is None:
+                return 0
+            data = music_request({"action": "enqueue", "ids": [str(source.relative_to(Path(config["songs"]))) ]}, home)
+        elif args.query == "remove":
+            try:
+                index = int(args.extra) - 1
+            except ValueError:
+                parser.error("queue remove needs a 1-based index")
+            data = music_request({"action": "remove", "index": index}, home)
+        elif args.query == "clear":
+            data = music_request({"action": "clear_queue"}, home)
+        elif args.query:
+            parser.error("queue accepts add NAME, remove INDEX, or clear")
+        else:
+            data = music_request({"action": "status"}, home)
+        if args.json:
+            print(json.dumps(data, ensure_ascii=True, allow_nan=False))
+            return 0
+        for index, track in enumerate(data["queue"]):
+            print(("▶ " if index == data["index"] else "  ") + str(index + 1) + "  " + _music_text(track["id"]))
+        if not data["queue"]:
+            print("Queue empty.")
+        return 0
     if args.action == "init":
         if not args.query or not args.songs:
             parser.error("init needs a Darunia folder and --songs DIR")
@@ -493,13 +580,12 @@ def music_main(argv, home=None, menu=None, terminal=None):
         return 0
     config = _music_config(root)
     base = Path(config["songs"])
-    if args.action == "status":
-        print("Darunia  " + _music_text(config["backend"]))
-        print("Tracks   " + _music_text(base))
-        print("Cache    " + _music_text(root / "cache"))
-        print("Source   " + MUSIC_SOURCE)
-        return 0
     if args.action == "list":
+        if args.json:
+            library = music_library(home)
+            library["tracks"] = [track for track in library["tracks"] if args.query.casefold() in track["id"].casefold()]
+            print(json.dumps(library, ensure_ascii=True, allow_nan=False))
+            return 0
         for song in _music_songs(base):
             name = str(song.relative_to(base))
             if args.query.casefold() in name.casefold():
@@ -509,15 +595,21 @@ def music_main(argv, home=None, menu=None, terminal=None):
     source = _music_select(base, query, menu)
     if source is None:
         return 0
+    if not args.render_only:
+        data = music_request({"action": "play", "ids": [str(source.relative_to(base))],
+                              "index": 0, "seconds": args.seconds}, home)
+        if args.json:
+            print(json.dumps(data, ensure_ascii=True, allow_nan=False))
+        else:
+            print(data["message"] + " · " + _music_text(source.stem))
+            print("Music continues in the background. godmode music stop ends the session.")
+        return 0
     active = _music_animated() and not args.no_motion
     try:
         with _music_lock(root), _music_controls(sys.stdin.isatty() and sys.stdout.isatty(), terminal) as keyboard:
             path, details, cached = _music_render(root, config, source, args.seconds, active, keyboard, terminal[1])
             _music_print("  " + ("Cached" if cached else "Synthesized") + " · " + _music_clock(args.seconds))
-            if args.render_only:
-                _music_print(str(path))
-            else:
-                _music_play(path, details, active, keyboard, terminal[1])
+            _music_print(str(path))
     except KeyboardInterrupt:
         print("\nMusic stopped.")
         return 130

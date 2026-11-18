@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 0         0 tracks 
+ SETUP GUIDE · ↑↓ to scroll             
+ ────────────────────────────────────── 
+ Apple's command line tools:            
+ xcode-select --install                 
+ Setup validates the folder and tools,  
+ builds the included synth, then links  
+ the library after success.             
+                                        
+ AFTER SETUP                            
+ Stopped                                
+ NOW PLAYING / STOPPED ──────────────── 
+ Choose a track to begin                
+ 0:00 / –:–– ──────────────────── 35%   
+ Repeat off · Shuffle off   Queue empty 
+ ↑↓ scroll  PgUp/PgDn page              
+ R reloads after setup  q close         

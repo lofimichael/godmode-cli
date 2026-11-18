@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 0         0 tracks 
+ PLAYER KEYS · ↑↓ to scroll             
+ ────────────────────────────────────── 
+ Enter/Tab  Finish search; focus        
+            results                     
+ Tab        Switch library and queue    
+ a          Append track or collection  
+ i          Full title and collection   
+            details                     
+ c          Open selected track's       
+ Stopped                                
+ NOW PLAYING / STOPPED ──────────────── 
+ Choose a track to begin                
+ 0:00 / –:–– ──────────────────── 35%   
+ Repeat off · Shuffle off   Queue empty 
+ ↑↓ scroll  ? / Esc return              
+ q close view · playback continues      

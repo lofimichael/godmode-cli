@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import shlex
 import subprocess
 import tempfile
 
@@ -17,6 +18,10 @@ def _profile_stamp(info):
             info.st_mode, info.st_uid, info.st_nlink)
 
 
+class ProfileDirectoryError(ValueError):
+    """The storage directory, rather than one of its files, needs repair."""
+
+
 def _profile_directories(path, create=False):
     # As for keys: symlinks above the home are resolved; the home itself must be a real directory.
     path = Path(os.path.realpath(path.parent)) / path.name
@@ -26,12 +31,16 @@ def _profile_directories(path, create=False):
         if os.path.lexists(directory) and not stat.S_ISDIR(directory.lstat().st_mode):
             home, text = os.path.expanduser("~").rstrip(os.sep), str(directory)
             shown = "~" + text[len(home):] if text.startswith(home + os.sep) else text
-            raise ValueError(shown + " is a symlink or not a directory; Godmode needs a real directory "
+            raise ProfileDirectoryError(shown + " is a symlink or not a directory; Godmode needs a real directory "
                              "there. Use --home with the real path.")
     if path.exists():
         info = path.stat()
-        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
-            raise ValueError("The profile directory must be yours and mode 0700.")
+        if info.st_uid != os.geteuid():
+            raise ProfileDirectoryError("Godmode's directory belongs to another user: " + str(path)
+                                        + ". Use --home with a directory you own.")
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            raise ProfileDirectoryError("Godmode's directory needs mode 0700. Run: chmod 700 "
+                                        + shlex.quote(str(path)))
 
 
 def _profile_pairs(pairs):

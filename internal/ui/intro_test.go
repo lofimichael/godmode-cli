@@ -25,7 +25,7 @@ func TestCinematicIntroMeaningNeverDependsOnAnimation(t *testing.T) {
 			"Agents use your keys as you.",
 			"They can spend money, publish and delete data.",
 			"Your accounts. Your consequences.",
-			"Enter I understand", "Esc exit",
+			"Enter to continue", "Esc to exit",
 		} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("frame %d hides %q", frame, want)
@@ -33,7 +33,7 @@ func TestCinematicIntroMeaningNeverDependsOnAnimation(t *testing.T) {
 		}
 		m.introStage = 1
 		text = introWords(m.cinematicIntroView())
-		for _, want := range []string{"Put your agent to fucking work.", "YOUR KEYS", "YOUR AGENT", "YOUR APP", "Keys stay local. You set the limits.", "Enter finish"} {
+		for _, want := range []string{"Put your agent to fucking work.", "YOUR KEYS", "YOUR AGENT", "YOUR APP", "Keys stay local. You set the limits.", "Enter to finish"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("frame %d hides %q", frame, want)
 			}
@@ -64,7 +64,7 @@ func TestCinematicIntroFitsUsefulTerminalsAndBothThemes(t *testing.T) {
 								t.Fatal("NO_COLOR produced ANSI styling")
 							}
 						}
-						if !strings.Contains(introWords(rows), "Esc exit") {
+						if !strings.Contains(introWords(rows), "Esc to exit") {
 							t.Fatal("exit control is missing")
 						}
 					})

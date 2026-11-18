@@ -1,0 +1,5 @@
+# Runtime assets must retain the exact bytes recorded in music_assets/manifest.json.
+music_assets/runtime/** -text -whitespace
+
+# Terminal-cell evidence intentionally retains fixed-width trailing padding.
+docs/dev/music-audit/**/*.txt -text -whitespace

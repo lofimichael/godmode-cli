@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "source": "https://www.mediafire.com/file/9pei4yktfd24fdo/OoT_Soundfonts.zip/file",
+  "archive_sha256": "bd947fd6523b99875ff984083a0b6b945c5a1cb3999a86f70771f75e024d8f7b",
+  "banks": {
+    "03": {
+      "file": "03 Main Orchestra.sf2",
+      "sha256": "aa4513d863c4c3b2ef92f4f4d0df8b7408c13f21003f58e4b40f90eb09dd7444",
+      "programs": {
+        "0": "Flute", "1": "Oboe", "2": "Clarinet", "3": "Bassoon",
+        "4": "Horn", "5": "Trumpet", "6": "Trombone", "7": "Tuba",
+        "8": "Glockenspiel", "10": "Strings 1", "11": "Strings 2",
+        "12": "Pizzicato", "13": "Piano", "14": "Harp", "15": "Marimba",
+        "127": "Orchestra Kit"
+      }
+    },
+    "20": {
+      "file": "20 Battle 2.sf2",
+      "sha256": "d5a06256be61c67594ffcf409e3095571f5bf5dcda9e709433aced5d7f233066",
+      "programs": {
+        "0": "Flute", "1": "Choir", "2": "Choir 2", "4": "Horn",
+        "5": "Trumpet", "6": "Trombone", "7": "Tuba", "10": "Strings 1",
+        "11": "Strings 2", "13": "Piano", "15": "Marimba", "127": "Orchestra Kit"
+      }
+    },
+    "22": {
+      "file": "22 Ending Orchestra 2.sf2",
+      "sha256": "e7693145ecf37f4d887d6a68e6bd98e1128be27cbfd3f5803b52626855fdc26a",
+      "programs": {
+        "0": "Koto", "1": "Ocarina", "2": "Bassoon", "3": "Oboe",
+        "4": "Choir 1", "5": "Tambourine", "6": "Harp", "7": "Glockenspiel",
+        "8": "Malon", "10": "Strings 1", "11": "Strings 2", "12": "Pizz Strings",
+        "13": "Horn", "14": "Choir 2", "15": "Cuica", "127": "Orchestra Kit"
+      }
+    }
+  }
+}

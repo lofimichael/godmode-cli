@@ -1,0 +1,21 @@
+{"op": "command", "args": ["music", "install", "--file", "/Users/michael/conductor/repos/godmode-cli/target/godmode-music-pack", "--sha256", "6304edecd912fc8d0133447351864e8ec2362c86eda6a7026a1d3d8e3ce8cd17"]}
+{"op": "launch", "cols": 40, "rows": 18, "name": "01-empty-player-40"}
+{"op": "key", "key": "\u001b[6~", "name": "02-setup-page2-40"}
+{"op": "key", "key": "\u001b[6~", "name": "03-setup-page3-40"}
+{"op": "key", "key": "\u001b[6~", "name": "04-setup-page4-40"}
+{"op": "key", "key": "?", "name": "05-help-page1-40"}
+{"op": "key", "key": "\u001b[6~", "name": "06-help-page2-40"}
+{"op": "key", "key": "\u001b[6~", "name": "07-help-page3-40"}
+{"op": "key", "key": "\u001b[6~", "name": "08-help-page4-40"}
+{"op": "key", "key": "\u001b[6~", "name": "09-help-page5-40"}
+{"op": "key", "key": "\u001b", "name": "10-help-back-40"}
+{"op": "key", "key": "\u001b[6~", "name": "11-setup-page5-40"}
+{"op": "key", "key": "\u001b[6~", "name": "12-setup-bottom-40"}
+{"op": "key", "key": "q"}
+{"op": "launch", "name": "13-empty-player-80"}
+{"op": "key", "key": "?", "name": "14-help-page1-80"}
+{"op": "key", "key": "\u001b[6~", "name": "15-help-page2-80"}
+{"op": "key", "key": "\u001b[6~", "name": "16-help-bottom-80"}
+{"op": "key", "key": "?", "name": "17-help-back-80"}
+{"op": "key", "key": "q"}
+{"op": "end"}

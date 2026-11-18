@@ -10,6 +10,91 @@ import subprocess
 import sys
 
 
+_PREFERENCES_UNCHANGED = object()
+_RECENT_SETUPS_LIMIT = 5
+
+
+def _ui_settings_file(namespace, home):
+    # Reuse the profile writer's ownership, mode, no-symlink, locking and
+    # atomic-replace rules for this separate nonsecret file.
+    config = namespace['Profile'](namespace['profile_home'](home))
+    config.path = config.home / 'ui.json'
+    try:
+        data = config.read()
+    except ValueError as error:
+        raise ValueError('Cannot read ui.json. ' + str(error)) from None
+    return config, data
+
+
+def _ui_motion(data):
+    if type(data.get('motion', True)) is not bool:
+        raise ValueError('ui.json must set motion to true or false. Fix it before changing preferences.')
+    return data.get('motion', True)
+
+
+def _recent_pair(namespace, pair):
+    try:
+        if (not isinstance(pair, dict) or set(pair) != {'environment', 'context'}
+                or not isinstance(pair['environment'], str) or not isinstance(pair['context'], str)):
+            raise ValueError()
+        namespace['environment_name'](pair['environment'])
+        if pair['context'] and namespace['selection_context'](pair['context']) != pair['context']:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError('ui.json has invalid recent setups. Each setup needs only valid environment '
+                         'and context names.') from None
+    return {'environment': pair['environment'], 'context': pair['context']}
+
+
+def _ui_recent_setups(namespace, data):
+    history = data.get('recent_setups', [])
+    if not isinstance(history, list) or len(history) > _RECENT_SETUPS_LIMIT:
+        raise ValueError('ui.json recent_setups must be a list of at most five setups.')
+    result = [_recent_pair(namespace, pair) for pair in history]
+    if len({(pair['environment'], pair['context']) for pair in result}) != len(result):
+        raise ValueError('ui.json recent_setups must not contain duplicate setups.')
+    return result
+
+
+def _write_ui_settings(config, data):
+    try:
+        config.write(data)
+    except ValueError as error:
+        raise ValueError('Could not save ui.json. ' + str(error)) from None
+
+
+def ui_preferences(namespace, home=None, motion=_PREFERENCES_UNCHANGED):
+    """Read or change Motion without opening keys or business profiles."""
+    if motion is not _PREFERENCES_UNCHANGED and type(motion) is not bool:
+        raise ValueError('Motion must be true or false.')
+    config, data = _ui_settings_file(namespace, home)
+    current_motion = _ui_motion(data)
+    if motion is not _PREFERENCES_UNCHANGED:
+        _ui_recent_setups(namespace, data)
+        data['motion'] = motion
+        _write_ui_settings(config, data)
+        current_motion = motion
+    return {'motion': current_motion, 'path': str(config.path)}
+
+
+def record_recent_selection(namespace, home, selected, previous):
+    """Record an already-applied pair. Never save active selection or open keys.
+
+    Callers must treat a history error as nonfatal after an active selection save.
+    """
+    selected, previous = _recent_pair(namespace, selected), _recent_pair(namespace, previous)
+    config, data = _ui_settings_file(namespace, home)
+    _ui_motion(data)
+    history = _ui_recent_setups(namespace, data)
+    recent = []
+    for pair in [selected, previous] + history:
+        if pair not in recent:
+            recent.append(pair)
+    data['recent_setups'] = recent[:_RECENT_SETUPS_LIMIT]
+    _write_ui_settings(config, data)
+    return data['recent_setups']
+
+
 class UIBridge:
     def __init__(self, namespace, home=None):
         self.api, self.home = namespace, home
@@ -29,6 +114,30 @@ class UIBridge:
 
     def _digest(self):
         return hashlib.sha256(self.store._read()[0].encode('utf-8')).hexdigest()
+
+    def _selected_state(self):
+        self.store = self.api['effective_store'](self.home)
+        self.profile = self.api['business_profile'](self.home)
+        self.profile_data = None
+        self.keys.clear()
+        self.agents.clear()
+        return self.call({'action': 'state'})
+
+    def _apply_selection(self, environment, context):
+        a = self.api
+        previous = {'environment': a.get('ACTIVE_ENVIRONMENT', 'default'),
+                    'context': a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''}
+        a['set_active_selection'](self.home, environment, context)
+        history_error = None
+        try:
+            record_recent_selection(a, self.home, {'environment': environment, 'context': context}, previous)
+        except (ValueError, OSError) as error:
+            detail = str(error) if isinstance(error, ValueError) else 'Check access to ui.json.'
+            history_error = 'Active setup saved, but recent setups were not updated. ' + detail
+        state = self._selected_state()
+        if history_error:
+            state['history_error'] = history_error
+        return state
 
     def call(self, request):
         a = self.api
@@ -51,8 +160,17 @@ class UIBridge:
             return {'contexts': [dict(name='', profile_path=str(automatic.path))]
                                 + a['context_list'](a['profile_home'](self.home), missing_selected=selected),
                     'selected': selected}
+        if action == 'selection_save':
+            environment = a['environment_name'](self._text(request, 'environment'))
+            context = self._text(request, 'context')
+            if context == '-':
+                context = ''
+            return self._apply_selection(environment, context)
         if action in ('environment_select', 'environment_create', 'context_select', 'context_create'):
             name = self._text(request, 'name')
+            select = request.get('select', True)
+            if type(select) is not bool:
+                raise ValueError('select must be true or false.')
             if action.startswith('environment_'):
                 name = a['environment_name'](name)
                 if action == 'environment_create':
@@ -72,15 +190,14 @@ class UIBridge:
                            else a['Context'](directory, name) if name else None)
                 context_name = context.name if context is not None else ''
                 environment = a.get('ACTIVE_ENVIRONMENT', 'default')
+            if action.endswith('_create') and not select:
+                return self.call({'action': 'state'})
             # Save only after the entire pair validates. The live session changes
             # only after the atomic write succeeds; unrelated open sessions retain
             # their own already-resolved pair.
-            a['set_active_selection'](self.home, environment, context_name)
-            self.store = a['effective_store'](self.home)
-            self.profile = a['business_profile'](self.home)
-            self.profile_data = None
-            self.keys.clear()
-            self.agents.clear()
+            return self._apply_selection(environment, context_name)
+        if action == 'preferences_save':
+            ui_preferences(a, self.home, motion=request.get('motion'))
             return self.call({'action': 'state'})
         if action == 'doctor':
             return a['doctor_report'](self.store, self.profile, a, home=self.home)
@@ -103,6 +220,20 @@ class UIBridge:
                       'source_url': a['SOURCE_URL'], 'issue_url': a['ISSUE_URL'],
                       'nfo_logo': list(a['NFO_LOGO']),
                       'intro': [text for text, _ in a['INTRO_PAGES'][0][2]]}
+            result['preferences'], result['recent_setups'] = {'motion': True}, []
+            try:
+                _, preferences = _ui_settings_file(a, self.home)
+            except ValueError as error:
+                result['preferences_error'] = result['history_error'] = str(error)
+            else:
+                try:
+                    result['preferences'] = {'motion': _ui_motion(preferences)}
+                except ValueError as error:
+                    result['preferences_error'] = str(error)
+                try:
+                    result['recent_setups'] = _ui_recent_setups(a, preferences)
+                except ValueError as error:
+                    result['history_error'] = str(error)
             try:
                 result['states'] = self.store.states() if self.store.exists() else {}
                 base = getattr(self.store, 'store', self.store)
@@ -164,9 +295,9 @@ class UIBridge:
             field, value = self._text(request, 'field'), self._text(request, 'value')
             if field not in a['PROFILE_FIELDS'] or self.profile_data is None:
                 raise ValueError('Open the profile before editing.')
-            a['profile_value'](self.profile, self.profile_data, field, value)
+            changed = a['profile_value'](self.profile, self.profile_data, field, value)
             self.profile_data = self.profile.read()
-            return {}
+            return {'changed': changed}
         if action == 'agents_plan':
             block, targets = a['agent_block'](self.home), a['agent_targets']()
             copy_block = a['agent_instruction'](self.home)
@@ -177,6 +308,7 @@ class UIBridge:
                 if not target['added']:
                     try:
                         plan = a['agent_plan'](target['path'], block)
+                        plan['display_path'] = view['path']
                         pending.append(plan)
                         view.update(created=plan['created'], addition=plan['addition'].decode('utf-8'),
                                     real=a['home_path'](plan['real']))
@@ -202,14 +334,26 @@ class UIBridge:
                 return {'copied': False}
             return {'copied': True}
         if action == 'agents_apply':
-            plan = self.agents.pop(self._text(request, 'id'), None)
+            identifier = self._text(request, 'id')
+            plan = self.agents.get(identifier)
             if plan is None:
                 raise ValueError('The agent preview expired. Open Agents again.')
             block, pending, _ = plan
+            if 'targets' in request:
+                selected = request['targets']
+                if (not isinstance(selected, list) or not selected
+                        or any(not isinstance(path, str) for path in selected)
+                        or len(set(selected)) != len(selected)
+                        or not set(selected).issubset(item['display_path'] for item in pending)):
+                    raise ValueError('Choose one or more distinct targets from the reviewed agent preview.')
+                # Filter the server-held snapshots, never construct a path from
+                # user input. Invalid selections leave the preview reusable.
+                pending = [item for item in pending if item['display_path'] in selected]
+            self.agents.pop(identifier)
             added = []
             for item in pending:
                 if a['add_agent_text'](item['path'], block, item):
-                    added.append(a['home_path'](item['path']))
+                    added.append(item['display_path'])
             return {'added': added}
         if action == 'mark_agent':
             a['mark'](self.home, a['AGENT_MARKER'])

@@ -1,0 +1,15 @@
+test_narrow_setup_has_actionable_command_and_clean_exit (test_native_music.NativeMusic.test_narrow_setup_has_actionable_command_and_clean_exit) ... ok
+test_queue_survives_view_exit_and_stop_preserves_it (test_native_music.NativeMusic.test_queue_survives_view_exit_and_stop_preserves_it) ... ok
+test_search_preserves_query_and_back_and_never_starts_playback (test_native_music.NativeMusic.test_search_preserves_query_and_back_and_never_starts_playback) ... ok
+test_uninstalled_core_card_escape_does_not_mutate_home (test_native_music.NativeMusicOptIn.test_uninstalled_core_card_escape_does_not_mutate_home) ... ok
+test_companion_source_contains_music_assets_without_credential_dependencies (test_music_isolation.MusicIsolation.test_companion_source_contains_music_assets_without_credential_dependencies) ... ok
+test_core_manager_has_own_read_only_protocol (test_music_isolation.MusicIsolation.test_core_manager_has_own_read_only_protocol) ... ok
+test_default_core_build_contains_manager_but_no_player_runtime_or_assets (test_music_isolation.MusicIsolation.test_default_core_build_contains_manager_but_no_player_runtime_or_assets) ... ok
+test_music_manager_does_not_construct_key_store_or_resolve_business (test_music_isolation.MusicIsolation.test_music_manager_does_not_construct_key_store_or_resolve_business) ... ok
+test_stop_and_status_ignore_broken_selection_and_credentials (test_music_isolation.MusicIsolation.test_stop_and_status_ignore_broken_selection_and_credentials) ... ok
+test_without_music_build_omits_even_manager_and_other_commands_work (test_music_isolation.MusicIsolation.test_without_music_build_omits_even_manager_and_other_commands_work) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 7.433s
+
+OK

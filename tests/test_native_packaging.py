@@ -42,10 +42,15 @@ class NativePackagingTests(unittest.TestCase):
             git('restore', '--staged', 'godmode.py')
             entry.write_text('original\n')
             package.verify_committed_source()
-            (self.root / 'lib').mkdir()
-            (self.root / 'lib/new_module.py').write_text('uncommitted module\n')
-            with self.assertRaisesRegex(ValueError, 'Commit every release source change'):
-                package.verify_committed_source()
+            for name in ('lib/new_module.py', 'music_assets/manifest.json',
+                         'music_assets/runtime/tools/synth.c'):
+                with self.subTest(path=name):
+                    source = self.root / name
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    source.write_text('uncommitted source\n')
+                    with self.assertRaisesRegex(ValueError, 'Commit every release source change'):
+                        package.verify_committed_source()
+                    source.unlink()
 
     def test_archive_bytes_ignore_file_times_owner_and_gzip_name(self):
         script = self.root / 'install.sh'
@@ -109,6 +114,8 @@ class NativePackagingTests(unittest.TestCase):
             path.write_text('0.15.0\n' if name == 'VERSION' else 'fixture\n')
         for name in ('vendor/modules.txt', 'vendor/example/library/LICENSE', 'cmd/godmode/main.go',
                      'internal/core/core.py', 'lib/core.py', 'scripts/build-native.sh',
+                     'scripts/build-music.py', 'music_assets/manifest.json',
+                     'music_assets/runtime/tools/instrument.sf2',
                      'docs/MUSIC.md', 'docs/images/example.txt'):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,12 +143,17 @@ class NativePackagingTests(unittest.TestCase):
         self.assertFalse((output / 'godmode-v0.15.0-unix.tar.gz').exists())
         with tarfile.open(output / 'godmode-v0.15.0-source.tar.gz') as archive:
             for name in ('cmd/godmode/main.go', 'internal/core/core.py', 'go.mod', 'go.sum',
-                         'vendor/modules.txt', 'vendor/example/library/LICENSE', 'godmode.py'):
+                         'vendor/modules.txt', 'vendor/example/library/LICENSE', 'godmode.py',
+                         'scripts/build-music.py', 'music_assets/manifest.json',
+                         'music_assets/runtime/tools/instrument.sf2'):
                 self.assertIn(name, archive.getnames())
+            self.assertEqual(archive.extractfile('music_assets/runtime/tools/instrument.sf2').read(),
+                             b'inspectable fixture\n')
         with tarfile.open(output / 'godmode-v0.15.0-aarch64-apple-darwin.tar.gz') as archive:
             for name in ('godmode', 'install.sh', 'BUILD.json', 'licenses/modules.txt', 'licenses/example/library/LICENSE'):
                 self.assertIn(name, archive.getnames())
             self.assertNotIn('godmode.py', archive.getnames())
+            self.assertFalse(any(name.startswith('music_assets/') for name in archive.getnames()))
         for line in (output / 'SHA256SUMS').read_text().splitlines():
             checksum, name = line.split('  ')
             self.assertEqual(package.digest(output / name), checksum)

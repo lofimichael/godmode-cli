@@ -23,12 +23,12 @@ def main():
     modules = ['godmode_store.py', 'godmode_profile.py', 'godmode_context.py', 'godmode_environment.py', 'godmode_selection.py', 'godmode_maintenance.py', 'godmode_terminal.py', 'godmode_picard.py', 'godmode_bridge.py']
     if (ROOT / 'lib/godmode_identity.py').exists():
         modules.append('godmode_identity.py')
-    if not args.without_music and (ROOT / 'lib/godmode_music.py').exists():
-        modules.append('godmode_music.py')
+    if not args.without_music and (ROOT / 'lib/godmode_music_pack.py').exists():
+        modules.append('godmode_music_pack.py')
     for name in modules:
         path = ROOT / 'lib' / name
         module = '\n'.join(line for line in path.read_text(encoding='utf-8').splitlines()
-                           if not line.startswith('from godmode_')) + '\n'
+                           if not line.lstrip().startswith('from godmode_')) + '\n'
         sections.append('\n# --- ' + name + ' ---\n' + module)
     source = (ROOT / 'godmode.py').read_text(encoding='utf-8')
     kept = [line for line in source.splitlines()

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 
 native_output=target/godmode-native
 native_music=yes
+native_tags=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output)
@@ -18,6 +19,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$native_music" = no ]; then
+  native_tags=nomusic
   python3 scripts/build.py --without-music --output internal/core/core.py
 else
   python3 scripts/build.py --output internal/core/core.py
@@ -30,6 +32,6 @@ if [ -d vendor ]; then
 else
   native_modules='readonly'
 fi
-CGO_ENABLED=0 GOTOOLCHAIN="$native_go" go build -mod="$native_modules" -trimpath -buildvcs=false \
+CGO_ENABLED=0 GOTOOLCHAIN="$native_go" go build -mod="$native_modules" -tags="$native_tags" -trimpath -buildvcs=false \
   -ldflags="-buildid= -X main.version=$native_version" -o "$native_output" ./cmd/godmode
 printf '%s\n' "$native_output"

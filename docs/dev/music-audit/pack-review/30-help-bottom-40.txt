@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 2      1620 tracks 
+ PLAYER KEYS · ↑↓ to scroll             
+ ────────────────────────────────────── 
+ s          Toggle shuffle              
+ x          Stop playback; keep queue   
+                                        
+ CLOSE THE VIEW                         
+ q / Ctrl+C Close; playback stays alive 
+ godmode music stop  Stops from any sh… 
+                                        
+ Stopped                                
+ NOW PLAYING / STOPPED ──────────────── 
+ Rocky's Message [Oboe]                 
+ 0:00 / –:–– ───────────────────── 0%   
+ Repeat off · Shuffle off     Queue 1/2 
+ ↑↓ scroll  ? / Esc return              
+ q close view · playback continues      

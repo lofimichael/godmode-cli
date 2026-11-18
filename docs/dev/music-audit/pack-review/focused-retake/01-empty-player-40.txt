@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 0         0 tracks 
+ SETUP GUIDE · ↑↓ to scroll             
+ ────────────────────────────────────── 
+ Play a cue: godmode jingle play        
+ Only mpv needed; no track library.     
+                                        
+ Music uses your local .ootrs tracks.   
+ godmode music setup --songs DIR        
+ Replace DIR with your folder's path.   
+ Press R here after setup.              
+ Stopped                                
+ NOW PLAYING / STOPPED ──────────────── 
+ Choose a track to begin                
+ 0:00 / –:–– ──────────────────── 35%   
+ Repeat off · Shuffle off   Queue empty 
+ ↑↓ scroll  PgUp/PgDn page              
+ R reloads after setup  q close         

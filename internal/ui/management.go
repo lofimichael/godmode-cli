@@ -10,7 +10,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var homeNames = []string{"Active setup", "Providers", "Agents", "Business details", "Doctor", "Update", "Help / FAQ", "Music", "Done"}
+var homeNames = []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Music", "Exit"}
+var settingsNames = []string{"Motion", "Check setup", "Update Godmode", "Replay intro", "Back"}
+
+type setupPair struct{ Environment, Context string }
 
 type businessContext struct {
 	Name        string
@@ -81,7 +84,11 @@ func (m model) command(action ...string) string {
 func (m model) scopeLines() []string {
 	p := m.palette()
 	business := p.muted.Render("Business: ") + p.cyan.Render(businessName(m.state.Context))
-	keys := p.muted.Render("Keys: ") + p.title.Render(scopeName(m.state.Environment))
+	keys := p.muted.Render("Environment: ") + p.title.Render(scopeName(m.state.Environment))
+	if m.innerWidth() < 52 {
+		business = p.muted.Render("Business ") + p.cyan.Render(businessName(m.state.Context))
+		keys = p.muted.Render("Env ") + p.title.Render(scopeName(m.state.Environment))
+	}
 	var rows []string
 	if ansi.StringWidth(business+" · "+keys) <= m.innerWidth() {
 		rows = []string{business + p.muted.Render(" · ") + keys}
@@ -109,7 +116,11 @@ func (m *model) loadContexts() {
 		m.contexts = reply.Contexts
 		m.page, m.selected, m.scroll = "contexts", 0, 0
 		for i, c := range m.contexts {
-			if c.Name == reply.Selected {
+			selected := reply.Selected
+			if m.draftOpen {
+				selected = m.draftContext
+			}
+			if c.Name == selected {
 				m.selected = i
 			}
 		}
@@ -125,7 +136,11 @@ func (m *model) loadEnvironments() {
 		m.environments = reply.Environments
 		m.page, m.selected, m.scroll = "environments", 0, 0
 		for i, e := range m.environments {
-			if scopeName(e.Name) == scopeName(reply.Selected) {
+			selected := reply.Selected
+			if m.draftOpen {
+				selected = m.draftEnvironment
+			}
+			if scopeName(e.Name) == scopeName(selected) {
 				m.selected = i
 			}
 		}
@@ -184,8 +199,23 @@ func (m *model) enterManagement() tea.Cmd {
 		case 1:
 			m.loadContexts()
 		case 2:
+			return m.applySetup(m.draftEnvironment, m.draftContext)
+		case 3:
+			if len(m.state.RecentSetups) > 0 {
+				m.openRecent()
+			} else {
+				return m.back()
+			}
+		case 4:
 			return m.back()
 		}
+	case "recent_setups":
+		if m.selected >= len(m.state.RecentSetups) {
+			return m.back()
+		}
+		m.recentAt = m.selected
+		m.page, m.scroll = "recent_details", 0
+
 	case "business":
 		switch m.selected {
 		case 0:
@@ -201,9 +231,13 @@ func (m *model) enterManagement() tea.Cmd {
 	case "contexts":
 		if m.selected < len(m.contexts) {
 			name := m.contexts[m.selected].Name
+			if m.draftOpen {
+				m.draftContext = name
+				return m.back()
+			}
 			if m.selectScope("context_select", name) {
-				m.notice = "Active business: " + businessName(name)
-				m.page, m.selected = "active", 1
+				m.notice = "Business selected: " + businessName(name)
+				return m.back()
 			}
 		} else if m.selected == len(m.contexts) {
 			m.startScopeName("context", "")
@@ -213,9 +247,13 @@ func (m *model) enterManagement() tea.Cmd {
 	case "environments":
 		if m.selected < len(m.environments) {
 			name := m.environments[m.selected].Name
+			if m.draftOpen {
+				m.draftEnvironment = scopeName(name)
+				return m.back()
+			}
 			if m.selectScope("environment_select", name) {
-				m.notice = "Active keys: " + scopeName(name)
-				m.page, m.selected = "active", 0
+				m.notice = "Environment selected: " + scopeName(name)
+				return m.back()
 			}
 		} else if m.selected == len(m.environments) {
 			m.page, m.selected = "environment_new", 0
@@ -251,18 +289,42 @@ func (m *model) editScope(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return *m, nil
 		}
 		args := map[string]any{"name": m.text}
+		if m.draftOpen {
+			args["select"] = false
+		}
 		if m.scopeCopy != "" {
 			args["copy"] = m.scopeCopy
 		}
 		var next snapshot
 		if m.call(m.scopeKind+"_create", args, &next) {
 			m.state = next
-			m.notice = "Created " + clean(m.text) + "."
+			if m.draftOpen {
+				if m.scopeKind == "environment" {
+					m.draftEnvironment = m.text
+				} else {
+					m.draftContext = m.text
+				}
+			}
+			m.notice = "Created and selected " + clean(m.text) + "."
+			if m.draftOpen {
+				m.notice = "Created " + clean(m.text) + ". Use this setup to make it active."
+			}
 			m.resetInput()
 			if m.scopeKind == "environment" {
+				for len(m.trail) > 0 && m.trail[len(m.trail)-1].page != "environments" {
+					m.trail = m.trail[:len(m.trail)-1]
+				}
+				if len(m.trail) > 0 {
+					m.trail = m.trail[:len(m.trail)-1]
+				}
 				m.loadEnvironments()
 			} else {
-				m.page, m.selected = "business", 0
+				m.back()
+				if m.page == "contexts" {
+					m.loadContexts()
+				} else {
+					m.page, m.selected = "business", 0
+				}
 			}
 		}
 		return *m, nil
@@ -307,9 +369,18 @@ func (m *model) editScope(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) managementNames() []string {
 	switch m.page {
 	case "active":
-		return []string{"Key environment", "Business profile", "Back"}
+		if len(m.state.RecentSetups) > 0 {
+			return []string{"Key environment", "Business profile", "Use this setup", "Recent setups", "Back"}
+		}
+		return []string{"Key environment", "Business profile", "Use this setup", "Back"}
+	case "recent_setups":
+		names := []string{}
+		for _, pair := range m.state.RecentSetups {
+			names = append(names, scopeName(pair.Environment)+" / "+businessName(pair.Context))
+		}
+		return append(names, "Back")
 	case "business":
-		return []string{"Edit profile", "Switch business", "New business", "Back"}
+		return []string{"Edit business details", "Switch business", "New business", "Back"}
 	case "environment_new":
 		return []string{"Empty", "Copy current", "Back"}
 	case "contexts":
@@ -331,6 +402,20 @@ func (m model) managementNames() []string {
 func (m model) managementBody() []string {
 	p, w := m.palette(), m.innerWidth()
 	rows := []string{}
+	if m.page == "recent_details" {
+		if m.recentAt >= len(m.state.RecentSetups) {
+			return []string{"This setup is no longer in recent history. Esc goes back."}
+		}
+		pair := m.state.RecentSetups[m.recentAt]
+		rows = append(rows, p.muted.Render("Key environment"))
+		rows = append(rows, m.styledWrap(scopeName(pair.Environment), p.title)...)
+		rows = append(rows, "", p.muted.Render("Business profile"))
+		rows = append(rows, m.styledWrap(businessName(pair.Context), p.title)...)
+		rows = append(rows, "")
+		rows = append(rows, m.wrap("New commands use this pair. Paste new task instructions to switch a running agent.")...)
+		return rows
+	}
+
 	if m.page == "scope_details" {
 		name, path := "", ""
 		if m.scopeReturn == "contexts" && m.selected < len(m.contexts) {
@@ -399,9 +484,13 @@ func (m model) managementBody() []string {
 		switch m.page {
 		case "active":
 			if i == 0 {
-				status = p.cyan.Render(scopeName(m.state.Environment))
+				status = p.cyan.Render(scopeName(m.draftEnvironment))
 			} else if i == 1 {
-				status = p.cyan.Render(businessName(m.state.Context))
+				status = p.cyan.Render(businessName(m.draftContext))
+			}
+		case "recent_setups":
+			if i < len(m.state.RecentSetups) && m.state.RecentSetups[i].Environment == scopeName(m.state.Environment) && m.state.RecentSetups[i].Context == m.state.Context {
+				status = "active"
 			}
 		case "business":
 			if i == 0 {
@@ -412,14 +501,22 @@ func (m model) managementBody() []string {
 				status = "not saved"
 			}
 		case "contexts":
-			if i < len(m.contexts) && m.contexts[i].Name == m.state.Context {
-				status = p.good.Render("active")
+			if i < len(m.contexts) {
+				if m.contexts[i].Name == m.state.Context {
+					status = p.good.Render("active")
+				}
+				if m.draftOpen && m.contexts[i].Name == m.draftContext && m.draftContext != m.state.Context {
+					status = "chosen"
+				}
 			}
 		case "environments":
 			if i < len(m.environments) {
 				status = countLabel(m.environments[i].Keys, "key")
 				if scopeName(name) == scopeName(m.state.Environment) {
 					status += " · active"
+				}
+				if m.draftOpen && scopeName(name) == m.draftEnvironment && m.draftEnvironment != scopeName(m.state.Environment) {
+					status += " · chosen"
 				}
 			}
 		}
@@ -440,5 +537,52 @@ func (m model) managementBody() []string {
 			}
 		}
 	}
+	if m.page == "active" && m.selected == 2 {
+		rows = append(rows, "")
+		rows = append(rows, m.styledWrap("New commands use this pair. Open Godmode sessions keep their selection.", p.muted)...)
+		rows = append(rows, m.styledWrap("Paste new task instructions to switch a running agent.", p.muted)...)
+	}
+
 	return rows
+}
+
+func (m *model) applySetup(environment, context string) tea.Cmd {
+	var next snapshot
+	if !m.call("selection_save", map[string]any{"environment": environment, "context": context}, &next) {
+		return nil
+	}
+	m.state = next
+	m.draftEnvironment, m.draftContext = scopeName(next.Environment), next.Context
+	m.notice = "Using " + scopeName(m.state.Environment) + " · " + businessName(m.state.Context) + "."
+	cmd := m.back()
+	if m.page == "recent_setups" {
+		m.selected = 0
+		for i, pair := range m.state.RecentSetups {
+			if pair.Environment == scopeName(m.state.Environment) && pair.Context == m.state.Context {
+				m.selected = i
+				break
+			}
+		}
+	}
+	if next.HistoryError != "" {
+		m.error = next.HistoryError
+	}
+	return cmd
+}
+func (m *model) openRecent() {
+	m.page, m.selected, m.scroll = "recent_setups", 0, 0
+	for i, pair := range m.state.RecentSetups {
+		if pair.Environment != scopeName(m.state.Environment) || pair.Context != m.state.Context {
+			m.selected = i
+			break
+		}
+	}
+}
+func (m *model) useRecent() tea.Cmd {
+	if m.recentAt >= len(m.state.RecentSetups) {
+		return nil
+	}
+	pair := m.state.RecentSetups[m.recentAt]
+	// Apply only the reviewed complete pair. The history picker itself never writes.
+	return m.applySetup(pair.Environment, pair.Context)
 }

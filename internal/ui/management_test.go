@@ -32,27 +32,26 @@ func TestHomeShortKeepsEveryFocusedActionAndExitVisible(t *testing.T) {
 
 func TestBusinessProfileReturnsToItsParent(t *testing.T) {
 	m := create(t, fake(), "home", "")
-	m.selected = 3
-	m = enter(enter(m))
+	m = openHomeItem(t, m, "Business details")
 	if m.page != "profile" {
-		t.Fatal("Business did not open profile")
+		t.Fatal("Business details did not open fields directly")
+	}
+	m.selected = 2
+	m = enter(m)
+	m = escape(m)
+	if m.page != "profile" || m.selected != 2 {
+		t.Fatal("field edit lost its profile selection")
 	}
 	m = escape(m)
-	if m.page != "business" || m.selected != 0 {
-		t.Fatal("profile lost Business parent")
-	}
-	m = escape(m)
-	if m.page != "home" || m.selected != 3 {
-		t.Fatal("Business lost home focus")
+	if m.page != "home" || m.selected != 2 {
+		t.Fatal("profile lost home focus")
 	}
 }
 
 func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m = enter(m)
-	m.selected = 1
-	m = enter(m)
+	m = findAction(t, m, "business profiles")
 	if !strings.Contains(ansi.Strip(m.View().Content), "Automatic") {
 		t.Fatal("missing automatic business choice")
 	}
@@ -61,8 +60,7 @@ func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 	if m.state.Context != "default" || !strings.Contains(m.command("help"), "--context default") {
 		t.Fatal("explicit business named default was treated as automatic")
 	}
-	m.selected = 1
-	m = enter(m)
+	m = enter(m) // Reopen the same action from the retained finder.
 	m.selected = 0
 	m = enter(m)
 	if m.state.Context != "" {
@@ -72,15 +70,21 @@ func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 		t.Fatal("automatic selection sent a named context")
 	}
 
-	m.selected = 0
+	m = escape(m)
+	m = openHomeItem(t, m, "Switch setup")
 	m = enter(m)
 	m.selected = 1
 	m = enter(m)
-	if m.state.Environment != "acme-test" || m.state.Context != "" || m.page != "active" || m.selected != 0 {
-		t.Fatal("environment selection changed business or lost home position")
+	if m.state.Environment != "default" || m.draftEnvironment != "acme-test" || m.state.Context != "" || m.page != "active" || m.selected != 0 {
+		t.Fatal("staged environment changed saved setup or lost parent position")
 	}
 	if !strings.Contains(m.View().Content, "acme-test") {
-		t.Fatal("selected environment is invisible")
+		t.Fatal("staged environment is invisible")
+	}
+	m.selected = 2
+	m = enter(m)
+	if m.state.Environment != "acme-test" || m.state.Context != "" || count(f.calls, "selection_save") != 1 {
+		t.Fatal("Use this setup did not save the staged environment with Automatic business")
 	}
 }
 
@@ -88,7 +92,7 @@ func TestEnvironmentCopyShowsSnapshotAndWaitsForReview(t *testing.T) {
 	f := fake()
 	f.state["store_exists"] = true
 	m := create(t, f, "home", "")
-	m = enter(enter(m))
+	m = findAction(t, m, "key environments")
 	m.selected = len(m.environments)
 	m = enter(m)
 	m.selected = 1
@@ -123,7 +127,8 @@ func TestEnvironmentCopyShowsSnapshotAndWaitsForReview(t *testing.T) {
 func TestDoctorLoadsAsCommandAndIgnoresLateResults(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m.selected = 4
+	m = openHomeItem(t, m, "Settings")
+	m.selected = 1
 	result, cmd := m.Update(key(tea.KeyEnter, ""))
 	m = result.(model)
 	if cmd == nil || !m.doctorLoading || count(f.calls, "doctor") != 0 {
@@ -136,7 +141,7 @@ func TestDoctorLoadsAsCommandAndIgnoresLateResults(t *testing.T) {
 	}
 	m = escape(m)
 	m = send(m, message)
-	if m.page != "home" || m.selected != 4 {
+	if m.page != "settings" || m.selected != 1 {
 		t.Fatal("late Doctor result replaced the current screen")
 	}
 }
@@ -144,7 +149,12 @@ func TestDoctorLoadsAsCommandAndIgnoresLateResults(t *testing.T) {
 func TestUpdateRestoresTerminalBeforeScopedExternalCommand(t *testing.T) {
 	m := create(t, fake(), "home", "")
 	m.state.Context, m.state.Environment = "acme", "acme-test"
-	m.selected = 5
+	m = openHomeItem(t, m, "Settings")
+	m.selected = 2
+	m = enter(m)
+	if m.page != "update" || m.quitting || m.outcome != nil {
+		t.Fatal("Update launched before confirmation")
+	}
 	m = enter(m)
 	var external *CommandExit
 	if !m.quitting || !errors.Is(m.outcome, ErrUpdate) || !errors.As(m.outcome, &external) {
@@ -166,8 +176,12 @@ func TestInstalledAgentsKeepTaskInstructionsAndCopyAction(t *testing.T) {
 	for i := range m.agents.Targets {
 		m.agents.Targets[i].Added = true
 	}
+	m = enter(m)
+	if m.page != "agent_copy" {
+		t.Fatal("Copy for this task did not open the task note")
+	}
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"Copy for this task", m.agents.CopyBlock, "c copy", "agents --print"} {
+	for _, want := range []string{"Copy for this task", m.agents.CopyBlock, "c copy"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("installed screen hides %q", want)
 		}
@@ -176,13 +190,13 @@ func TestInstalledAgentsKeepTaskInstructionsAndCopyAction(t *testing.T) {
 	if count(f.calls, "copy_agent") != 1 || !strings.Contains(m.notice, "Clipboard unavailable") {
 		t.Fatal("installed screen cannot copy or describe clipboard fallback")
 	}
-	if !strings.Contains(strings.Join(m.agentLines(), "\n"), m.agents.CopyBlock) {
+	if !strings.Contains(ansi.Strip(m.View().Content), m.agents.CopyBlock) {
 		t.Fatal("fallback note is not visible")
 	}
 }
 
 func TestManagementViewsFitWithAndWithoutColor(t *testing.T) {
-	for _, page := range []string{"active", "business", "contexts", "environments", "environment_new", "scope_name", "doctor"} {
+	for _, page := range []string{"active", "business", "contexts", "environments", "environment_new", "scope_name", "doctor", "settings", "update", "actions", "shortcuts", "agent_home", "agent_targets", "agent_copy"} {
 		for _, size := range [][2]int{{28, 12}, {40, 18}, {80, 24}, {110, 36}} {
 			for _, colors := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s-%dx%d-%v", page, size[0], size[1], colors), func(t *testing.T) {
@@ -212,7 +226,8 @@ func TestManagementViewsFitWithAndWithoutColor(t *testing.T) {
 func TestLongScopeDetailsRemainScrollableAndSelectTheInspectedItem(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m = enter(enter(m))
+	m = openHomeItem(t, m, "Switch setup")
+	m = enter(m)
 	longName := "acme-" + strings.Repeat("long-project-", 5) + "staging"
 	longPath := "/tmp/" + strings.Repeat("long-directory/", 20) + ".env.godmode." + longName
 	m.environments = []environment{{Name: longName, Path: longPath, Keys: 1}}
@@ -232,8 +247,8 @@ func TestLongScopeDetailsRemainScrollableAndSelectTheInspectedItem(t *testing.T)
 		t.Fatal("long path cannot scroll with exit visible")
 	}
 	m = enter(m)
-	if m.state.Environment != longName || m.page != "active" || m.selected != 0 {
-		t.Fatal("details selected a different environment")
+	if m.state.Environment != "default" || m.draftEnvironment != longName || m.page != "active" || m.selected != 0 {
+		t.Fatal("details did not stage the inspected environment")
 	}
 }
 

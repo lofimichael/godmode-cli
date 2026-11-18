@@ -30,10 +30,14 @@ func (m model) workLabel(message tea.Msg) string {
 		return ""
 	}
 	k := key.String()
+	if k == "esc" && !m.filtering && !(m.page == "providers" && m.query != "") &&
+		!(m.page == "key" && m.details) && m.backNeedsAgentReload() {
+		return "Reading agent instructions"
+	}
 	if k == "esc" && m.page == "environment_new" {
 		return "Reading environments"
 	}
-	if m.page == "agents" && (k == "c" || k == "m" || k == "enter") {
+	if (m.page == "agents" || m.page == "agent_copy") && (k == "c" || k == "m" || k == "enter") {
 		return "Updating agent instructions"
 	}
 	if k != "enter" {
@@ -45,13 +49,24 @@ func (m model) workLabel(message tea.Msg) string {
 			return "Opening Godmode"
 		}
 	case "home":
-		if m.selected == 2 {
+		if m.selected == 1 {
 			return "Reading agent instructions"
 		}
-		if m.selected == 6 {
+		if m.selected == 5 {
 			return "Opening help"
 		}
+	case "recent_details":
+		return "Saving active setup"
+	case "actions":
+		return "Opening action"
+	case "settings":
+		if m.selected == 0 {
+			return "Saving appearance"
+		}
 	case "active":
+		if m.selected == 2 {
+			return "Saving active setup"
+		}
 		if m.selected < 2 {
 			return "Reading saved setups"
 		}
@@ -85,6 +100,9 @@ func (m model) workLabel(message tea.Msg) string {
 		return "Saving key"
 	case "profile_field":
 		return "Saving business details"
+	}
+	if m.backNeedsAgentReload() {
+		return "Reading agent instructions"
 	}
 	return ""
 }

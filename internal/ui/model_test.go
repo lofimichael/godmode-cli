@@ -11,11 +11,14 @@ import (
 )
 
 type fakeBackend struct {
-	calls     []string
-	saved     string
-	state     map[string]any
-	longAgent bool
-	requests  []map[string]any
+	calls               []string
+	saved               string
+	state               map[string]any
+	longAgent           bool
+	requests            []map[string]any
+	createdEnvironments []string
+	createdContexts     []string
+	agentTargets        []target
 }
 
 func fake() *fakeBackend {
@@ -24,7 +27,7 @@ func fake() *fakeBackend {
 		fields = append(fields, map[string]any{"name": name, "label": strings.ToUpper(name[:1]) + name[1:], "description": "A public profile fact."})
 	}
 	return &fakeBackend{state: map[string]any{
-		"version": "test", "home": "/tmp/godmode-test", "env_path": "/tmp/godmode-test/.env.godmode", "intro_seen": true, "music_included": true,
+		"version": "test", "home": "/tmp/godmode-test", "env_path": "/tmp/godmode-test/.env.godmode", "intro_seen": true, "music_included": true, "environment": "default", "context": "",
 		"profile": map[string]string{}, "fields": fields, "states": map[string]string{}, "progress": map[string]any{"fields": []string{}, "providers": 0, "agents": []string{}, "agent": 0, "points": 0, "percent": 0},
 		"providers": []any{map[string]any{"id": "example", "name": "Example", "about": "Example provider", "key": []any{map[string]any{"name": "EXAMPLE_TOKEN", "label": "API token"}}}},
 		"issue_url": "https://example.test/issues/new",
@@ -36,22 +39,48 @@ func (f *fakeBackend) Call(action string, args map[string]any) (map[string]any, 
 	switch action {
 	case "state":
 		return f.state, nil
+	case "preferences_save":
+		f.state["preferences"] = map[string]any{"motion": args["motion"]}
+		return map[string]any{"motion": args["motion"]}, nil
+	case "selection_save":
+		f.state["environment"], f.state["context"] = args["environment"], args["context"]
+		f.state["env_path"] = "/tmp/godmode-test/.env.godmode"
+		if args["environment"] != "default" {
+			f.state["env_path"] = f.state["env_path"].(string) + "." + args["environment"].(string)
+		}
+		return f.state, nil
 	case "context_list":
-		return map[string]any{"selected": f.state["context"], "contexts": []any{
+		contexts := []any{
 			map[string]any{"name": "", "profile_path": "/tmp/godmode-test/profile.json"},
 			map[string]any{"name": "default", "profile_path": "/tmp/godmode-test/contexts/default/profile.json"},
-			map[string]any{"name": "acme", "profile_path": "/tmp/godmode-test/contexts/acme/profile.json"}}}, nil
+			map[string]any{"name": "acme", "profile_path": "/tmp/godmode-test/contexts/acme/profile.json"}}
+		for _, name := range f.createdContexts {
+			contexts = append(contexts, map[string]any{"name": name, "profile_path": "/tmp/godmode-test/contexts/" + name + "/profile.json"})
+		}
+		return map[string]any{"selected": f.state["context"], "contexts": contexts}, nil
 	case "context_select", "context_create":
+		if action == "context_create" {
+			f.createdContexts = append(f.createdContexts, args["name"].(string))
+			if selected, ok := args["select"].(bool); ok && !selected {
+				return f.state, nil
+			}
+		}
 		f.state["context"] = args["name"]
 		return f.state, nil
 	case "environment_list":
 		environments := []any{map[string]any{"name": "default", "path": "/tmp/godmode-test/.env.godmode", "keys": 0},
 			map[string]any{"name": "acme-test", "path": "/tmp/godmode-test/.env.godmode.acme-test", "keys": 2}}
-		if name, ok := f.state["environment"].(string); ok && name != "" && name != "default" && name != "acme-test" {
-			environments = append(environments, map[string]any{"name": name, "path": f.state["env_path"], "keys": 0})
+		for _, name := range f.createdEnvironments {
+			environments = append(environments, map[string]any{"name": name, "path": "/tmp/godmode-test/.env.godmode." + name, "keys": 0})
 		}
 		return map[string]any{"selected": f.state["environment"], "environments": environments}, nil
 	case "environment_select", "environment_create":
+		if action == "environment_create" {
+			f.createdEnvironments = append(f.createdEnvironments, args["name"].(string))
+			if selected, ok := args["select"].(bool); ok && !selected {
+				return f.state, nil
+			}
+		}
 		f.state["environment"] = args["name"]
 		f.state["env_path"] = "/tmp/godmode-test/.env.godmode." + args["name"].(string)
 		return f.state, nil
@@ -69,6 +98,9 @@ func (f *fakeBackend) Call(action string, args map[string]any) (map[string]any, 
 		block := "<!-- godmode:start -->\nUse godmode help.\n<!-- godmode:end -->\n"
 		if f.longAgent {
 			block = strings.Repeat("One added instruction.\n", 80)
+		}
+		if f.agentTargets != nil {
+			return map[string]any{"id": "agent-1", "block": block, "targets": f.agentTargets}, nil
 		}
 		return map[string]any{"id": "agent-1", "block": block, "targets": []any{map[string]any{"name": "Example Agent", "path": "~/.example/AGENTS.md", "created": false, "added": false, "addition": "\n" + block}}}, nil
 	case "agents_apply":
@@ -105,12 +137,59 @@ func create(t *testing.T, backend *fakeBackend, route, arg string) model {
 	return m
 }
 
+func openHomeItem(t *testing.T, m model, name string) model {
+	t.Helper()
+	if m.page != "home" {
+		t.Fatalf("cannot open home item %q from %s", name, m.page)
+	}
+	for at, label := range homeNames {
+		if label == name {
+			m.selected = at
+			return enter(m)
+		}
+	}
+	t.Fatalf("missing home item %q", name)
+	return m
+}
+
+func findAction(t *testing.T, m model, query string) model {
+	t.Helper()
+	m = send(m, tea.KeyPressMsg(tea.Key{Code: 'k', Mod: tea.ModCtrl}))
+	if m.page != "actions" {
+		t.Fatalf("Ctrl-K did not open action finder from %s", m.page)
+	}
+	for _, character := range query {
+		m = send(m, key(character, string(character)))
+	}
+	if len(m.matchActions()) != 1 {
+		t.Fatalf("query %q matched %d actions", query, len(m.matchActions()))
+	}
+	return enter(m)
+}
+
+func openAgentDiff(t *testing.T, m model) model {
+	t.Helper()
+	if m.page != "agent_home" {
+		t.Fatalf("agent connection chooser missing: %s", m.page)
+	}
+	m.selected = 1
+	m = enter(m)
+	if m.page != "agent_targets" {
+		t.Fatalf("Add to agent files did not offer agent choice: %s", m.page)
+	}
+	m = enter(m)
+	if m.page != "agents" {
+		t.Fatalf("selected agent did not open its diff: %s", m.page)
+	}
+	return m
+}
+
 func TestSectionExitFocusAndMenuState(t *testing.T) {
 	m := create(t, fake(), "home", "")
 	for _, test := range []struct {
 		at   int
 		page string
-	}{{0, "active"}, {1, "providers"}, {2, "agents"}, {3, "business"}, {6, "faq"}} {
+	}{{0, "providers"}, {1, "agent_home"}, {2, "profile"}, {3, "active"}, {4, "settings"}, {5, "faq"}} {
 		m.selected = test.at
 		m = enter(m)
 		if m.page != test.page {
@@ -187,7 +266,11 @@ func TestAgentAppendRequiresEveryPreviewLine(t *testing.T) {
 	f := fake()
 	f.longAgent = true
 	m := create(t, f, "agents", "")
+	m = openAgentDiff(t, m)
 	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	if strings.Contains(strings.Join(m.footer(), "\n"), "Enter append") {
+		t.Fatal("unreviewed diff advertises append")
+	}
 	m = enter(m)
 	if count(f.calls, "agents_apply") != 0 {
 		t.Fatal("unreviewed append ran")
@@ -203,6 +286,9 @@ func TestAgentAppendRequiresEveryPreviewLine(t *testing.T) {
 	}
 	if m.reviewedUntil < len(m.agentLines()) {
 		t.Fatalf("continuous paging did not review all lines: %d/%d", m.reviewedUntil, len(m.agentLines()))
+	}
+	if !strings.Contains(strings.Join(m.footer(), "\n"), "Enter append") {
+		t.Fatal("reviewed diff does not expose append")
 	}
 	m = enter(m)
 	if count(f.calls, "agents_apply") != 1 {
@@ -255,7 +341,7 @@ func TestRemovedMusicDoesNotLaunch(t *testing.T) {
 	f := fake()
 	f.state["music_included"] = false
 	m := create(t, f, "home", "")
-	m.selected = 7
+	m.selected = 6
 	m = enter(m)
 	if errors.Is(m.outcome, ErrMusic) {
 		t.Fatal("removed music launched")
@@ -364,6 +450,7 @@ func TestClippedPreviewShowsPosition(t *testing.T) {
 	f := fake()
 	f.longAgent = true
 	m := create(t, f, "agents", "")
+	m = openAgentDiff(t, m)
 	if !strings.Contains(m.View().Content, "↓ more") {
 		t.Fatal("hidden note has no scroll indicator")
 	}

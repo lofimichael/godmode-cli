@@ -1,0 +1,36 @@
+  ██████╗  ██████╗ ██████╗ ███╗   ███╗ ██████╗ ██████╗ ███████╗                              ╔════════════════════════╗ 
+ ██╔════╝ ██╔═══██╗██╔══██╗████╗ ████║██╔═══██╗██╔══██╗██╔════╝                              ║  B E A T Z   /   0 1   ║ 
+ ██║  ███╗██║   ██║██║  ██║██╔████╔██║██║   ██║██║  ██║█████╗                                ║  LOCAL SEQUENCE RADIO  ║ 
+ ██║   ██║██║   ██║██║  ██║██║╚██╔╝██║██║   ██║██║  ██║██╔══╝                                ║  LIBRARY → QUEUE → PLAY║ 
+ ╚██████╔╝╚██████╔╝██████╔╝██║ ╚═╝ ██║╚██████╔╝██████╔╝███████╗                              ╚════════════════════════╝ 
+  ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝                                     [ GODMODE / MUSIC ] 
+ [ LIBRARY ]   QUEUE 2                                                                                      1620 tracks 
+ Library / Chrono Trigger                                                                                        1 / 19 
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+ › Battle 2                                                           Chrono Trigger │ SELECTED                         
+   Black Omen                                                         Chrono Trigger │ Battle 2                         
+   Boss Battle 1                                                      Chrono Trigger │                                  
+   Corridors of Time                                                  Chrono Trigger │ Chrono Trigger                   
+   Epoch ~ Wings that Cross Time                                      Chrono Trigger │ Enter plays from this track      
+   Gato's Song                                                        Chrono Trigger │ a appends to the queue           
+   Guardia Millennial Fair                                            Chrono Trigger │                                  
+   Lavos                                                              Chrono Trigger │ ROW 1 / 19                       
+   Lavos [2]                                                          Chrono Trigger │ Selection does not change audio. 
+   Manoria Cathedral                                                  Chrono Trigger │                                  
+   Manoria Cathedral [2]                                              Chrono Trigger │ PCM / PLAYER CLOCK               
+   Memories of Green                                                  Chrono Trigger │                                  
+   Peaceful Days                                                      Chrono Trigger │                                  
+   Remains of the Factory                                             Chrono Trigger │       █ █       █           █    
+   Schala's Theme                                                     Chrono Trigger │                                  
+   Secret of the Forest                                               Chrono Trigger │                                  
+   Singing Mountain                                                   Chrono Trigger │                                  
+   World Revolution                                                   Chrono Trigger │                                  
+   Yearnings of the Wind                                              Chrono Trigger │                                  
+ Enter plays from here · replaces queue · a appends                                                                     
+ NOW PLAYING / PLAYING ──────────────────────────────────────────────────────────────────────────────────────────────── 
+ Corridors of Time                                                                                       Chrono Trigger 
+ 0:00 / 0:08 ━━━━━━━━━━─────────────────────────────────────────────────────────────────────────────────────────── 0%   
+ Repeat all · Shuffle off                                                                                     Queue 1/2 
+ PCM / player clock  ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ 
+ ↑↓ Enter play  a add  c collection  A add collection  / search                                                         
+ Space pause  x stop  Tab queue  i info  ? keys  Esc back  q close                                                      

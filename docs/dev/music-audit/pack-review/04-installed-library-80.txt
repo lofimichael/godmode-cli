@@ -1,0 +1,24 @@
+ █▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀                              B E A T Z   /   0 1 
+ █▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄                             LOCAL SEQUENCE RADIO 
+ [ LIBRARY ]   QUEUE 0                                                 0 tracks 
+ SETUP GUIDE · ↑↓ to scroll                                                     
+ ────────────────────────────────────────────────────────────────────────────── 
+ 1. Choose a folder with .ootrs tracks.                                         
+ 2. Prepare local music:                                                        
+ godmode music setup --songs DIR                                                
+ Replace DIR with your folder's path.                                           
+ 3. Press R here to reload.                                                     
+                                                                                
+ Godmode turns local .ootrs sequences into audio. Setup builds the included     
+ synth once, offline.                                                           
+                                                                                
+ EXAMPLE FOLDER                                                                 
+ godmode music setup --songs "$HOME/Music/Sequences"                            
+ Stopped                                                                        
+ NOW PLAYING / STOPPED ──────────────────────────────────────────────────────── 
+ Choose a track to begin                                                        
+ 0:00 / –:–– ──────────────────────────────────────────────────────────── 35%   
+ Repeat off · Shuffle off                                           Queue empty 
+ PCM / player clock  motion reduced                                             
+ ↑↓ scroll  PgUp/PgDn page                                                      
+ R reloads after setup  q close                                                 

@@ -1,0 +1,327 @@
+{
+  "recorded_at_utc": "2026-11-18T01:10:43.527847+00:00",
+  "core": {
+    "path": "/Users/michael/conductor/repos/godmode-cli/target/godmode-native",
+    "sha256": "759952ebb39f41958d0aad831be9863983a35b3feb980809b7d24d12401e5a9e",
+    "bytes": 11791602,
+    "gzip_level_6_bytes": 6157467
+  },
+  "pack": {
+    "path": "/Users/michael/conductor/repos/godmode-cli/target/godmode-music-pack",
+    "sha256": "9a6ff3e2044f70204eebe39df5ccbfb4597ee7e8a31af2cf0d99d366708f39d0",
+    "bytes": 15230674,
+    "gzip_level_6_bytes": 10027466
+  },
+  "audio_started": false,
+  "terminal": {
+    "columns": 80,
+    "rows": 24
+  },
+  "checks": [
+    "Search timings include full query key burst to filtered rendered results; no Enter/play used.",
+    "All 1620 tracks enqueued through All tracks; final transport stayed stopped at zero; no play request sent."
+  ],
+  "host_load_before": [
+    {
+      "cpu_percent": 97.8,
+      "process": "Python"
+    },
+    {
+      "cpu_percent": 90.2,
+      "process": "BTLEServer"
+    },
+    {
+      "cpu_percent": 33.9,
+      "process": "WindowServer"
+    },
+    {
+      "cpu_percent": 12.9,
+      "process": "com.apple.Virtualization.VirtualMachine"
+    },
+    {
+      "cpu_percent": 12.4,
+      "process": "com.apple.WebKit.WebContent"
+    },
+    {
+      "cpu_percent": 7.9,
+      "process": "DisplayLinkUserAgent"
+    },
+    {
+      "cpu_percent": 6.7,
+      "process": "mdworker_shared"
+    },
+    {
+      "cpu_percent": 6.0,
+      "process": "Terminal"
+    },
+    {
+      "cpu_percent": 5.4,
+      "process": "mdworker_shared"
+    },
+    {
+      "cpu_percent": 4.8,
+      "process": "coreaudiod"
+    },
+    {
+      "cpu_percent": 4.5,
+      "process": "mds"
+    },
+    {
+      "cpu_percent": 4.3,
+      "process": "mdworker_shared"
+    }
+  ],
+  "method": "Real PTY and incremental terminal reconstruction; monotonic elapsed times; private home; normal motion. Local pack install and offline owned setup (including silent render validation), then queue-only UI. No playback requests. Host caches were not flushed. Competing host load recorded; this is not an idle-host benchmark.",
+  "install": {
+    "seconds": 0.7087,
+    "stdout": "Music Pack installed. Jingles are ready with mpv: godmode jingle play\nLink your local tracks: godmode music setup --songs DIR",
+    "stderr": ""
+  },
+  "owned_setup": {
+    "seconds": 12.7516,
+    "stdout": "Checking bundled music files\nConfiguring converter \u00b7 0.3s elapsed\nBuilding converter \u00b7 1.1s elapsed\nBuilding converter \u00b7 4.1s elapsed\nBuilding converter \u00b7 7.1s elapsed\nBuilding converter \u00b7 10.2s elapsed\nBuilding renderer \u00b7 11.1s elapsed\nChecking converter \u00b7 11.6s elapsed\nChecking sequence output \u00b7 11.8s elapsed\nBuilt Godmode music engine \u00b7 1620 local tracks \u00b7 12.166s",
+    "stderr": ""
+  },
+  "repeat_setup": {
+    "seconds": 0.7787,
+    "stdout": "Checking bundled music files\nReused Godmode music engine \u00b7 1620 local tracks \u00b7 0.22s",
+    "stderr": ""
+  },
+  "runtime_bytes": 13972742,
+  "installed_pack_bytes": 15230855,
+  "host_load_at_ui_start": [
+    {
+      "cpu_percent": 140.1,
+      "process": "wakatime-cli-darwin-arm64"
+    },
+    {
+      "cpu_percent": 88.1,
+      "process": "BTLEServer"
+    },
+    {
+      "cpu_percent": 37.4,
+      "process": "WindowServer"
+    },
+    {
+      "cpu_percent": 14.7,
+      "process": "com.apple.WebKit.WebContent"
+    },
+    {
+      "cpu_percent": 13.4,
+      "process": "gh"
+    },
+    {
+      "cpu_percent": 12.3,
+      "process": "mdworker_shared"
+    },
+    {
+      "cpu_percent": 11.2,
+      "process": "mdworker_shared"
+    },
+    {
+      "cpu_percent": 10.2,
+      "process": "com.apple.Virtualization.VirtualMachine"
+    },
+    {
+      "cpu_percent": 10.0,
+      "process": "mdworker_shared"
+    },
+    {
+      "cpu_percent": 7.8,
+      "process": "DisplayLinkUserAgent"
+    },
+    {
+      "cpu_percent": 6.6,
+      "process": "Terminal"
+    },
+    {
+      "cpu_percent": 4.3,
+      "process": "coreaudiod"
+    }
+  ],
+  "enqueue_all_ms": 565.301,
+  "bridge_first_status_ms": 548.505,
+  "status_ipc": {
+    "queue_tracks": 1620,
+    "encoded_reply_bytes": 189322,
+    "wire_roundtrip": {
+      "count": 10,
+      "min_ms": 5.739,
+      "median_ms": 5.88,
+      "max_ms": 6.559,
+      "samples_ms": [
+        6.559,
+        5.847,
+        5.895,
+        5.976,
+        6.187,
+        5.795,
+        5.864,
+        6.294,
+        5.86,
+        5.739
+      ]
+    },
+    "roundtrip_and_json_decode": {
+      "count": 10,
+      "min_ms": 6.627,
+      "median_ms": 6.83,
+      "max_ms": 8.933,
+      "samples_ms": [
+        7.388,
+        6.782,
+        6.742,
+        6.878,
+        7.009,
+        8.933,
+        6.651,
+        7.237,
+        6.655,
+        6.627
+      ]
+    },
+    "scope": "Persistent core router -> companion music __bridge -> private daemon; first startup request excluded."
+  },
+  "idle": {
+    "observation_seconds": 10.304,
+    "ui_and_bridge_cpu_seconds": 0.19,
+    "approx_one_core_percent": 1.84,
+    "pty_output_bytes": 63,
+    "process_count": 6,
+    "scope": "Own native core/router, companion UI and private bridge descendants; detached daemon and recorder excluded. ps CPU time has 0.01-second resolution; short sample."
+  },
+  "idle_daemon": {
+    "identified_by_owned_socket": false,
+    "process_count": 0,
+    "cpu_seconds": null,
+    "approx_one_core_percent": null,
+    "note": "Unavailable: socket ownership lookup returned no PID. This does not imply zero daemon CPU."
+  },
+  "queue_open_after_idle_ms": 16.064,
+  "queue_navigation_1620": {
+    "count": 6,
+    "min_ms": 16.326,
+    "median_ms": 16.447,
+    "max_ms": 17.239,
+    "samples_ms": [
+      16.326,
+      16.453,
+      16.442,
+      16.571,
+      17.239,
+      16.328
+    ]
+  },
+  "final_state": {
+    "state": "stopped",
+    "queue_tracks": 1620,
+    "position": 0.0,
+    "track": null
+  },
+  "cache_bytes": 0,
+  "startup": {
+    "count": 5,
+    "min_ms": 996.561,
+    "median_ms": 1027.573,
+    "max_ms": 1045.638,
+    "samples_ms": [
+      1027.573,
+      1028.578,
+      1045.638,
+      996.561,
+      1022.633
+    ]
+  },
+  "navigation": {
+    "count": 8,
+    "min_ms": 15.233,
+    "median_ms": 16.863,
+    "max_ms": 17.47,
+    "samples_ms": [
+      15.233,
+      17.085,
+      16.869,
+      16.184,
+      17.454,
+      15.934,
+      17.47,
+      16.857
+    ]
+  },
+  "search": {
+    "count": 3,
+    "min_ms": 16.319,
+    "median_ms": 31.592,
+    "max_ms": 32.559,
+    "samples_ms": [
+      16.319,
+      32.559,
+      31.592
+    ]
+  },
+  "cleanup": {
+    "stop_exit": 0,
+    "remove_exit": 0,
+    "remove_message": "Music Pack removed, including its runtime and rendered cache. Source songs kept.",
+    "socket_absent": true,
+    "managed_state_absent": true,
+    "isolated_home_removed": true
+  },
+  "host_load_after": [
+    {
+      "cpu_percent": 80.1,
+      "process": "BTLEServer"
+    },
+    {
+      "cpu_percent": 39.2,
+      "process": "WindowServer"
+    },
+    {
+      "cpu_percent": 15.9,
+      "process": "Obsidian Helper (Renderer)"
+    },
+    {
+      "cpu_percent": 14.5,
+      "process": "com.apple.Virtualization.VirtualMachine"
+    },
+    {
+      "cpu_percent": 12.5,
+      "process": "com.apple.WebKit.WebContent"
+    },
+    {
+      "cpu_percent": 10.6,
+      "process": "airportd"
+    },
+    {
+      "cpu_percent": 6.5,
+      "process": "locationd"
+    },
+    {
+      "cpu_percent": 6.3,
+      "process": "DisplayLinkUserAgent"
+    },
+    {
+      "cpu_percent": 6.0,
+      "process": "Terminal"
+    },
+    {
+      "cpu_percent": 5.9,
+      "process": "fseventsd"
+    },
+    {
+      "cpu_percent": 4.2,
+      "process": "coreaudiod"
+    },
+    {
+      "cpu_percent": 3.6,
+      "process": "tccd"
+    }
+  ],
+  "binaries_unchanged": true,
+  "host": {
+    "model": "MacBookPro18,2",
+    "physical_cpu_cores": 10,
+    "logical_cpu_cores": 10,
+    "memory_bytes": 68719476736
+  }
+}

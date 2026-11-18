@@ -110,7 +110,6 @@ func TestAsyncDispatchKeepsNavigationAndReadsResponsive(t *testing.T) {
 	if m.selected != 1 || m.busy || cmd != nil {
 		t.Fatal("ordinary navigation was delayed")
 	}
-	m, _ = updateAsync(m, key(tea.KeyDown, ""))
 	m, cmd = updateAsync(m, key(tea.KeyEnter, ""))
 	if !m.busy || m.page != "home" || b.count("agents_plan") != 0 {
 		t.Fatal("Update ran the read or replaced the visible page before dispatch")
@@ -128,7 +127,7 @@ func TestAsyncDispatchKeepsNavigationAndReadsResponsive(t *testing.T) {
 	}
 	b.unblock()
 	m, _ = updateAsync(m, asyncResult(t, result))
-	if m.busy || m.busyVisible || m.page != "agents" || b.count("agents_plan") != 1 {
+	if m.busy || m.busyVisible || m.page != "agent_home" || b.count("agents_plan") != 1 {
 		t.Fatal("completed operation did not settle on the requested page")
 	}
 	m, cmd = updateAsync(m, busyMsg{m.operationID})
@@ -213,7 +212,7 @@ func TestAsyncCompletionPreservesLivePresentationAndReviewBoundary(t *testing.T)
 	b := newGatedBackend(t, "agents_plan")
 	b.base.longAgent = true
 	m := asyncModel(t, b, "home", "")
-	m.selected = 2
+	m.selected = 1
 	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
 	result := runAsyncWorker(t, b, asyncWorker(t, cmd))
 	m, _ = updateAsync(m, tea.WindowSizeMsg{Width: 42, Height: 18})
@@ -223,9 +222,10 @@ func TestAsyncCompletionPreservesLivePresentationAndReviewBoundary(t *testing.T)
 	}
 	b.unblock()
 	m, _ = updateAsync(m, asyncResult(t, result))
-	if m.width != 42 || m.height != 18 || m.dark || m.page != "agents" {
+	if m.width != 42 || m.height != 18 || m.dark || m.page != "agent_home" {
 		t.Fatal("worker restored outdated terminal dimensions or background")
 	}
+	m = openAgentDiff(t, m)
 	if m.scroll != 0 || m.reviewedUntil >= len(m.agentLines()) {
 		t.Fatal("resize falsely marked unseen agent instructions reviewed")
 	}
@@ -243,7 +243,7 @@ func TestAsyncCompletionPreservesLivePresentationAndReviewBoundary(t *testing.T)
 func TestAsyncStaleResultsCannotReplaceCurrentOperation(t *testing.T) {
 	b := newGatedBackend(t, "agents_plan")
 	m := asyncModel(t, b, "home", "")
-	m.selected = 2
+	m.selected = 1
 	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
 	work := asyncWorker(t, cmd)
 	wrong := m
@@ -259,7 +259,7 @@ func TestAsyncStaleResultsCannotReplaceCurrentOperation(t *testing.T) {
 	b.unblock()
 	m, _ = updateAsync(m, work())
 	m, cmd = updateAsync(m, operationMsg{id: m.operationID, next: wrong, cmd: tea.Quit})
-	if m.busy || m.page != "agents" || m.text != "" || cmd != nil {
+	if m.busy || m.page != "agent_home" || m.text != "" || cmd != nil {
 		t.Fatal("duplicate result replaced an already completed operation")
 	}
 }
@@ -379,19 +379,24 @@ func TestAsyncEscapeDiscardsReadOnlyValidationAndQueuedSecrets(t *testing.T) {
 	}
 }
 
-func TestAsyncEnvironmentBackDispatchesRead(t *testing.T) {
-	b := newGatedBackend(t, "environment_list")
-	m := asyncModel(t, b, "home", "")
-	m.page, m.selected = "environment_new", 2
-	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
-	if !m.busy || b.count("environment_list") != 0 {
-		t.Fatal("Back performed environment I/O inside Update")
+func TestEnvironmentBackRestoresInspectedListWithoutAnotherRead(t *testing.T) {
+	b := fake()
+	m := create(t, b, "home", "")
+	m = openHomeItem(t, m, "Switch setup")
+	m = enter(m)
+	m.selected = len(m.environments)
+	m = enter(m)
+	if m.page != "environment_new" {
+		t.Fatal("New did not open environment creation choices")
 	}
-	result := runAsyncWorker(t, b, asyncWorker(t, cmd))
-	b.unblock()
-	m, _ = updateAsync(m, asyncResult(t, result))
-	if m.page != "environments" || m.busy {
-		t.Fatal("Back did not return the current environment list")
+	m.selected = 2
+	reads := count(b.calls, "environment_list")
+	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
+	if cmd != nil {
+		m, _ = updateAsync(m, asyncWorker(t, cmd)())
+	}
+	if m.page != "environments" || m.busy || m.selected != len(m.environments) || count(b.calls, "environment_list") != reads {
+		t.Fatal("Back reread or lost the inspected environment list")
 	}
 }
 
@@ -399,7 +404,6 @@ func TestAsyncWorkCannotLeaveNavigationPulseRunning(t *testing.T) {
 	b := newGatedBackend(t, "agents_plan")
 	m := asyncModel(t, b, "home", "")
 	m.opts.NoMotion, m.colors = false, true
-	m, _ = updateAsync(m, key(tea.KeyDown, ""))
 	m, _ = updateAsync(m, key(tea.KeyDown, ""))
 	if m.pulseFrame <= 0 {
 		t.Fatal("navigation did not create a finite accent pulse")

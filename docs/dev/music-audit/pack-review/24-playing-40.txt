@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 2      1620 tracks 
+ Collections                    1 / 492 
+ ────────────────────────────────────── 
+ › ▸ All tracks                    1620 
+   ▸ .hack∕∕INFECTION                 1 
+   ▸ 20th Century Fox                 1 
+   ▸ A Hat in Time                    3 
+   ▸ ActRaiser                        1 
+   ▸ Age of Empires                   1 
+ Enter opens collection · a appends     
+ NOW PLAYING / PLAYING ──────────────── 
+ Rocky's Message [Oboe]                 
+ 0:17 / 3:00 ━──────────────────── 0%   
+ Repeat off · Shuffle off     Queue 1/2 
+ ↑↓ browse  Enter open/play  / search   
+ Tab queue a add i info ? keys Esc back 
+ Space pause  x stop  q close view      

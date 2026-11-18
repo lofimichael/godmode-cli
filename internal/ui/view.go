@@ -70,6 +70,9 @@ func (m model) margin() int {
 	if m.width < 16 {
 		return 0
 	}
+	if m.width < 52 {
+		return 1
+	}
 	return 2
 }
 func (m model) wrap(s string) []string {
@@ -88,6 +91,9 @@ func (m model) title(title, detail string) []string {
 	if detail != "" {
 		row += "  " + p.muted.Render(detail)
 	}
+	if m.height < 22 {
+		return []string{row}
+	}
 	return []string{row, ""}
 }
 func (m model) path(path string) string {
@@ -103,67 +109,114 @@ func (m model) introView() []string  { return m.cinematicIntroView() }
 func (m model) homeView() []string {
 	p, w := m.palette(), m.innerWidth()
 	rows := []string{}
-	if m.height >= 22 {
-		rows = append(rows, m.logo(m.height >= 31 && w >= 63)...)
+	if m.height >= 24 {
+		rows = append(rows, m.logo(false)...)
 		rows = append(rows, "")
 	} else {
 		rows = append(rows, p.brand.Render("GODMODE"))
 	}
 	rows = append(rows, m.scopeLines()...)
-	if m.height >= 18 {
+	rows = append(rows, "")
+	if m.height >= 16 {
+		next := "Ask your agent for the result you want."
+		if m.state.KeyCount == 0 {
+			next = "Add a provider key, then connect your agent."
+		} else if m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
+			next = "Connect your agent to use your saved keys."
+		}
+		if w < 45 {
+			if m.state.KeyCount == 0 {
+				next = "Add keys, then connect your agent."
+			} else if m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
+				next = "Keys saved. Connect your agent."
+			} else {
+				next = "Ask your agent for what you want."
+			}
+		}
+		rows = append(rows, m.wrap(next)...)
 		rows = append(rows, "")
 	}
-	statuses := []string{
-		"Switch business / keys",
-		countLabel(m.state.KeyCount, "key") + " stored",
-		countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added",
-		countLabel(len(m.state.Progress.Fields), "field"), "Check local setup", "Install latest", "", "", "",
+	statuses := []string{countLabel(m.state.KeyCount, "key") + " saved", countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added", "optional", "", "", "", "optional", ""}
+	if m.state.StoreError != "" {
+		statuses[0] = "needs attention"
 	}
 	if m.state.ProfileError != "" {
-		statuses[3] = "cannot read"
-	}
-	if m.state.StoreError != "" {
-		statuses[1] = "cannot read"
+		statuses[2] = "needs attention"
 	}
 	if !m.state.MusicIncluded {
-		statuses[7] = "not installed"
-	}
-	if w < 45 {
-		statuses[0] = "Switch"
-		statuses[4], statuses[5] = "", ""
-	}
-	if w < 40 && m.state.StoreError == "" {
-		statuses[1] = countLabel(m.state.KeyCount, "key")
-		statuses[3] = ""
+		statuses[6] = "not included"
 	}
 	choices := []string{}
 	for i, name := range homeNames {
+		if w < 45 {
+			if i == 0 {
+				statuses[i] = fmt.Sprintf("%d saved", m.state.KeyCount)
+			}
+			if i == 1 {
+				statuses[i] = fmt.Sprintf("%d added", max(len(m.state.Progress.Agents), m.state.Progress.Agent))
+			}
+		}
+		if w < 34 {
+			statuses[i] = ""
+		}
+		if (i == 3 || i == 6) && m.height >= 24 {
+			choices = append(choices, "")
+		}
 		choices = append(choices, m.choice(name, statuses[i], i == m.selected, w))
 	}
 	foot := []string{}
-	if m.busyVisible {
-		foot = append(foot, p.cyan.Render(m.loadingText()))
-	} else if m.error != "" {
-		foot = append(foot, m.styledWrap(m.error, p.bad)...)
-	} else if m.notice != "" {
-		foot = append(foot, m.styledWrap(m.notice, p.good)...)
+	if m.height >= 20 {
+		help := m.styledWrap(m.homeDescription(), p.muted)
+		foot = append(foot, help...)
+		for len(foot) < 2 {
+			foot = append(foot, "")
+		}
 	}
-	hint := "↑↓ move  ·  Enter open  ·  s switch  ·  Esc quit"
-	if w < 54 {
-		hint = "↑↓ Enter · Esc quit"
+	foot = append(foot, m.statusLines()...)
+	hint := "↑↓ move · Enter open · / find · s switch · ? keys · Esc quit"
+	if w < 60 {
+		hint = "↑↓ Enter · / find · ? keys · Esc quit"
 	}
-	foot = append(foot, p.muted.Render(hint))
+	if w < 38 {
+		hint = "↑↓ Enter · / find\nEsc quit · ? keys"
+	}
+	foot = append(foot, m.styledWrap(hint, p.muted)...)
 	leading := 0
 	if m.height > 12 {
 		leading = 1
 	}
 	room := max(1, m.height-leading-len(rows)-len(foot))
-	start := min(max(0, m.selected-room/2), max(0, len(choices)-room))
+	start := m.listScroll(choices, room)
 	rows = append(rows, choices[start:min(len(choices), start+room)]...)
 	for len(rows)+len(foot) < m.height-leading {
 		rows = append(rows, "")
 	}
 	return append(rows, foot...)
+}
+
+// Reserve feedback space before a write starts so copy/save/loading never move
+// the controls or silently change how much of an append preview was reviewed.
+func (m model) statusLines() []string {
+	p := m.palette()
+	text, style := "", p.good
+	if m.busyVisible {
+		text, style = m.loadingText(), p.cyan
+	} else if m.error != "" {
+		text, style = m.error, p.bad
+	} else if m.page == "key" && m.check.Error != "" {
+		text, style = m.check.Error, p.warn
+	} else {
+		text = m.notice
+	}
+	rows := m.styledWrap(text, style)
+	reserve := 2
+	if m.height < 22 {
+		reserve = 1
+	}
+	for len(rows) < reserve {
+		rows = append(rows, "")
+	}
+	return rows
 }
 
 func pad(s string, n int) string { return s + strings.Repeat(" ", max(0, n-ansi.StringWidth(s))) }
@@ -177,7 +230,8 @@ func (m model) choice(name, status string, selected bool, width int) string {
 	}
 	var row string
 	if status != "" {
-		room := max(4, width-ansi.StringWidth(status)-3)
+		status = ansi.Truncate(status, max(4, width/2-2), "…")
+		room := max(4, min(28, width-ansi.StringWidth(status)-3))
 		name = ansi.Truncate(name, room, "…")
 		row = pointer + pad(name, room+1) + status
 	} else {
@@ -207,7 +261,7 @@ func (m model) choice(name, status string, selected bool, width int) string {
 }
 func (m model) header() []string {
 	rows := m.scopeLines()
-	if m.height >= 18 {
+	if m.height >= 22 {
 		rows = append(rows, "")
 	}
 	return append(rows, m.pageHeader()...)
@@ -215,23 +269,35 @@ func (m model) header() []string {
 func (m model) pageHeader() []string {
 	p := m.palette()
 	switch m.page {
+	case "settings":
+		return m.title("Settings", "")
+	case "update":
+		return m.title("Update Godmode", "")
+	case "shortcuts":
+		return m.title("Keyboard shortcuts", "")
+	case "actions":
+		return append(m.title("Find an action", ""), p.cyan.Render("/ "+clean(m.query)+"▏"), "")
+	case "recent_setups":
+		return m.title("Recent setups", "keys / business")
+	case "recent_details":
+		return m.title("Use this setup", "")
 	case "active":
-		rows := m.title("Active setup", "")
+		rows := m.title("Switch setup", "")
 		if m.height >= 18 {
-			rows = append(rows, m.wrap("New commands use this choice. Shell settings and flags override it.")...)
+			rows = append(rows, m.wrap("Choose both before switching.")...)
 			rows = append(rows, "")
 		}
 		return rows
 	case "business":
-		rows := m.title("Business", "")
+		rows := m.title("Business details", "")
 		if m.state.Context == "" && m.height >= 20 {
-			rows = append(rows, m.wrap("Automatic uses the selected environment's profile.")...)
+			rows = append(rows, m.wrap("Automatic uses the business details saved with this key environment.")...)
 		}
 		return rows
 	case "contexts":
 		return m.title("Switch business", "")
 	case "environments":
-		return m.title("Environments", "")
+		return m.title("Key environments", "")
 	case "environment_new":
 		return append(m.title("New environment", ""), m.wrap("Choose its starting values.")...)
 	case "scope_name":
@@ -245,26 +311,23 @@ func (m model) pageHeader() []string {
 		}
 		return m.title("Environment details", "")
 	case "doctor":
-		return m.title("Doctor", "Read-only checks")
+		return m.title("Check setup", "local files only")
 	case "profile":
-		title := "Profile"
-		if m.state.Context != "" {
-			title += " · " + m.state.Context
-		}
+		title := "Business details"
 		rows := m.title(title, fmt.Sprintf("%d/%d optional fields", len(m.state.Progress.Fields), len(m.state.Fields)))
 		blurb := m.state.ProfileBlurb
 		if blurb == "" {
 			blurb = "Full sites that take payments usually require a business profile, terms of service and a privacy policy. Agents use these details to fill them in."
 		}
-		if m.height >= 18 {
+		if m.height >= 22 {
 			rows = append(rows, m.wrap(blurb)...)
 			rows = append(rows, "")
 		}
 		return rows
 	case "providers":
-		rows := m.title("Providers", countLabel(m.state.KeyCount, "key")+" stored")
-		if m.height >= 17 {
-			rows = append(rows, m.wrap("Add or replace keys in this environment.")...)
+		rows := m.title("Provider keys", countLabel(m.state.KeyCount, "key")+" saved")
+		if m.height >= 22 {
+			rows = append(rows, m.wrap("Save only the keys your task needs. / searches providers.")...)
 			rows = append(rows, "")
 		}
 		if m.filtering || m.query != "" {
@@ -280,16 +343,20 @@ func (m model) pageHeader() []string {
 		rows := m.title(f.Label, "")
 		return append(rows, m.styledWrap(f.Description, p.muted)...)
 	case "key":
-		if m.text == "" && !m.details {
-			return nil
-		}
 		return m.title(m.key.Title, "")
 	case "name":
-		return m.title("Another key", "")
+		return m.title("Custom key", "")
+	case "agent_targets":
+		return m.title("Choose an agent", "")
+	case "agent_home":
+		return m.title("Connect agent", "")
+	case "agent_copy":
+		return m.title("Copy for this task", "")
+
 	case "agents":
 		count := 0
 		added := 0
-		for _, t := range m.agents.Targets {
+		for _, t := range m.reviewTargets() {
 			if t.Added {
 				added++
 			}
@@ -297,17 +364,14 @@ func (m model) pageHeader() []string {
 				count += strings.Count(t.Addition, "\n")
 			}
 		}
-		rows := m.title("Agents", p.good.Render(fmt.Sprintf("+%d", count))+" "+p.bad.Render("−0"))
+		rows := m.title("Agent files", p.good.Render(fmt.Sprintf("+%d", count))+" "+p.bad.Render("−0"))
 		if count == 0 {
-			rows = m.title("Agents", countLabel(added, "note")+" added")
+			rows = m.title("Agent files", countLabel(added, "note")+" added")
 		}
-		command := m.styledWrap(m.command("agents", "--print"), p.muted)
-		if len(command) <= m.height-len(m.scopeLines())-len(rows)-10 {
-			rows = append(rows, command...)
-		}
+
 		return rows
 	case "faq":
-		return m.title("Help / FAQ", "")
+		return m.title("Help", "")
 	case "faq_text":
 		if m.faqAt < len(m.faq) {
 			return m.title(m.faq[m.faqAt].Title, "")
@@ -320,7 +384,52 @@ func (m model) body() []string {
 	w := m.innerWidth()
 	rows := []string{}
 	switch m.page {
-	case "active", "business", "contexts", "environments", "environment_new", "scope_name", "scope_details", "doctor":
+	case "settings":
+		if m.state.PreferencesError != "" {
+			rows = append(rows, m.styledWrap(m.state.PreferencesError, p.warn)...)
+			rows = append(rows, "")
+		}
+		if m.state.HistoryError != "" && m.state.HistoryError != m.state.PreferencesError {
+			rows = append(rows, m.styledWrap(m.state.HistoryError, p.warn)...)
+			rows = append(rows, "")
+		}
+		for i, name := range settingsNames {
+			status := ""
+			if i == 0 {
+				status = "on"
+				if m.opts.NoMotion || !m.colors {
+					status = "off"
+				}
+				if m.motionForced {
+					status += " · command flag"
+				}
+			}
+			rows = append(rows, m.choice(name, status, i == m.selected, w))
+		}
+		rows = append(rows, "")
+		descriptions := []string{"Animate the intro and selection highlights.", "Check installation and local files. Provider access is not tested.", "Download the latest release. Saved keys and business details stay in place.", "Replay the GODMODE intro.", "Return to the previous screen."}
+		rows = append(rows, m.styledWrap(descriptions[min(max(0, m.selected), len(descriptions)-1)], p.muted)...)
+	case "update":
+		rows = append(rows, m.wrap("Download and install the latest Godmode release.")...)
+		rows = append(rows, "")
+		rows = append(rows, m.wrap("Your saved keys and business details stay in place. The updater keeps the previous executable.")...)
+		rows = append(rows, "", m.choice("Update Godmode", "", m.selected == 0, w), m.choice("Back", "", m.selected == 1, w))
+	case "shortcuts":
+		for _, line := range m.shortcuts() {
+			rows = append(rows, m.wrap(line)...)
+		}
+	case "actions":
+		matches := m.matchActions()
+		if len(matches) == 0 {
+			rows = append(rows, m.wrap("No actions match. Try a provider name or a task.")...)
+		}
+		for i, a := range matches {
+			rows = append(rows, m.choice(a.title, "", i == m.selected, w))
+			if i == m.selected {
+				rows = append(rows, m.styledWrap("  "+a.detail, p.muted)...)
+			}
+		}
+	case "active", "recent_setups", "recent_details", "business", "contexts", "environments", "environment_new", "scope_name", "scope_details", "doctor":
 		return m.managementBody()
 	case "profile":
 		if m.state.ProfileError != "" {
@@ -359,11 +468,11 @@ func (m model) body() []string {
 		}
 		matches := len(m.providerMatches())
 		if matches == 0 {
-			rows = append(rows, p.muted.Render("No providers match."))
+			rows = append(rows, m.styledWrap("No providers match. Esc clears search.", p.muted)...)
 		}
 		rows = append(rows, "")
-		rows = append(rows, m.wrap("Don't see a provider you want? Open a GitHub issue! We'll get on it.")...)
-		rows = append(rows, m.choice("Another key", "", m.selected == matches, w), m.choice("Open a GitHub issue", "", m.selected == matches+1, w), m.choice("Back", "", m.selected == matches+2, w))
+		rows = append(rows, m.styledWrap("Missing a provider? Save a custom key or request a guide.", p.muted)...)
+		rows = append(rows, m.choice("Custom key", "", m.selected == matches, w), m.choice("Open a GitHub issue", "", m.selected == matches+1, w), m.choice("Back", "", m.selected == matches+2, w))
 	case "provider_keys":
 		if m.selectedProvider != nil {
 			for i, k := range m.selectedProvider.Key {
@@ -396,7 +505,12 @@ func (m model) body() []string {
 				rows = append(rows, m.wrap("$ "+strings.Join(m.check.Command, " "))...)
 			}
 			if len(rows) == 0 {
-				rows = append(rows, p.muted.Render("Paste a key to see its exact edit."))
+				if m.key.Page != "" {
+					rows = append(rows, m.styledWrap(m.key.Page, p.cyan)...)
+					rows = append(rows, "")
+				}
+				rows = append(rows, m.wrap("Save destination: "+m.path(m.key.Path))...)
+				rows = append(rows, "", p.muted.Render("Paste a key to review its exact edit."))
 			}
 		} else {
 			if m.check.Valid {
@@ -406,7 +520,7 @@ func (m model) body() []string {
 				rows = append(rows, m.styledWrap(m.key.Visit, p.title)...)
 			}
 			if m.key.Page != "" {
-				rows = append(rows, m.styledWrap(m.key.Page, p.cyan)...)
+				rows = append(rows, p.cyan.Render(ansi.Truncate(clean(m.key.Page), w, "…")))
 			}
 			if len(m.key.Steps) > 0 {
 				rows = append(rows, "")
@@ -425,6 +539,48 @@ func (m model) body() []string {
 	case "name":
 		rows = append(rows, m.wrap("Key name, such as ACME_TOKEN.")...)
 		rows = append(rows, "", p.cyan.Render("› ")+clean(m.text)+"▏")
+	case "agent_targets":
+		if len(m.agents.Targets) == 0 {
+			rows = append(rows, m.wrap("No installed agent folders found. Copy for this task works with any agent chat.")...)
+			rows = append(rows, "", m.choice("Back", "", true, w))
+			return rows
+		}
+		for i, t := range m.agents.Targets {
+			status := ""
+			if t.Added {
+				status = "already added"
+			}
+			if t.Issue != "" {
+				status = "needs attention"
+			}
+			rows = append(rows, m.choice(t.Name, status, i == m.selected, w))
+			if i == m.selected {
+				rows = append(rows, m.styledWrap("  "+t.Path, p.muted)...)
+			}
+		}
+		rows = append(rows, "", m.choice("All detected agents", "", m.selected == len(m.agents.Targets), w), m.choice("Back", "", m.selected == len(m.agents.Targets)+1, w))
+	case "agent_home":
+		rows = append(rows, m.wrap("Your agent uses these instructions to find keys and business details.")...)
+		rows = append(rows, "", m.choice("Copy for this task", "", m.selected == 0, w))
+		rows = append(rows, m.choice("Add to agent files", countLabel(len(m.agents.Targets), "agent")+" found", m.selected == 1, w))
+		rows = append(rows, m.choice("Back", "", m.selected == 2, w), "")
+		if m.selected == 0 {
+			rows = append(rows, m.styledWrap("Paste into your current agent chat, then ask for the result you want.", p.muted)...)
+		}
+		if m.selected == 1 {
+			rows = append(rows, m.styledWrap("Review the files before appending. Existing instructions stay intact.", p.muted)...)
+		}
+	case "agent_copy":
+		rows = append(rows, m.wrap("Paste into your current agent chat.")...)
+		rows = append(rows, "")
+		block := m.agents.CopyBlock
+		if block == "" {
+			block = m.agents.Block
+		}
+		for _, line := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {
+			rows = append(rows, m.wrap(line)...)
+		}
+
 	case "agents":
 		return m.agentLines()
 	case "faq":
@@ -511,19 +667,18 @@ func (m model) footer() []string {
 	if m.page == "key" {
 		rows = append(rows, m.keyFooter()...)
 	}
-	if m.busyVisible {
-		rows = append(rows, m.styledWrap(m.loadingText(), p.cyan)...)
-	} else if m.error != "" {
-		rows = append(rows, m.styledWrap(m.error, p.bad)...)
-	} else if m.page == "key" && m.check.Error != "" {
-		rows = append(rows, m.styledWrap(m.check.Error, p.warn)...)
-	} else if m.notice != "" {
-		rows = append(rows, m.styledWrap(m.notice, p.good)...)
-	}
-	hint := "↑↓ move  ·  Enter open  ·  Esc back"
+	rows = append(rows, m.statusLines()...)
+
+	hint := "↑↓ move · Enter open · Esc back · ? keys"
 	switch m.page {
 	case "providers":
-		hint = "↑↓ move  ·  / search  ·  Enter open  ·  Esc back"
+		hint = "↑↓ move · / search · Enter open · Esc back · ? keys"
+	case "actions":
+		hint = "Type to find · ↑↓ move · Enter open · Esc back"
+	case "shortcuts":
+		hint = "↑↓ / PgDn scroll · Esc back"
+	case "doctor":
+		hint = "↑↓ scroll · r check again · Esc back"
 	case "scope_name":
 		hint = "Enter create  ·  Esc back"
 	case "contexts", "environments":
@@ -543,21 +698,48 @@ func (m model) footer() []string {
 		}
 	case "name":
 		hint = "Enter continue  ·  Esc back"
+	case "agent_copy":
+		hint = "Enter / c copy · ↑↓ scroll · Esc back"
+
 	case "agents":
 		pending := false
-		for _, t := range m.agents.Targets {
+		for _, t := range m.reviewTargets() {
 			pending = pending || (!t.Added && t.Issue == "")
 		}
 		if pending {
-			hint = "↑↓ / PgDn scroll  ·  Enter append  ·  c copy  ·  Esc back"
+			if m.reviewedUntil < len(m.agentLines()) {
+				hint = "PgDn review changes · Esc back"
+			} else {
+				hint = "Enter append · ↑↓ scroll · Esc back"
+			}
 		} else if len(m.agents.Targets) == 0 {
-			hint = "↑↓ scroll  ·  c copy  ·  m mark as added  ·  Esc back"
+			hint = "↑↓ scroll · c copy for this task · Esc back"
 		} else {
-			hint = "↑↓ scroll  ·  c copy  ·  Esc back"
+			hint = "↑↓ scroll · c copy for this task · Esc back"
 		}
-	case "faq_text", "doctor":
+	case "faq_text":
 		hint = "↑↓ / PgDn scroll  ·  Esc back"
 	}
+	if m.innerWidth() < 48 {
+		switch m.page {
+		case "providers":
+			hint = "↑↓ Enter · / search · Esc back"
+		case "profile", "business", "active", "agent_targets", "agent_home", "settings", "update", "faq":
+			hint = "↑↓ Enter · Esc back · ? keys"
+		case "key":
+			hint = "Tab details · Esc back"
+			if m.text != "" {
+				hint = "Enter save · Ctrl-U clear\nTab details · Esc back"
+			} else if m.key.Page != "" {
+				hint = "Enter open link · Tab details\nEsc back"
+			}
+		case "actions":
+			hint = "Type to find · ↑↓ Enter · Esc back"
+		case "agent_copy":
+			hint = "Enter copy · ↑↓ scroll · Esc back"
+		}
+	}
+
 	if m.innerWidth() < 48 {
 		switch m.page {
 		case "contexts", "environments":
@@ -574,19 +756,35 @@ func (m model) footer() []string {
 			hint = "↑↓ · Enter select\nEsc back"
 		}
 	}
+	if m.page == "providers" && m.query != "" {
+		hint = "↑↓ Enter · / search · Esc clear search"
+	}
+
+	if m.page == "active" && len(m.state.RecentSetups) > 0 {
+		hint = "↑↓ Enter · r recent · Esc back"
+	}
+	if m.page == "recent_setups" {
+		hint = "↑↓ move · Enter review · Esc back"
+	}
+	if m.page == "recent_details" {
+		hint = "Enter use · ↑↓ scroll · Esc back"
+	}
+
 	if m.busyValidation {
 		hint = "Checking · edits retained · Esc back"
 	} else if m.busyVisible {
 		hint = "Ctrl-C exit"
 	}
-	rows = append(rows, "")
+	if m.height >= 22 {
+		rows = append(rows, "")
+	}
 	rows = append(rows, m.styledWrap(hint, p.muted)...)
-	if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" || m.page == "key" {
+	if m.page != "profile_field" && m.page != "scope_name" && m.page != "name" {
 		total := len(m.body())
 		available := max(1, m.height-len(m.header())-len(rows)-2)
 		if total > available {
 			room := max(1, available-1)
-			start := min(max(0, m.scroll), max(0, total-room))
+			start := m.listScroll(m.body(), room)
 			end := min(total, start+room)
 			position := fmt.Sprintf("%d–%d of %d", start+1, end, total)
 			if end < total {
@@ -613,22 +811,19 @@ func (m model) inputFits() bool {
 func (m model) agentLines() []string {
 	p := m.palette()
 	rows := []string{}
-	copyBlock := m.agents.CopyBlock
-	if copyBlock == "" {
-		copyBlock = m.agents.Block
-	}
-	if len(m.agents.Targets) == 0 {
-		rows = append(rows, m.wrap("No agent folders found. Add this note to your agent's instructions.")...)
+	if len(m.reviewTargets()) == 0 {
+		rows = append(rows, m.wrap("No installed agent folders found.")...)
 		rows = append(rows, "")
-		for _, row := range strings.Split(strings.TrimSuffix(copyBlock, "\n"), "\n") {
-			rows = append(rows, m.wrap(row)...)
-		}
+		rows = append(rows, m.wrap("Open your agent once, then reopen Godmode to find its instruction files.")...)
+		rows = append(rows, "")
+		rows = append(rows, m.wrap("Copy for this task works with any agent chat.")...)
 		return rows
 	}
+
 	pending := 0
 	for _, created := range []bool{true, false} {
 		group := []target{}
-		for _, t := range m.agents.Targets {
+		for _, t := range m.reviewTargets() {
 			if !t.Added && t.Issue == "" && t.Created == created {
 				group = append(group, t)
 			}
@@ -652,7 +847,7 @@ func (m model) agentLines() []string {
 		}
 		rows = append(rows, "")
 	}
-	for _, t := range m.agents.Targets {
+	for _, t := range m.reviewTargets() {
 		if t.Issue != "" {
 			rows = append(rows, m.styledWrap(t.Path+": "+t.Issue, p.warn)...)
 		}
@@ -660,15 +855,19 @@ func (m model) agentLines() []string {
 			rows = append(rows, m.styledWrap("✓ "+t.Path+"  ·  already added", p.good)...)
 		}
 	}
-	if pending > 0 {
-		for _, row := range strings.Split(strings.TrimSuffix(m.agents.Block, "\n"), "\n") {
+	rows = append(rows, "", p.title.Render("Godmode note:"))
+	for _, row := range strings.Split(strings.TrimSuffix(m.agents.Block, "\n"), "\n") {
+		if pending > 0 {
 			rows = append(rows, m.styledWrap("+ "+row, p.good)...)
+		} else {
+			rows = append(rows, m.wrap(row)...)
 		}
 	}
-	rows = append(rows, "", p.title.Render("Copy for this task"))
-	for _, row := range strings.Split(strings.TrimSuffix(copyBlock, "\n"), "\n") {
-		rows = append(rows, m.wrap(row)...)
-	}
+	rows = append(rows, "")
+	rows = append(rows, m.styledWrap("Already added means either marker or \"godmode help\" was found. Existing wording is kept.", p.muted)...)
+	rows = append(rows, "")
+	rows = append(rows, m.styledWrap("Start a new agent session to load saved instructions. Copy for this task works in a running session.", p.muted)...)
+
 	return rows
 }
 
@@ -683,7 +882,7 @@ func (m *model) noteReview() {
 }
 func (m *model) clampScroll() { m.scroll = min(max(0, m.scroll), max(0, len(m.body())-m.bodyRoom())) }
 func (m model) listScroll(lines []string, room int) int {
-	if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" || m.page == "key" || m.page == "profile_field" || m.page == "scope_name" {
+	if m.page == "agents" || m.page == "agent_copy" || m.page == "faq_text" || m.page == "doctor" || m.page == "shortcuts" || m.page == "recent_details" || m.page == "scope_details" || m.page == "key" || m.page == "profile_field" || m.page == "scope_name" {
 		return min(max(0, m.scroll), max(0, len(lines)-room))
 	}
 	// A selected row stays in the viewport even when a description occupies another row.

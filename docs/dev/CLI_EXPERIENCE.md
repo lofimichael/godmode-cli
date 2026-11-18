@@ -1,6 +1,6 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the native 0.19 interface. Direct commands and the Python plain/compatibility interface retain their own output contracts.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the current native source candidate; its navigation changes are not released yet. Direct commands and the Python plain/compatibility interface retain their own output contracts. The [navigation audit](NAVIGATION_AUDIT.md) records the current routes, evidence, and the remaining final review handoffs. The images below are historical 0.19 examples, not screenshots of the current candidate.
 
 ![Godmode home](../images/v019/home.png)
 
@@ -10,7 +10,7 @@ Godmode stores profile fields and provider keys, then supplies selected keys to 
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. The home uses aligned rows for Active setup, Providers, Agents, Business details, Doctor, Update, Help / FAQ, Music and Done. Business and keys stay visible across pages. Active setup leads to separate key-environment and business-profile pickers and saves the complete pair. The intro has an immediate warning-to-empowerment transition, a repeating gradient animation and no forced wait. Selected rows pulse briefly; delayed loading indicators appear only during real work. See [active setup](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
+Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. Home leads with Provider keys, Connect agent and Business details, followed by Switch setup, Settings, Help, Music and Exit. The active business and key environment remain visible. Switch setup stages both choices until Use this setup saves the pair. Recent setups recalls up to five used pairs and requires a review before applying one. Ctrl-K finds an action; / filters providers or opens the finder from other menus. Esc returns to the actual parent, retaining focus and query; q quits from menus and remains text in an input. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
 ```mermaid
 flowchart LR
@@ -30,73 +30,67 @@ The Go interface temporarily holds newly entered text. The Python engine validat
 
 ## Research
 
-| Source | Pattern | Application |
-| --- | --- | --- |
-| [Evil Martians: CLI progress](https://evilmartians.com/chronicles/cli-ux-best-practices-3-patterns-for-improving-progress-displays), April 15, 2024 | Measured X/Y progress, restrained bars, clean final output | Counts accompany setup bars. A local save produces a receipt without an animation. |
-| [Evil Martians: Devs in mind](https://evilmartians.com/chronicles/devs-in-mind-how-to-design-interfaces-for-developer-tools), January 14, 2025 | Developer work switches among tasks and contexts | Profile, providers, and agents remain independent. Direct commands skip the welcome. |
-| [Evil Martians: five dev tool patterns](https://evilmartians.com/chronicles/keep-it-together-5-essential-design-patterns-for-dev-tool-uis), May 7, 2024 | Label-value properties, clear active states, restrained tables | Short aligned rows replace repeated descriptions. A pointer identifies selection without color. |
-| [Evil Martians: layout rule](https://evilmartians.com/chronicles/devtool-layout-rule), August 5, 2024 | A choice normally controls content below or to its right | A provider row precedes its description, fields, and save action. |
-| [Evil Martians: HTTPie](https://evilmartians.com/chronicles/ui-design-for-httpie-macos-vibes-for-the-api-testing-client), January 30, 2023 | A compact layout preserves working space; onboarding starts with a working request | First use leads to a real saved key. Extra headings and stacked panels do not compete with the input. |
-| [GitHub CLI accessibility](https://github.blog/engineering/user-experience/building-a-more-accessible-github-cli/), May 2, 2025; updated May 12 | Sequential prompts, static progress, terminal-owned colors | Plain mode uses ordinary numbered choices. Theme colors and words preserve readable state. |
-| [GitHub CLI foundations](https://github.com/cli/cli/blob/trunk/docs/primer/foundations/README.md), read November 14, 2026 | Human output and machine output have different needs | Guided mode uses visual status; direct data output stays complete and pipeable. |
-| [Charm Huh](https://github.com/charmbracelet/huh#accessibility), read November 14, 2026 | Focused fields; accessible mode replaces redraws with standard prompts | Plain mode is a separate interaction mode. Disabling color alone does not select it. |
-| [Charm Gum](https://github.com/charmbracelet/gum), read November 14, 2026 | Small selection, filter, input, and confirmation controls | Provider search reduces the catalog with a slash filter in the current interface. |
-| [Command Line Interface Guidelines](https://clig.dev/), read November 14, 2026 | Useful help, purposeful symbols, actionable errors, composable output | Common commands appear first. Errors name the repair. Direct commands keep their output contracts. |
-| [uv style guide](https://raw.githubusercontent.com/astral-sh/uv/main/STYLE.md), read November 14, 2026 | Meaning survives without styling; data and logs use separate streams | Counts and status words remain readable with no color. Errors stay on stderr. |
-| [Stripe CLI login](https://docs.stripe.com/cli/login), read November 14, 2026 | Browser, manual, and headless paths are explicit | Key entry keeps a visible provider link and a separate stdin route. |
+The current [navigation research](navigation-audit/research.md) compares ten CLI/TUI examples using primary sources and separates documented behavior from design inference. The [audit](NAVIGATION_AUDIT.md#cli-comparisons-and-design-inferences) explains which patterns were adopted. Earlier [framework research](CLI_FRAMEWORKS.md) remains the record of the framework choice. These comparisons are not human usability experiments or a ranking of the tools.
 
 ## Routes
 
 ```mermaid
 flowchart TD
-    Entry[godmode] --> Seen{Welcome completed?}
-    Seen -->|No| Welcome[Animated warning → empowerment]
-    Seen -->|Yes| Home[Active setup · Providers · Agents · Business details · Doctor · Update · FAQ · Music]
-    Welcome -->|Enter on each stage| Home
-    Home --> Active[Choose business + keys]
-    Active -->|Save pair for new commands| Home
-    Home --> Profile[Profile field list]
+    Entry[godmode] --> Welcome[First-use intro if needed]
+    Welcome --> Home[Task menu]
+    Home --> Providers[Provider keys and local filter]
+    Providers --> Input[Choose key and review masked edit]
+    Input -->|Explicit Enter save| Providers
+    Home --> Connect[Connect agent]
+    Connect --> Copy[Copy scoped note for current task]
+    Connect --> Target[Choose one agent or All]
+    Target --> Diff[Exact file and addition preview]
+    Diff -->|Review then append| Connect
+    Home --> Profile[Optional business fields]
     Profile --> Field[Edit one field]
-    Field -->|Save| Profile
-    Home --> Providers[Provider list + search]
-    Providers --> One{One key?}
-    One -->|Yes| Input[Provider guidance + masked key preview]
-    One -->|No| KeyList[Choose a key]
-    KeyList --> Input
-    Input -->|Save| Return[Provider list or key list]
-    Home --> Preview[Agent file changes + shared note]
-    Preview -->|Full review then Enter| Append[Guarded append]
-    Append --> Home
-    Home --> FAQ[FAQ list and readable entries]
-    Home --> Music[Close native UI; open Python music interface]
-    Music --> Home
-    Home -->|Done or Esc| Shell[Shell prompt]
-    Direct[Direct command] --> Result[Complete output or error]
-    Result --> Shell
+    Field -->|Save or cancel| Profile
+    Home --> Switch[Stage environment and business]
+    Switch -->|Use this setup| Home
+    Switch -->|Cancel selection| Home
+    Switch --> Recent[Recent setups / r]
+    Recent --> Pair[Review both names]
+    Pair -->|Enter use| Recent
+    Home --> Settings[Motion / Check setup / Update / Replay intro]
+    Settings --> Confirm[Update confirmation]
+    Confirm -->|Explicit update| Shell[Restore terminal before updater]
+    Home --> Help[Quickstart and FAQ]
+    Home --> Music[External local music interface]
+    Home -->|Exit / q / Esc| Shell
+    Finder[Ctrl-K action finder] --> Destination[Selected route]
+    Destination -->|Esc retains query| Finder
 ```
 
-`intro` always replays the welcome. On a fresh home, native `setup` and `set NAME` also show it before opening their requested route. Native `profile`, `agents` and `faq` open their sections directly. Back from a section opened as its own command exits; back from a section opened through home returns home.
+`intro` replays the welcome. On a fresh home, native `setup` and `set NAME` also show it before their requested route. Native `profile`, `agents`, `faq` and `settings` open their sections directly. Back follows the actual navigation history. Leaving a direct entry route returns to the terminal; a provider reached through the finder returns to its query. See the audit for the complete route map and scope semantics.
+
+Recent setups is available from Switch setup, its `r` shortcut, and the action finder when history exists. It records up to five applied pairs in `ui.json`; browsing, cancellation and unselected creation do not add history. Choosing a row shows both names before Enter applies them together. A separate history-write warning does not undo an already saved active pair. See the [tested semantics](NAVIGATION_AUDIT.md#recent-setup-pairs).
+
+Back restores provider, help, scope and agent-target identity as well as menu position. Recent entries are matched by pair, so reordered history cannot change what a detail screen means. Returning to Connect agent after a non-agent detour reloads its plan asynchronously; an exact target is retained when available, and a refreshed file diff must be reviewed again. Missing targets and an old All preview return to Connect agent rather than expanding the write.
 
 ## Guided setup
 
 | Surface | Visible content | Action and return |
 | --- | --- | --- |
-| Welcome | Original block lettering, local-file statement and consequences of account access | Enter accepts only while the complete statement/action fit. Esc exits without recording completion. Explicit `intro` exits after acceptance; other routes continue to their destination. |
-| Home | Overall meter, three setup counts, FAQ, Music and Done | Enter opens a selection. Back from Profile focuses Providers; back from Providers focuses Agents; back from Agents focuses FAQ. Done or Esc exits without a final setup summary. |
-| Providers | Names, saved state and selected description | `/` filters the catalog. Enter opens a match. Esc clears active search first. An empty search result does not open a provider or URL. |
-| One-key provider | Bold visit heading, separate link, spaced instruction bullets, masked input and file preview | Empty Enter opens the provider page when available. Valid input saves only on Enter; paste never submits. Esc abandons the field. |
-| Multiple-key provider | Key checklist and saved states | Choose a key. After save, the checklist selects the next missing key, or Back once a required/alternative set is complete. It does not automatically open the next field. |
-| Custom key | Name entry followed by key input | Type a valid name using letters, digits and underscores. Name fields ignore pastes. `_JSON` keys accept a validated object or supported file input. |
-| Key preview | Target path, `+ Add` or `± Replace` and masked assignment | The complete input/review area must fit before Enter can save. Tab toggles shell-equivalent detail. Existing plaintext secret values are never shown. |
-| Key error | Validation message or actionable file error | Correct the entry or cancel. Invalid input is not committed. |
-| Key save | Masked receipt in the return context | Return to provider/key list. A direct `set NAME` exits after save. No separate success screen. |
-| Profile | One business-details paragraph and six optional label-value fields | Enter opens the selected field. Stored values remain visible. |
-| Profile field | Existing value and editable text | Enter saves, skips an empty new value or keeps an emptied existing value; `/clear` removes it. Return to the list with the next row selected. Esc returns without saving. |
-| Agent preview | Created/modified target groups, addition/removal counts and one shared note | Scroll through the entire preview before Enter appends. Width changes reset review progress. A terminal below the minimum review size cannot append. `c` copies the note when a clipboard tool is available. |
-| No detected agent | Shared note for manual use | Copy/select it, then `m` marks it added only after review. This marker describes a user action, not verified agent execution. |
-| Agent result | Added-file count | Return to home or exit a direct `agents` session. Existing instructions remain intact. |
-| FAQ | Topic list followed by scrollable explanations | Enter opens a topic; Esc returns to the list. |
-| Music | Local song picker, cached synthesis and PCM spectrum | The native session closes before the Python music interface takes the terminal. Returning from music starts a fresh native home session. |
+| Welcome | Original block lettering and account-access consequences | Enter advances only while the required statement/action fit. Esc exits without recording completion. |
+| Home | Three primary tasks, secondary setup/settings/help, Music and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
+| Provider keys | Names, saved state, selected description and overflow position | / filters locally. Esc clears active filtering first. No-match Enter cannot open a provider or URL. |
+| Provider key | Guidance, shortened link, masked input, destination and change preview | Empty Enter can open the provider page. Paste never submits. Valid input saves on explicit Enter only when review fits; Esc abandons it. |
+| Multiple-key provider | Key checklist and saved states | Choose a key; returning preserves its list context. |
+| Custom key | Name entry, then masked input | Name fields ignore pastes. Supported JSON values retain the existing validation path. |
+| Business details | Six optional fields and existing values | Opens directly from Home. Saving a detail does not publish it. |
+| Profile field | Prefilled text and explicit clear behavior | Save/unchanged/remove receipt reflects the backend result. Esc discards the draft. Return retains the field-list route. |
+| Connect agent | Copy for this task or Add to agent files | Current-task copy is separate from permanent instruction-file changes. |
+| Agent target choice | Detected destinations plus explicit All and Back | Choose one or all, then inspect the exact preview. Arbitrary project files are not detected. |
+| Agent preview | Selected paths, additions/removals and append block | Continuous review unlocks Enter append; jumping past unseen lines does not. Width changes restart review. Append returns to Connect agent. |
+| Switch setup | Current pair and staged environment/business choices | Use this setup saves both once. Back cancels the selection. Explicitly created records remain even if selection is later canceled. |
+| Recent setups | Up to five applied environment/business pairs | Choose a pair, review both names, then Enter uses it. Cancel preserves active state and any unapplied manual draft. |
+| Settings | Motion, Check setup, Update Godmode, Replay intro | Motion persists in ui.json; command no-motion overrides do not rewrite it. Update requires confirmation before external handoff. |
+| Help | Quickstart first, then connection/scope/files/source topics | Enter opens a topic; Esc returns to its list or finder origin. ? opens keyboard help from menus. |
+| Music | Existing local song picker, cached synthesis and spectrum | The native terminal is restored before handoff. Failures remain visible; successful return reopens Home. |
 
 The profile fields are `operator_name`, `business_name`, `legal_name`, `website`, `public_email`, and `business_mailing_address`. A provider instruction must still name the correct scope, account and page. Brief copy does not remove information needed for a decision.
 
@@ -118,11 +112,13 @@ The profile fields are `operator_name`, `business_name`, `legal_name`, `website`
 | `godmode profile show` | Complete profile JSON |
 | `godmode profile set FIELD [--stdin]` | Python field entry or piped value |
 | `godmode profile unset FIELD`, `profile path` | Remove one field; print profile path |
-| `godmode agents` | Native append preview; redirected output contains the instruction note |
+| `godmode agents` | Native copy/target chooser and guarded append; redirected output contains the instruction note |
 | `godmode provider [SLUG]` | Catalog summary or printable provider guide |
 | `godmode faq` | Native topic list; core output when plain or redirected |
 | `godmode help` | Saved names/profile state and agent usage contract |
-| `godmode --help`, `godmode COMMAND --help` | Command reference and command-specific help |
+| `godmode --help`, `godmode COMMAND --help`, `godmode help COMMAND` | Command reference and command-specific help; bare help remains the agent guide |
+| `godmode settings` | Native Settings in a terminal; plain/redirected output reports Motion |
+| `godmode settings motion on\|off`, `settings --json` | Save Motion; inspect preference and local ui.json path |
 | `godmode path`, `edit`, `migrate` | Print key-file path; open nano; verify and seal compatible legacy keys |
 | `godmode source`, `build-info` | Embedded Python source; core hash, compiler and dependency metadata |
 | `godmode music [init\|list\|play\|status\|clear\|forget]` | Explicit optional local synthesis and playback; see [Music](../MUSIC.md) |
@@ -154,9 +150,9 @@ The shell installer selects a compatible native release for macOS/Linux ARM64 or
 
 ## Completion and visual rules
 
-The setup meter has 18 points: six optional profile fields contribute one each, one complete stored provider set contributes six, and one agent note contributes six. A custom key can satisfy the provider portion. More providers are optional. The total uses integer flooring. `Saved` means stored locally; `Added` means an instruction note exists or the user marked a manual addition. Neither proves live provider access or successful agent execution.
+The native task menu does not use a completion percentage. Business fields and unused providers are optional. `Saved` means stored locally; an appended note means the specified file changed. Neither proves provider access, agent instruction loading or successful execution. Current-task copying is its own operation and does not mark file installation complete.
 
-The native interface uses Unicode block art, arrows, separators and bars. It currently has no complete ASCII substitution layer; use plain mode for ASCII-oriented terminals. Light/dark palettes adapt to terminal background information. `NO_COLOR=1` and `CLICOLOR=0` retain selection text and symbols without color. `--no-motion` or `GODMODE_NO_MOTION=1` suppresses decorative motion; the native welcome also skips its reveal when colors are disabled. Plain mode provides static sequential output. Music has its own monochrome visualizer and no-motion behavior.
+The native interface uses Unicode block art, arrows, separators and bars. It currently has no complete ASCII substitution layer; use plain mode for ASCII-oriented terminals. Light/dark palettes adapt to terminal background information. `NO_COLOR=1` and `CLICOLOR=0` retain selection text and symbols without color. Motion can be saved in Settings or with `godmode settings motion off`. `--no-motion` or `GODMODE_NO_MOTION=1` overrides it for the current command; the native welcome also skips its reveal when colors are disabled. Plain mode provides static sequential output. Music has its own monochrome visualizer and no-motion behavior.
 
 File previews carry meaning in text and signs, not color alone. Native keys show `+ Add` or `± Replace` with a masked assignment. Agent appends show plus-prefixed additions and a zero removal count. Ordinary field entry has no spinner or invented progress animation. Direct outputs remain complete and pipeable.
 
@@ -165,15 +161,15 @@ File previews carry meaning in text and signs, not color alone. Native keys show
 | Choice | Current decision |
 | --- | --- |
 | Go terminal framework | Bubble Tea and Lip Gloss are the selected default; Python retains file operations and compatibility routes |
-| Responsive home | Three unbordered columns when space permits; compact rows otherwise |
+| Responsive home | Aligned task rows; compact scope/header/footer at narrow sizes; list overflow remains visible |
 | Source inspection | Embedded engine through `source`; complete matching sources and vendor tree in the separate source archive |
 | Provider login/refresh | Provider tools own these operations; Godmode stores credentials |
 | Full-catalog completion target | Not required; only chosen services need setup |
-| Agent append review | Every preview section must be reviewed before write; existing file text is preserved |
+| Agent append review | Chosen target paths and append block must be reviewed before write; task copy is separate; existing file text is preserved |
 | Color versus plain mode | Distinct controls; plain mode changes interaction, not only styling |
 | Optional music | Local synth integration, separate process and removable adapter; no tools/fonts/songs bundled |
 
-The [0.15 verification record](UX_VERIFICATION.md) contains the executed native, compatibility, packaging and preservation checks.
+The [0.15 verification record](UX_VERIFICATION.md) is historical. The current [navigation audit](NAVIGATION_AUDIT.md#validation-checkpoints-actually-completed) records executed candidate checks and separates frozen reviewer checkpoints from the unreleased final candidate. No public release or installation was performed by that audit.
 
 ## Verification requirements
 

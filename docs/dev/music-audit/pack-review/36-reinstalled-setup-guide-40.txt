@@ -1,0 +1,18 @@
+ GODMODE // BEATZ                 LOCAL 
+ [ LIBRARY ]   QUEUE 0         0 tracks 
+ SETUP GUIDE · ↑↓ to scroll             
+ ────────────────────────────────────── 
+ 1. Choose a folder with .ootrs tracks. 
+ 2. Prepare local music:                
+ godmode music setup --songs DIR        
+ Replace DIR with your folder's path.   
+ 3. Press R here to reload.             
+                                        
+ Godmode turns local .ootrs sequences   
+ Stopped                                
+ NOW PLAYING / STOPPED ──────────────── 
+ Choose a track to begin                
+ 0:00 / –:–– ──────────────────── 35%   
+ Repeat off · Shuffle off   Queue empty 
+ ↑↓ scroll  PgUp/PgDn page              
+ R reloads after setup  q close         

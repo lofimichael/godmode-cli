@@ -102,7 +102,7 @@ def main():
             terminal, capture = recorder(env, ["intro"], cols, rows, theme)
             suffix = f"{cols}x{rows}-{theme}" + ("-no-color" if not colors else "")
             try:
-                capture.wait_for("Enter I understand")
+                capture.wait_for("Enter to continue")
                 assert not (root / ".godmode").exists(), "intro created files before acknowledgement"
                 shot(capture, "intro-warning-" + suffix, cols, rows, theme)
                 if (cols, rows, theme, colors) == (80, 24, "dark", True):
@@ -112,7 +112,7 @@ def main():
                     assert not any(cell.underscore for row in capture.screen.buffer.values()
                                    for cell in row.values()), "terminal model invented underline"
                 terminal.send(b"\r")
-                capture.wait_for("Enter finish")
+                capture.wait_for("Enter to finish")
                 assert not (root / ".godmode/intro.seen").exists(), "first card marked intro complete"
                 shot(capture, "intro-power-" + suffix, cols, rows, theme)
                 terminal.send(b"\r")
@@ -126,10 +126,10 @@ def main():
         root = Path(temp).resolve()
         terminal, capture = recorder(environment(root), [], 80, 24, "dark")
         try:
-            capture.wait_for("Enter I understand")
+            capture.wait_for("Enter to continue")
             assert not (root / ".godmode").exists()
             terminal.send(b"\r")
-            capture.wait_for("Enter open Godmode")
+            capture.wait_for("Enter to open Godmode")
             assert not (root / ".godmode/intro.seen").exists()
             terminal.send(b"\r")
             capture.wait_for("Active setup")
@@ -157,14 +157,14 @@ def main():
 
         capture.settle = live_frame
         try:
-            capture.wait_for("Enter I understand")
+            capture.wait_for("Enter to continue")
             for stage in range(2):
                 next_frame = time.monotonic()
                 for frame in range(96):
                     capture.capture(40)
                 if stage == 0:
                     terminal.send(b"\r")
-                    capture.wait_for("Enter finish")
+                    capture.wait_for("Enter to finish")
             terminal.send(b"\r")
             terminal.done()
             capture.write(output / "intro.gif")
@@ -176,7 +176,7 @@ def main():
         root = Path(temp).resolve()
         terminal, capture = recorder(environment(root, motion=True), ["intro"], 80, 24, "dark")
         try:
-            capture.wait_for("Enter I understand")
+            capture.wait_for("Enter to continue")
             started = time.monotonic()
             later_styles = set()
             while time.monotonic() - started < 9:

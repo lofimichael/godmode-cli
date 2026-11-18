@@ -1,0 +1,24 @@
+ █▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀                              B E A T Z   /   0 1 
+ █▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄                             LOCAL SEQUENCE RADIO 
+ LIBRARY   [ QUEUE 2 ]                                              1620 tracks 
+ SELECTED DETAILS · ↑↓ to scroll                                                
+ ────────────────────────────────────────────────────────────────────────────── 
+ Rocky's Message [Oboe]                                                         
+                                                                                
+ Pocky & Rocky                                                                  
+                                                                                
+ Enter plays this queued track.                                                 
+ a appends it to the queue.                                                     
+ c opens its collection.                                                        
+ A appends the whole collection.                                                
+                                                                                
+                                                                                
+                                                                                
+ Stopped                                                                        
+ NOW PLAYING / STOPPED ──────────────────────────────────────────────────────── 
+ Choose a track to begin                                                        
+ 0:00 / –:–– ───────────────────────────────────────────────────────────── 0%   
+ Repeat off · Shuffle off                                              2 queued 
+ PCM / player clock  motion reduced                                             
+ c collection  A add collection                                                 
+ ↑↓ scroll  i/Esc back  q close                                                 

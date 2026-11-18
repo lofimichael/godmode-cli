@@ -1,0 +1,24 @@
+ █▀▀ █▀█ █▀▄ █▀▄▀█ █▀█ █▀▄ █▀▀                              B E A T Z   /   0 1 
+ █▄█ █▄█ █▄▀ █ ▀ █ █▄█ █▄▀ ██▄                             LOCAL SEQUENCE RADIO 
+ [ LIBRARY ]   QUEUE 0                                                 0 tracks 
+ PLAYER KEYS · ↑↓ to scroll                                                     
+ ────────────────────────────────────────────────────────────────────────────── 
+ LIBRARY & QUEUE                                                                
+ ↑ / ↓      Choose a row                                                        
+ Enter      Open collection / play track                                        
+ Esc        Clear search / go back                                              
+ /          Search the whole library                                            
+ Enter/Tab  Finish search; focus results                                        
+ Tab        Switch library and queue                                            
+ a          Append track or collection                                          
+ i          Full title and collection details                                   
+ c          Open selected track's collection                                    
+ A          Append its whole collection                                         
+ Stopped                                                                        
+ NOW PLAYING / STOPPED ──────────────────────────────────────────────────────── 
+ Choose a track to begin                                                        
+ 0:00 / –:–– ──────────────────────────────────────────────────────────── 35%   
+ Repeat off · Shuffle off                                           Queue empty 
+ PCM / player clock  motion reduced                                             
+ ↑↓ scroll  ? / Esc return                                                      
+ q close view · playback continues                                              

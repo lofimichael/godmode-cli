@@ -21,6 +21,14 @@ func TestRoutesKeepAutomationAndChildFlagsDirect(t *testing.T) {
 		{[]string{"set", "TOKEN", "--stdin"}, "set", false},
 		{[]string{"run", "TOKEN", "--", "tool", "--plain"}, "run", false},
 		{[]string{"agents", "--help"}, "agents", false},
+		{[]string{"settings"}, "settings", true},
+		{[]string{"settings", "--help"}, "settings", false},
+		{[]string{"music"}, "music", true},
+		{[]string{"music", "stop"}, "music", false},
+		{[]string{"music", "status", "--json"}, "music", false},
+		{[]string{"music", "play", "Local Song"}, "music", false},
+		{[]string{"music", "__bridge"}, "music", false},
+		{[]string{"help", "settings"}, "help", false},
 		{[]string{"--home", "/example", "faq"}, "faq", true},
 	}
 	for _, test := range cases {
@@ -61,6 +69,10 @@ func TestRoutesKeepHomeAndMotionOptions(t *testing.T) {
 	route := selectRoute([]string{"--home=/example", "--no-motion", "setup", "vercel"})
 	if route.home != "/example" || !route.noMotion || route.arg != "vercel" || !route.interactive {
 		t.Fatal("interactive route lost a display option")
+	}
+	plain := selectRoute([]string{"--plain", "settings"})
+	if plain.command != "settings" || !plain.plain {
+		t.Fatal("plain Settings lost its text-engine route")
 	}
 }
 

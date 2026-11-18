@@ -286,6 +286,90 @@ assert (scope['environment'], scope['context']) == (%r, %r)
         self.assertEqual({p.name: p.read_bytes() for p in legacy.iterdir() if p.is_file()}, before)
         self.assertTrue((self.home / 'active.json').exists())
 
+    def test_use_records_complete_recent_pairs_and_preserves_motion_and_unknown_settings(self):
+        self.command('settings', 'motion', 'off')
+        path = self.home / 'ui.json'
+        path.write_text('{"motion":false,"future_setting":{"keep":"this"}}')
+        for name in ('north', 'south'):
+            self.command('env', 'create', name)
+            self.command('context', 'create', name + '-business')
+        north = {'environment': 'north', 'context': 'north-business'}
+        south = {'environment': 'south', 'context': 'south-business'}
+        automatic = {'environment': 'default', 'context': ''}
+        for pair, expected in ((north, [north, automatic]), (south, [south, north, automatic]),
+                               (north, [north, south, automatic])):
+            self.command('use', '--env', pair['environment'], '--context', pair['context'])
+            self.assertEqual(json.loads((self.home / 'active.json').read_text()), {'schema': 1, **pair})
+            self.assertEqual(json.loads(path.read_text()),
+                             {'motion': False, 'future_setting': {'keep': 'this'}, 'recent_setups': expected})
+            self.assertEqual(json.loads(self.command('settings', '--json').stdout),
+                             {'motion': False, 'path': str(path)})
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        self.command('use', '--env', 'north', '--context', 'north-business')
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
+        self.command('settings', 'motion', 'on')
+        data = json.loads(path.read_text())
+        self.assertTrue(data['motion'])
+        self.assertEqual(data['recent_setups'], [north, south, automatic])
+        self.assertEqual(data['future_setting'], {'keep': 'this'})
+
+    def test_use_recent_history_caps_five_without_duplicates(self):
+        self.command('context', 'create', 'business')
+        for name in ('one', 'two', 'three', 'four', 'five', 'six'):
+            self.command('env', 'create', name)
+            self.command('use', name, '--context', 'business')
+        history = json.loads((self.home / 'ui.json').read_text())['recent_setups']
+        self.assertEqual(history, [{'environment': name, 'context': 'business'}
+                                   for name in ('six', 'five', 'four', 'three', 'two')])
+        self.command('use', 'three', '--context', 'business')
+        history = json.loads((self.home / 'ui.json').read_text())['recent_setups']
+        self.assertEqual([pair['environment'] for pair in history], ['three', 'six', 'five', 'four', 'two'])
+
+    def test_unapplied_and_failed_cli_choices_do_not_change_recent_history(self):
+        self.command('use', '--env', 'default', '--context', '-')
+        history_path, active_path = self.home / 'ui.json', self.home / 'active.json'
+        before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in (history_path, active_path)}
+        self.command('env', 'create', 'pending')
+        self.command('context', 'create', 'pending-business')
+        self.command('--env', 'pending', '--context', 'pending-business', 'active', '--json')
+        self.command('--env', 'pending', '--context', 'pending-business', 'agents', '--print')
+        self.command('env', 'list')
+        self.command('context', 'list')
+        self.command('settings', '--json')
+        self.command('use', 'missing', expected=2)
+        self.command('use', 'pending', '--context', 'missing-business', expected=2)
+        for path, snapshot in before.items():
+            self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), snapshot)
+
+    def test_use_history_warning_is_nonfatal_and_preserves_malformed_file(self):
+        self.command('settings', 'motion', 'off')
+        self.command('env', 'create', 'north')
+        self.command('context', 'create', 'north-business')
+        path = self.home / 'ui.json'
+        for raw in ('{broken', '{"motion":false,"recent_setups":[{"environment":"../private-path","context":""}]}'):
+            with self.subTest(raw=raw):
+                path.write_text(raw)
+                path.chmod(0o600)
+                result = self.command('use', '--env', 'north', '--context', 'north-business')
+                self.assertIn('Active setup saved. Keys: north', result.stdout)
+                self.assertIn('Active setup saved, but recent setups were not updated.', result.stderr)
+                self.assertNotIn('../private-path', result.stdout + result.stderr)
+                self.assertEqual(path.read_text(), raw)
+                active = self.active()
+                self.assertEqual((active['environment'], active['context']), ('north', 'north-business'))
+
+    def test_use_history_uses_previous_saved_pair_instead_of_shell_override(self):
+        for name in ('north', 'south'):
+            self.command('env', 'create', name)
+            self.command('context', 'create', name + '-business')
+        self.command('use', '--env', 'north', '--context', 'north-business')
+        self.command('use', '--env', 'south', '--context', 'south-business',
+                     overrides={'GODMODE_ENV': 'unselected-shell', 'GODMODE_CONTEXT': 'unselected-shell-business'})
+        history = json.loads((self.home / 'ui.json').read_text())['recent_setups']
+        self.assertEqual(history[:2], [{'environment': 'south', 'context': 'south-business'},
+                                      {'environment': 'north', 'context': 'north-business'}])
+        self.assertNotIn('unselected-shell', json.dumps(history))
+
 
 if __name__ == '__main__':
     unittest.main()

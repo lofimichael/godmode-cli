@@ -27,6 +27,11 @@ var ErrMusic = errors.New("godmode music")
 var ErrUpdate = errors.New("godmode update")
 var ErrCancelled = errors.New("cancelled")
 
+// ReceiptExit reports a successful direct edit after the terminal is restored.
+type ReceiptExit struct{ Message string }
+
+func (e *ReceiptExit) Error() string { return e.Message }
+
 // CommandExit runs an external command only after Bubble Tea restores the terminal.
 type CommandExit struct {
 	Command              error
@@ -55,6 +60,12 @@ type progress struct {
 	Errors                 []string
 }
 type snapshot struct {
+	RecentSetups []setupPair `json:"recent_setups"`
+	HistoryError string      `json:"history_error"`
+
+	Preferences      struct{ Motion *bool }
+	PreferencesError string `json:"preferences_error"`
+
 	MusicIncluded                       bool   `json:"music_included"`
 	StoreError                          string `json:"store_error"`
 	ProfileError                        string `json:"profile_error"`
@@ -105,6 +116,18 @@ type faqEntry struct {
 type tickMsg time.Time
 
 type model struct {
+	recentAt int
+
+	agentOnly string
+
+	draftEnvironment, draftContext string
+	draftOpen                      bool
+
+	trail         []location
+	returning     bool
+	motionForced  bool
+	providerKeyAt int
+
 	backend                               Backend
 	opts                                  Options
 	state                                 snapshot
@@ -174,13 +197,16 @@ func Run(client Backend, route, arg string, opts Options) error {
 }
 
 func newModel(client Backend, route, arg string, opts Options) (model, error) {
-	m := model{backend: client, opts: opts, initialRoute: route, arg: arg, width: 80, height: 24, dark: true,
+	m := model{backend: client, opts: opts, motionForced: opts.NoMotion, initialRoute: route, arg: arg, width: 80, height: 24, dark: true,
 		colors: os.Getenv("NO_COLOR") == "" && os.Getenv("CLICOLOR") != "0", keyReturn: "providers"}
 	if bg := os.Getenv("COLORFGBG"); strings.HasSuffix(bg, ";15") || strings.HasSuffix(bg, ";7") {
 		m.dark = false
 	}
 	if err := m.refresh(); err != nil {
 		return m, err
+	}
+	if m.state.Preferences.Motion != nil && !*m.state.Preferences.Motion {
+		m.opts.NoMotion = true
 	}
 	if route == "" {
 		route = "home"
@@ -254,19 +280,26 @@ func (m *model) openRoute(route, arg string) {
 	case "home":
 		m.page = "home"
 		m.homeAt = 0
+		if m.state.KeyCount > 0 && m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
+			m.homeAt = 1
+		}
 		m.selected = m.homeAt
 	case "intro":
 		m.page = "intro"
 		m.introStage, m.tick = 0, 0
 	case "profile":
 		m.page = "profile"
+	case "settings":
+		m.page = "settings"
 	case "setup":
 		m.page = "providers"
 		if arg != "" {
 			for i, p := range m.state.Providers {
 				if p.ID == arg {
 					m.providerAt = i
+					previous := m.location()
 					m.openProvider(i)
+					m.remember(previous)
 					return
 				}
 			}
@@ -340,10 +373,10 @@ func (m *model) openProvider(index int) {
 func (m *model) loadAgents() {
 	m.resetInput()
 	m.agents = agentPlan{}
+	m.agentOnly = ""
 	m.reviewedUntil = 0
 	if m.call("agents_plan", nil, &m.agents) {
-		m.page = "agents"
-		m.noteReview()
+		m.page, m.selected = "agent_home", 0
 	}
 }
 func (m *model) loadFAQ() {
@@ -356,6 +389,17 @@ func (m *model) loadFAQ() {
 	}
 }
 func (m *model) back() tea.Cmd {
+	m.returning = true
+	if m.page == "active" {
+		m.draftOpen = false
+	}
+	if len(m.trail) > 0 {
+		m.resetInput()
+		previous := m.trail[len(m.trail)-1]
+		m.trail = m.trail[:len(m.trail)-1]
+		m.restore(previous)
+		return nil
+	}
 	m.error = ""
 	m.scroll = 0
 	m.details = false
@@ -372,7 +416,7 @@ func (m *model) back() tea.Cmd {
 			return nil
 		}
 		fallthrough
-	case "active", "business", "providers", "agents", "faq", "doctor":
+	case "active", "business", "providers", "agent_targets", "agent_home", "agents", "faq", "doctor", "settings", "update", "shortcuts", "actions", "agent_copy":
 		if m.initialRoute != "home" {
 			m.quitting = true
 			return tea.Quit
@@ -382,7 +426,7 @@ func (m *model) back() tea.Cmd {
 	case "contexts":
 		m.page, m.selected = "active", 1
 	case "environments":
-		m.page, m.selected = "active", 0
+		m.startActive()
 	case "environment_new":
 		m.loadEnvironments()
 	case "scope_name":
@@ -479,7 +523,7 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if key == "esc" {
-			if m.filtering {
+			if m.filtering || (m.page == "providers" && m.query != "") {
 				m.filtering = false
 				m.query = ""
 				m.selected = 0
@@ -500,8 +544,45 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "scope_name" {
 			return m.editScope(msg)
 		}
+		if m.page != "intro" && !m.filtering {
+			if m.page == "actions" {
+				return m.searchAction(msg)
+			}
+			switch key {
+			case "q":
+				m.quitting = true
+				return m, tea.Quit
+			case "?":
+				m.visit("shortcuts")
+				return m, nil
+			case "ctrl+k":
+				m.visit("actions")
+				return m, nil
+			case "/":
+				if m.page != "providers" {
+					m.visit("actions")
+					return m, nil
+				}
+			case "s":
+				if m.page != "active" {
+					m.visit("active")
+				}
+				return m, nil
+			}
+		}
+		if m.page == "active" && key == "r" && len(m.state.RecentSetups) > 0 {
+			previous := m.location()
+			m.openRecent()
+			m.remember(previous)
+			return m, nil
+		}
+
 		if key == "tab" && (m.page == "contexts" || m.page == "environments") {
+			previous := m.location()
 			m.openScopeDetails()
+			if m.page != previous.page {
+				m.remember(previous)
+			}
 			return m, nil
 		}
 		if m.page == "intro" {
@@ -514,6 +595,10 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.call("accept_intro", nil, nil) {
 					m.state.IntroSeen = true
+					if len(m.trail) > 0 {
+						cmd := m.back()
+						return m, cmd
+					}
 					if m.initialRoute == "intro" {
 						m.quitting = true
 						return m, tea.Quit
@@ -523,7 +608,7 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.page == "agents" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" {
+		if m.page == "agents" || m.page == "agent_copy" || m.page == "faq_text" || m.page == "doctor" || m.page == "scope_details" || m.page == "recent_details" || m.page == "shortcuts" {
 			if key != "enter" {
 				m.error = ""
 			}
@@ -547,12 +632,20 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.clampScroll()
 			m.noteReview()
-			if m.page == "agents" {
+			if m.page == "recent_details" && key == "enter" {
+				cmd := m.useRecent()
+				return m, cmd
+			}
+			if m.page == "doctor" && key == "r" {
+				cmd := m.loadDoctor()
+				return m, cmd
+			}
+			if m.page == "agents" || m.page == "agent_copy" {
 				cmd := m.agentKey(key)
 				return m, cmd
 			}
 			if m.page == "scope_details" && key == "enter" {
-				m.page = m.scopeReturn
+				m.back()
 				cmd := m.enterManagement()
 				return m, cmd
 			}
@@ -585,10 +678,7 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		count := m.choiceCount()
-		if m.page == "home" && key == "s" {
-			m.homeAt, m.page, m.selected = 0, "active", 0
-			return m, nil
-		}
+
 		switch key {
 		case "down", "j", "ctrl+n":
 			if count > 0 {
@@ -646,12 +736,20 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		if m.page == "profile_field" {
 			f := m.state.Fields[m.fieldAt]
-			if m.call("profile_save", map[string]any{"field": f.Name, "value": m.text}, nil) {
-				m.notice = "Saved " + f.Label
+			var reply struct{ Changed *bool }
+			if m.call("profile_save", map[string]any{"field": f.Name, "value": m.text}, &reply) {
+				verb := "Saved "
+				if reply.Changed != nil && !*reply.Changed {
+					verb = "Unchanged "
+				} else if m.text == "/clear" {
+					verb = "Removed "
+				}
+				m.notice = verb + f.Label
 				m.text = ""
 				if e := m.refresh(); e != nil {
 					m.error = clean(e.Error())
 				}
+				m.back()
 				m.page = "profile"
 				m.selected = min(m.fieldAt+1, len(m.state.Fields))
 			}
@@ -686,26 +784,18 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.error = clean(e.Error())
 			}
 			if m.keyReturn == "exit" {
+				m.outcome = &ReceiptExit{Message: "Saved " + m.key.Name + " in environment " + scopeName(m.state.Environment) + "."}
 				m.quitting = true
 				return tea.Quit
 			}
-			m.page = m.keyReturn
-			m.scroll = 0
-			m.selected = m.providerSelection()
-			if m.page == "provider_keys" {
-				m.selected = 0
-				if m.selectedProvider != nil {
-					m.selected = len(m.selectedProvider.Key)
-					if !m.providerReady(*m.selectedProvider) {
-						for i, k := range m.selectedProvider.Key {
-							if m.state.States[k.Name] != "set" {
-								m.selected = i
-								break
-							}
-						}
-					}
+			m.back()
+			if m.page == "providers" {
+				m.notice = "Saved " + m.key.Name + "."
+				if m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
+					m.notice = "Key saved. Next: Connect agent."
 				}
 			}
+
 		}
 		return nil
 	}
@@ -756,7 +846,7 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	return nil
 }
-func (m *model) enter() tea.Cmd {
+func (m *model) enterAction() tea.Cmd {
 	m.error = ""
 	m.notice = ""
 	m.scroll = 0
@@ -765,33 +855,84 @@ func (m *model) enter() tea.Cmd {
 		m.homeAt = m.selected
 		switch m.selected {
 		case 0:
-			m.page = "active"
-			m.selected = 0
+			m.page, m.selected = "providers", 0
 		case 1:
-			m.page = "providers"
-			m.selected = 0
-		case 2:
 			m.loadAgents()
+		case 2:
+			m.profileReturn = ""
+			m.page, m.selected = "profile", 0
 		case 3:
-			m.page, m.selected = "business", 0
+			m.startActive()
 		case 4:
-			return m.loadDoctor()
+			m.page, m.selected = "settings", 0
 		case 5:
-			return m.external(ErrUpdate)
-		case 6:
 			m.loadFAQ()
-		case 7:
+		case 6:
 			if !m.state.MusicIncluded {
 				m.error = "Music is not included in this build."
 				return nil
 			}
 			return m.external(ErrMusic)
-		case 8:
+		case 7:
 			m.quitting = true
 			return tea.Quit
 		}
-	case "active", "business", "contexts", "environments", "environment_new":
+	case "settings":
+		switch m.selected {
+		case 0:
+			if m.motionForced {
+				m.notice = "Motion is off for this command (--no-motion)."
+				return nil
+			}
+			next := !m.opts.NoMotion
+			if m.call("preferences_save", map[string]any{"motion": !next}, nil) {
+				m.opts.NoMotion = next
+				m.notice = "Appearance saved."
+			}
+		case 1:
+			return m.loadDoctor()
+		case 2:
+			m.page, m.selected = "update", 0
+		case 3:
+			m.page, m.introStage, m.tick = "intro", 0, 0
+			return introTick()
+		case 4:
+			return m.back()
+		}
+	case "update":
+		if m.selected == 0 {
+			return m.external(ErrUpdate)
+		}
+		return m.back()
+	case "actions":
+		return m.chooseAction()
+
+	case "active", "recent_setups", "business", "contexts", "environments", "environment_new":
 		return m.enterManagement()
+	case "agent_home":
+		switch m.selected {
+		case 0:
+			m.page, m.scroll = "agent_copy", 0
+		case 1:
+			m.page, m.selected = "agent_targets", 0
+		case 2:
+			return m.back()
+		}
+
+	case "agent_targets":
+		if len(m.agents.Targets) == 0 {
+			return m.back()
+		}
+		if m.selected >= len(m.agents.Targets)+1 {
+			return m.back()
+		}
+		m.agentOnly = ""
+		if m.selected < len(m.agents.Targets) {
+			m.agentOnly = m.agents.Targets[m.selected].Path
+		}
+		m.page, m.scroll, m.reviewedUntil = "agents", 0, 0
+		m.noteReview()
+
 	case "profile":
 		if m.state.ProfileError != "" {
 			return nil
@@ -832,6 +973,7 @@ func (m *model) enter() tea.Cmd {
 			return m.back()
 		}
 		m.keyReturn = "provider_keys"
+		m.providerKeyAt = m.selected
 		m.openKey(m.selectedProvider.Key[m.selected].Name)
 	case "faq":
 		if m.selected >= len(m.faq) {
@@ -845,29 +987,23 @@ func (m *model) enter() tea.Cmd {
 }
 func (m *model) agentKey(key string) tea.Cmd {
 	pending := 0
-	for _, t := range m.agents.Targets {
+	for _, t := range m.reviewTargets() {
 		if !t.Added && t.Issue == "" {
 			pending++
 		}
 	}
-	if key == "c" {
+	if key == "c" || (m.page == "agent_copy" && key == "enter") {
 		var reply struct{ Copied bool }
 		if m.call("copy_agent", map[string]any{"id": m.agents.ID}, &reply) {
 			if reply.Copied {
-				m.notice = "Copied the note."
+				m.notice = "Copied. Paste into your agent."
 			} else {
 				m.notice = "Clipboard unavailable. Copy the instructions below."
 			}
 		}
 	}
-	if key == "m" && len(m.agents.Targets) == 0 && m.reviewedUntil >= len(m.agentLines()) {
-		if m.call("mark_agent", nil, nil) {
-			m.notice = "Marked as added."
-			_ = m.refresh()
-			return m.back()
-		}
-	}
-	if key == "enter" && pending > 0 {
+
+	if m.page == "agents" && key == "enter" && pending > 0 {
 		if m.width < 32 || m.height < 12 {
 			m.error = "Enlarge the terminal to review the changes."
 			return nil
@@ -877,10 +1013,21 @@ func (m *model) agentKey(key string) tea.Cmd {
 			return nil
 		}
 		var reply struct{ Added []string }
-		if m.call("agents_apply", map[string]any{"id": m.agents.ID}, &reply) {
-			m.notice = fmt.Sprintf("Added Godmode to %d files.", len(reply.Added))
+		args := map[string]any{"id": m.agents.ID}
+		if m.agentOnly != "" {
+			args["targets"] = []string{m.agentOnly}
+		}
+		if m.call("agents_apply", args, &reply) {
+			m.notice = "Added to " + countLabel(len(reply.Added), "file") + ". Start a new agent session, or copy for this task."
 			_ = m.refresh()
-			return m.back()
+			for len(m.trail) > 0 && m.trail[len(m.trail)-1].page != "agent_home" {
+				m.trail = m.trail[:len(m.trail)-1]
+			}
+			if len(m.trail) > 0 {
+				m.trail = m.trail[:len(m.trail)-1]
+			}
+			m.loadAgents()
+			return nil
 		}
 	}
 	return nil
@@ -888,7 +1035,7 @@ func (m *model) agentKey(key string) tea.Cmd {
 func (m model) providerMatches() []int {
 	out := []int{}
 	for i, p := range m.state.Providers {
-		if strings.Contains(strings.ToLower(p.Name+" "+p.ID+" "+p.About), strings.ToLower(m.query)) {
+		if strings.Contains(strings.ToLower(providerSearchText(p)), strings.ToLower(m.query)) {
 			out = append(out, i)
 		}
 	}
@@ -927,8 +1074,23 @@ func (m model) choiceCount() int {
 	switch m.page {
 	case "home":
 		return len(homeNames)
-	case "active":
+	case "agent_targets":
+		if len(m.agents.Targets) == 0 {
+			return 1
+		}
+		return len(m.agents.Targets) + 2
+	case "agent_home":
 		return 3
+	case "settings":
+		return len(settingsNames)
+	case "update":
+		return 2
+	case "actions":
+		return len(m.matchActions())
+	case "active":
+		return len(m.managementNames())
+	case "recent_setups":
+		return len(m.state.RecentSetups) + 1
 	case "business":
 		return 4
 	case "contexts":
@@ -964,7 +1126,19 @@ func (m model) choiceNames() []string {
 	switch m.page {
 	case "home":
 		return homeNames
-	case "active", "business", "contexts", "environments", "environment_new":
+	case "agent_targets":
+		names := []string{}
+		for _, t := range m.agents.Targets {
+			names = append(names, t.Name)
+		}
+		return append(names, "All detected agents", "Back")
+	case "agent_home":
+		return []string{"Copy for this task", "Add to agent files", "Back"}
+	case "settings":
+		return settingsNames
+	case "update":
+		return []string{"Update Godmode", "Back"}
+	case "active", "recent_setups", "business", "contexts", "environments", "environment_new":
 		return m.managementNames()
 	case "profile":
 		out := []string{}

@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "Default core excludes musiccore/musicui; nomusic core also excludes installation card",
+    "Companion excludes credential/business UI, core, and license packages",
+    "Native without-music source has no pack/player/assets; help/settings work; music refuses explicitly"
+  ],
+  "core_sha256": "0de090cb69475ec82fc941f605d959a6787c216ac191e730912211fb2b9e5934",
+  "without_music_sha256": "bcead05314f361affd6f6ae359ac1c6c9e328235b2aa2ba332e3e68e050c5462"
+}

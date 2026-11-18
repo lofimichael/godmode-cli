@@ -18,7 +18,15 @@ curl -fsSL https://get.godmode.build | bash
 godmode
 ```
 
-`godmode` opens with a two-part animated NFO intro on first use. **Active setup** switches the business profile and key environment; both stay visible on every screen. **Providers**, **Agents**, and **Business details** configure them. **Doctor** checks local files; **Update** updates the recorded installation. Profile fields and providers remain optional. `godmode intro` replays the intro; Enter advances immediately.
+The navigation described below is in the current source candidate and has not been released yet. The download above may show the previous menu. See the [navigation audit](docs/dev/NAVIGATION_AUDIT.md) for the review and validation record.
+
+After the first-use intro:
+
+1. Open **Provider keys** and save only the keys your task needs.
+2. Open **Connect agent**. Copy instructions into your current agent chat, or choose an agent and review the files before appending its note.
+3. Open your project in that agent and ask for the result you want. Start a fresh agent session to load instructions saved to files.
+
+**Business details** is optional. A saved key means local storage, not verified provider access. Godmode supplies credentials and instructions to an existing agent; it does not install or run the agent.
 
 The CLI is free to use on any number of your machines. No account or activation
 is required. Its [source-available license](LICENSE) permits inspection and
@@ -29,22 +37,40 @@ separate maintained playbooks, routing instructions and provider packs.
 | --- | --- |
 | ↑ ↓ | Select a row |
 | Enter | Open a row or save a field |
-| `/` | Search providers |
-| `s` on home | Select Active setup |
-| Tab | Open details |
-| Esc | Go back |
+| `/` | Filter providers; find an action from other menus |
+| Ctrl-K | Find an action from a menu |
+| `s` | Open Switch setup from a menu |
+| `r` | Open Recent setups from Switch setup, when history exists |
+| `?` | Show keyboard help |
+| Tab | Inspect key or setup details where offered |
+| Esc | Cancel an edit or return to the actual parent; clear an active provider filter first |
+| `q` | Quit from menus; stays text while typing |
 
 `godmode --plain` uses static text and numbered choices. `GODMODE_PLAIN=1` keeps that mode for later commands. Key entry stays hidden; Enter shows the proposed edit, and a second Enter saves it.
 
-`--no-motion` disables animation. `NO_COLOR=1` disables color. **Help / FAQ** answers questions about sealing, token paths, network access, and source.
+**Settings** contains Motion, Check setup, Update Godmode, and Replay intro. Motion is saved locally; `--no-motion` disables it for one command. `NO_COLOR=1` disables color. Check setup inspects local files without testing provider access. Update opens a confirmation page before handing off to the updater.
+
+```sh
+godmode settings motion off
+godmode settings --json
+godmode help agents
+```
+
+**Help** starts with “How do I start?” and explains setup, files, network access, and source. `godmode --help` is the command reference; bare `godmode help` remains the guide agents read.
 
 ## Connect your agent
 
-**Agents** finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode. Green `+` lines show the note and the files to create or modify. Enter on **Add to…** appends the note. Existing file contents and edited Godmode notes stay intact. The note stays visible and copyable after installation. Copied task notes include the selected environment and business; global instruction files keep the generic note. New agent sessions run `godmode help` when a task needs a key or profile field.
+**Connect agent** offers **Copy for this task** and **Add to agent files**. File detection covers existing Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode folders. Choose one detected agent or explicitly choose all, then review the exact destination paths and `+` additions before Enter appends. Existing contents and edited Godmode notes stay intact. Godmode does not detect project instruction files; the copy route works with an existing agent conversation.
+
+Copied task notes pin the selected environment and business. Global instruction files keep the generic note and tell a new task to capture its active scope. Adding a note does not verify that the agent has loaded it.
 
 ## Choose an active setup
 
 Named environments keep complete key sets separate. Copies are snapshots: later edits do not spread to other files. Business contexts let several environments reuse one business profile.
+
+In **Switch setup**, choose the key environment and business profile, then select **Use this setup** to save both together. Esc or Back discards the staged selection. Creating a new environment or profile is a separate explicit write; canceling the switch does not delete what you created. **Automatic** uses the selected environment's own business details.
+
+**Recent setups** remembers up to five previously used pairs. Open it from Switch setup (or press `r` there), choose a pair, review both names, then press Enter to use it. Browsing or canceling does not change your setup.
 
 ```sh
 godmode env create acme-test --copy default
@@ -58,23 +84,46 @@ godmode agents --print
 
 Use `env create acme-test` without `--copy` to start empty. Your selection is saved for new commands. Flags override shell variables (`GODMODE_ENV` / `GODMODE_CONTEXT`), which override the saved choice. `godmode use --env default --context -` returns to the original setup.
 
-Already-running Godmode processes retain their selection. For an agent task, copy the scoped instruction in **Agents** or use the prefix from `godmode active --command`; both pin the business and keys even if you switch later. `godmode run` also pins nested commands. Missing keys never fall through to another file.
+Already-running Godmode processes retain their selection. For an agent task, copy the scoped instruction in **Connect agent** or use the prefix from `godmode active --command`; both pin the business and keys even if you switch later. `godmode run` also pins nested commands. Missing keys never fall through to another file.
 
 [Businesses and environments](docs/CONTEXTS.md) covers files, profiles and aliases. [Stripe accounts and sandboxes](docs/STRIPE_ENVIRONMENTS.md) covers account and webhook boundaries.
 
 ## Music
 
-`godmode music` plays local tracks through an initialized [Darunia's CLI](https://github.com/lofimichael/darunias-cli) installation. The visualizer follows the rendered audio. Synthesized tracks stay cached; `godmode music clear` removes the cache. The [music adapter](docs/MUSIC.md) has no bundled songs, fonts, or synth tools and can be omitted from the build.
+The optional **Music Pack** adds GODMODE BEATZ: collections, search, queue, and
+persistent playback. The core CLI contains its installer and router; the
+separate companion contains the music interface, synth, instruments, and
+original jingles. No Darunia checkout is needed. You supply local `.ootrs` songs.
+
+The current preview installs from a supplied local companion executable; a
+public Music Pack download has not been published:
+
+```sh
+godmode music install --file /path/to/godmode-music --sha256 SHA256
+godmode music setup --songs /path/to/local/music
+godmode music
+```
+
+Playback needs mpv. One-time synth setup also needs Python 3.9+, a C/C++ compiler,
+CMake, and FFmpeg. `godmode jingle play` needs only the installed pack and mpv.
+Closing the player keeps music playing; `godmode music stop` stops it from any
+terminal. `godmode music remove` stops playback and removes the pack, owned
+runtime, and cache while keeping external songs and shared dependencies. Close
+music views and setup first. See [Music](docs/MUSIC.md) for setup, collection
+shortcuts (`c` / `A`), headless controls, jingles, and the current cache limits.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `godmode` | Open the status screen |
+| `godmode` | Open the task menu |
+| `godmode settings` | Open Settings in a terminal; print Motion state when redirected or plain |
+| `godmode settings motion on\|off` | Save the local animation preference |
+| `godmode settings --json` | Print Motion state and its preference-file path |
 | `godmode env` | List complete named key files |
 | `godmode doctor --json` | Check local files and the updater without changing them |
 | `godmode update` | Update the recorded installation |
-| `godmode agents --print` | Print the task note for the selected files |
+| `godmode agents --print` | Print the task note for the selected setup |
 | `godmode --plain` | Static text and numbered choices |
 | `godmode setup [PROVIDER]` | Add or replace a provider's keys |
 | `godmode list` | Names of saved keys, never values |
@@ -83,6 +132,7 @@ Already-running Godmode processes retain their selection. For an agent task, cop
 | `godmode profile get FIELD` | Print one profile field, such as `business_name` |
 | `godmode provider [PROVIDER]` | Setup, verification and recovery guide for a provider |
 | `godmode help` | The guide your agent reads, with what is saved |
+| `godmode help COMMAND` | Help for one command; also available as `COMMAND --help` |
 | `godmode faq` | Answers about Godmode |
 | `godmode music` | Local music and visualizer |
 | `godmode music clear` | Remove synthesized music from the cache |
@@ -98,6 +148,7 @@ Already-running Godmode processes retain their selection. For an agent task, cop
 | `~/.godmode/profile.json` | Your profile, plain JSON, readable only by you |
 | `~/.godmode/.env.godmode` | Your keys, each value encrypted |
 | `~/.godmode/seal.key` | Decrypts them. Anyone with both files has your keys. |
+| `~/.godmode/ui.json` | Optional nonsecret Motion preference and up to five recent setup pairs |
 
 Provider keys stay local. Godmode stores credentials; provider tools handle sign-in and refresh. `Saved` means stored on this machine. Ordinary commands work offline without a license. Legacy activation and deactivation contact godmode.build. [Licensing](docs/LICENSING.md) describes the exact data and behavior.
 

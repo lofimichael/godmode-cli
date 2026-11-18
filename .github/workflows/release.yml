@@ -42,6 +42,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install terminal screen test dependencies
+        run: python3 -m pip install -r scripts/demo-requirements.txt
       - name: Validate tag and source
         shell: bash
         run: |
@@ -52,12 +54,15 @@ jobs:
           test -f vendor/modules.txt
       - name: Test the engine, native UI and installer
         run: |
+          python3 scripts/build.py --verify internal/core/core.py
+          python3 scripts/build-music.py --verify internal/musiccore/player.py
           python3 -m unittest discover -s tests -p 'test_*.py'
-          sh -n install.sh scripts/build-native.sh
-          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh scripts/build-native.sh tests/install.sh tests/install-update.sh; fi
+          sh -n install.sh scripts/build-native.sh scripts/build-music-native.sh
+          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh scripts/build-native.sh scripts/build-music-native.sh tests/install.sh tests/install-update.sh; fi
           sh tests/install.sh
           sh tests/install-update.sh
           sh scripts/build-native.sh
+          sh scripts/build-music-native.sh
           go test -mod=vendor ./...
           sh scripts/build-license-test.sh
           python3 -m unittest discover -s tests -p 'test_native_*.py'

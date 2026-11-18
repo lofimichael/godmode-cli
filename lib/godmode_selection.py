@@ -4,7 +4,7 @@ from pathlib import Path
 
 from godmode_context import Context, context_name
 from godmode_environment import environment_profile
-from godmode_profile import Profile
+from godmode_profile import Profile, ProfileDirectoryError
 from godmode_store import Store, environment_name
 
 
@@ -22,6 +22,8 @@ def selection_saved(home=None):
     config = Profile(selection_home(home), filename='active.json')
     try:
         data = config.read()
+    except ProfileDirectoryError:
+        raise
     except ValueError as error:
         raise ValueError('Cannot read active.json. Repair the active selection file, or select both '
                          '--env NAME and --context NAME (--context - uses the environment profile). '

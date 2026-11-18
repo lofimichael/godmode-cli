@@ -223,20 +223,20 @@ func (m model) cinematicIntroView() []string {
 	p := m.palette()
 	rows := m.cinematicIntroLines()
 	if !m.introRowsFit(rows) {
-		return append(m.styledWrap("Enlarge the terminal to read the account-access statement.", p.warn), "", p.muted.Render("Esc exits"))
+		return append(m.styledWrap("Enlarge the terminal to read the account-access statement.", p.warn), "", p.muted.Render("Esc to exits"))
 	}
 	if m.error != "" {
 		rows = append(rows, m.introText(m.error, p.bad)...)
 	}
-	action := "Enter I understand  ·  Esc exit"
+	action := "Enter to continue  ·  Esc to exit"
 	if m.introStage > 0 {
-		action = "Enter open Godmode  ·  Esc exit"
+		action = "Enter to open Godmode  ·  Esc to exit"
 		if m.initialRoute == "intro" {
-			action = "Enter finish  ·  Esc exit"
+			action = "Enter to finish  ·  Esc to exit"
 		}
 	}
 	if m.innerWidth() < 31 {
-		action = "Enter continue · Esc exit"
+		action = "Enter continue · Esc to exit"
 	}
 	rows = append(rows, "", m.introCenter(p.title.Render(action)))
 	// Keep the small scene poised in a large terminal without introducing

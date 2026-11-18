@@ -49,7 +49,7 @@ class NativeRenderer(unittest.TestCase):
                 stream.feed(decoder.decode(data))
 
             try:
-                terminal.expect("Enter I understand")
+                terminal.expect("Enter to continue")
                 terminal.settle(.15)
                 sync()
                 top = next(i for i, row in enumerate(screen.display) if "██████╗" in row)

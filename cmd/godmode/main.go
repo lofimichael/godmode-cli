@@ -113,7 +113,7 @@ func selectRoute(args []string) route {
 	switch r.command {
 	case "onboard", "init":
 		r.command, r.interactive = "home", len(words) == 1
-	case "intro", "profile", "agents", "faq":
+	case "intro", "profile", "agents", "faq", "settings", "music":
 		r.interactive = len(words) == 1
 	case "setup":
 		r.interactive = len(words) <= 2 && !strings.HasPrefix(r.arg, "-")
@@ -157,6 +157,9 @@ func run(args []string) int {
 		!term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 		return core.Run(args)
 	}
+	if r.command == "music" {
+		return runMusic(r)
+	}
 	for {
 		client, err := core.NewForSelection(r.home, r.context, r.environment)
 		if err != nil {
@@ -183,13 +186,17 @@ func run(args []string) int {
 			return core.Run(selectedArgs(r, "update"))
 		}
 		if errors.Is(err, ui.ErrMusic) {
-			musicArgs := selectedArgs(r, "music")
-			if r.noMotion {
-				musicArgs = append(musicArgs, "--no-motion")
+			if status := runMusic(r); status != 0 {
+				// Keep setup failures visible in the restored terminal.
+				return status
 			}
-			core.Run(musicArgs)
 			r.command, r.arg = "home", ""
 			continue
+		}
+		var receipt *ui.ReceiptExit
+		if errors.As(err, &receipt) {
+			fmt.Println(receipt.Message)
+			return 0
 		}
 		if errors.Is(err, ui.ErrCancelled) {
 			return 130

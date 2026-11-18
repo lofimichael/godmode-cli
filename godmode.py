@@ -29,7 +29,7 @@ from godmode_maintenance import doctor_report, doctor_command, update_command
 from godmode_terminal import Back, Cancelled, Prompt, cells, columns, drawn_height, fit, glyph, mask, meter
 from godmode_terminal import plain_mode, quiet, read_menu, read_page, read_secret, screen_rows, style
 from godmode_terminal import read_document, animate_entrance, _Keyboard, _draw
-from godmode_bridge import ui_bridge, ui_startup_error
+from godmode_bridge import ui_bridge, ui_startup_error, ui_preferences, record_recent_selection
 
 VERSION = '0.19.2'
 ACTIVE_CONTEXT = None
@@ -1694,9 +1694,8 @@ def provider_list(store, providers, back=False):
             pass
 
 
-PROFILE_BLURB = ('Full sites that take payments usually require a business profile, terms of service '
-                 'and a privacy policy. Agents use these details to fill them in.')
-PROVIDERS_BLURB = 'Choose how powerful you want your agent to be.'
+PROFILE_BLURB = 'Optional business details for contact pages, terms, privacy policies and invoices.'
+PROVIDERS_BLURB = 'Save keys for your task. Saved does not mean verified.'
 SOURCE_URL = 'https://github.com/lofimichael/godmode-cli'
 ISSUE_URL = SOURCE_URL + '/issues/new'
 
@@ -1714,25 +1713,55 @@ def request_provider():
 def faq_entries(home=None):
     where = home_path(effective_store(home).env_path)
     return [
+        ('How do I start?', [
+            '1. Open Provider keys and save the keys needed for your task. You do not need every provider.',
+            '2. Open Connect agent. Review the listed instruction files and add the note, or copy it '
+            'into your existing agent task.',
+            '3. Open your project in that agent and ask for the result you want.',
+            'Business details are optional. Godmode stores keys and adds instructions; your existing agent '
+            'does the work. Saved means stored locally, not verified provider access.']),
+        ('What does Connect agent change?', [
+            'It appends a Godmode note to the listed agent instruction files. Your existing text and '
+            'any existing Godmode note stay unchanged. The preview shows each file and the lines to add.',
+            'Start a fresh agent session so it can load the saved instructions. For a task already '
+            'running, copy the task note and paste it into that conversation.',
+            'If no agent folders are found, copy the note into your agent task or instruction file. '
+            'Godmode does not install an agent or detect project instruction files.',
+            'godmode agents --print prints a note for the selected keys and business details.']),
+        ('Environments and businesses', [
+            'A key environment is an independent set of saved keys. Missing keys do not come from '
+            'another environment. A copied environment is a snapshot; later changes stay separate.',
+            'A business profile holds optional details such as a name, website and public email.',
+            "Automatic uses the selected key environment's own business details. Choose a named "
+            'business profile to use its details instead.',
+            'Switch setup changes the selection for new commands. Explicit command flags and shell '
+            'settings override it. Existing agent tasks keep the scope they captured.']),
+        ('How do I check setup?', [
+            'Open Settings → Check setup, or run godmode doctor. It checks local files and detected '
+            'agent instructions without showing keys. It cannot confirm that an agent loaded the note '
+            'or check manually chosen project instruction files.',
+            'Provider access is separate. Ask your agent to read godmode provider PROVIDER, confirm '
+            'the intended account and mode, and use the provider guide to verify access.']),
         ('What is sealed(...)?', [
-            'sealed(...) is the save preview. The file stores encrypted values.',
-            'An agent has to take extra steps to read a raw key. godmode run is the easier path: '
-            'it passes keys straight to commands.',
+            'sealed(...) is the save preview. The file stores encrypted values. godmode run passes '
+            'selected keys directly to a command.',
             'An agent running as you can still get the keys. Sealing does not block it.']),
-        ("I don't see my provider!", ["Open a GitHub issue! We'll get on it.", ISSUE_URL,
-            'Another key saves any key name. Provider guides are shortcuts.']),
+        ("How do I add another provider?", [
+            'Run godmode set NAME to save a custom key under the name your tool expects. '
+            'Provider guides are shortcuts; an unlisted provider can still use saved keys.',
+            'Request a provider guide:', ISSUE_URL]),
         ('Where are my tokens?', [where,
             'godmode path prints this path. godmode list prints key names. godmode run passes '
             'selected keys to a command. seal.key sits beside the key file.']),
         ('Where is the source code?', ['https://godmode.build',
             'The Go interface and Python file engine ship with source. godmode source prints the embedded '
-            'file engine. First-party code uses the Godmode Commercial Source License.']),
+            'file engine. First-party code is source-available under the Godmode Commercial Source License.']),
         ('Does Godmode make network calls?', [
             'Profile, key and doctor commands run locally. Doctor does not verify provider access.',
             'License activation, deactivation, godmode update and godmodeup contact godmode.build. Provider links open '
             'in your browser. Picard downloads media '
             'on request. Commands launched with godmode run can use the network.',
-            'Music uses your local Darunia installation and local song files.']),
+            'The optional Music Pack includes its synth. You supply local song files.']),
         ('How do I inspect a release?', [
             'Godmode uses Bubble Tea and Lip Gloss for its interface. The Python file engine uses standard '
             'libraries. No packages are installed at startup.',
@@ -1743,10 +1772,6 @@ def faq_entries(home=None):
             'Checksums detect changed bytes. A checksum from the same download source cannot prove '
             'the publisher is trustworthy. Pin a reviewed commit before building.',
             'docs/SECURITY.md in the source archive covers verification and local files.']),
-        ('Does Agents replace my instructions?', [
-            'Agents adds its note at the end of each listed file. Your existing text stays unchanged.',
-            'An existing Godmode note stays as written, including your edits. The preview lists new '
-            'and changed files. Green + lines show the text to add.']),
     ]
 
 
@@ -1772,16 +1797,24 @@ def faq(home=None):
             read_document(*entries[at])
 
 
-def music_command(home=None, args=None):
+def music_command(home=None, args=None, command='music'):
     try:
-        from godmode_music import music_main
-        handler = music_main
+        from godmode_music_pack import music_pack_main
+        handler = music_pack_main
     except (ImportError, NameError):
         # The optional section is absent from a --without-music build.
-        handler = globals().get('music_main')
+        handler = globals().get('music_pack_main')
     if handler is None:
         raise ValueError('Music is not included in this build.')
-    return handler(args or [], home=profile_home(home), menu=read_menu, terminal=(_Keyboard, _draw, Cancelled))
+    if not args and command == 'music' and not os.environ.get('GODMODE_NO_MOTION'):
+        # Pass the shared display preference across the optional boundary;
+        # the music module itself has no dependency on profile/settings code.
+        try:
+            if not ui_preferences(globals(), home)['motion']:
+                os.environ['GODMODE_NO_MOTION'] = '1'
+        except (OSError, ValueError):
+            os.environ['GODMODE_NO_MOTION'] = '1'
+    return handler(args or [], home=profile_home(home), command=command)
 
 
 def help_table(rows):
@@ -1847,7 +1880,10 @@ def guide(store, home=None):
         sealed, state = True, 'The file cannot be read as it is; fix it with godmode edit.'
     rows = ["Godmode holds the user's business profile and provider keys on this machine.",
             'Use them to finish the task without asking the user to repeat setup. Project',
-            'instructions still apply and take precedence.', '', 'Saved now'] + saved_block(store, home)
+            'instructions still apply and take precedence.', '',
+            'This is the agent guide. For interactive setup, run godmode in a terminal.',
+            'For the command reference, run godmode --help or godmode help COMMAND.', '',
+            'Saved now'] + saved_block(store, home)
     rows += ['', 'Profile'] + help_table((
         ('godmode profile get FIELD', 'print one field'),
         ('godmode profile show', 'print every field as JSON'))) + [
@@ -1933,27 +1969,47 @@ def run_with_keys(store, argv):
         raise ValueError('Cannot run ' + command[0] + '.') from None
 
 
-COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'setup', 'list', 'run', 'set',
+COMMANDS = ('onboard', 'intro', 'profile', 'provider', 'agents', 'faq', 'music', 'jingle', 'settings', 'setup', 'list', 'run', 'set',
             'help', 'migrate', 'edit', 'path', 'picard', 'init', 'context', 'env', 'doctor', 'update', 'use', 'active')
 
 USAGE = """Usage: godmode [COMMAND]
 
-Godmode keeps your business profile and API keys in one local place for your
-coding agents.
+Godmode stores provider keys and optional business details locally for your
+existing coding agent.
+
+Start
+  1. Run godmode. Open Provider keys and add only what your task needs.
+  2. Open Connect agent. Add the note to its instructions or copy it into a task.
+  3. Open your project in that agent and ask for the result you want.
+  Saved keys have not been verified with the provider.
+  Business details are optional.
+
+Interactive interface
+  Arrow keys move; Enter opens; Esc goes back; q quits from menus.
+  Ctrl-K finds an action. / filters the current list where offered.
+  Settings contains Motion, Check setup, Update and Replay intro.
+  --plain uses static text and numbered menus.
 
 For you
-  godmode                      set up your profile, providers and agents
+  godmode                      open the interactive interface
   godmode setup [PROVIDER]     add or replace a provider's keys
-  godmode profile              edit your profile
-  godmode context              list named business contexts
-  godmode env                  list complete named key files
+  godmode agents               add instructions for your existing agent
+  godmode profile              edit optional business details
+  godmode faq                  start here, setup checks, files and source
+  godmode help COMMAND         show help for one command
+  godmode env                  list independent sets of keys
+  godmode context              list named business profiles
   godmode use --env NAME --context NAME
-                               save the active key file and business
+                               switch keys and business details for new commands
   godmode active               show the current selection
-  godmode agents               add Godmode to your agents' instructions
   godmode intro                replay the welcome
-  godmode faq                  answers about files, keys and source
-  godmode music                local music and visualizer
+  godmode music                optional Music Pack: install, player, remove
+  godmode jingle play          play an original notification cue (Music Pack)
+  godmode settings             inspect or change Motion
+
+  A key environment has its own keys; missing keys never use another environment.
+  A business profile holds optional details. Automatic uses the key environment's
+  own details. Switch setup changes the saved selection for new commands.
 
 For agents
   godmode help                 the guide agents read, with what is saved
@@ -1985,32 +2041,82 @@ Update with godmodeup. Downloads and source: https://godmode.build"""
 
 class Arguments(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'godmode: invalid arguments; run godmode --help. Never put a key on the command line; '
-                     'pipe it with --stdin.\n')
+        self.exit(2, 'godmode: invalid arguments; run godmode --help.\n')
 
 
 COMMAND_HELP = {
     'use': 'Usage: godmode use [ENVIRONMENT] [--env NAME] [--context NAME]\n\nSave the active key file and business for future commands. Use --context - for the\nenvironment profile. Explicit flags and GODMODE_ENV/GODMODE_CONTEXT override the saved pair.\nNo keys or business fields are copied. Existing running processes keep their selection.',
     'active': 'Usage: godmode active [--json | --command]\n\nShow the resolved key environment and business without values. --command prints a\nfully scoped prefix for an agent task; --json includes paths and selection sources.',
     'env': 'Usage: godmode env [list [--json] | create NAME [--copy SOURCE] | show NAME]\n\nNamed environments are complete .env.godmode.NAME files; default is .env.godmode.\nCopies are independent snapshots. Missing keys never fall back to another file.\nSelect a file with godmode --env NAME run ... or godmode --env NAME set KEY.',
-    'doctor': 'Usage: godmode doctor [--json]\n\nInspect local installation, selected files and key names without revealing values.',
+    'doctor': 'Usage: godmode doctor [--json]\n\nCheck local installation, selected files and detected agent instructions without\nrevealing keys. This does not verify provider access or that an agent loaded its note.',
     'update': 'Usage: godmode update [--version vX.Y.Z]\n\nUpdate the installed command using its updater and installation receipt.',
+    'settings': 'Usage: godmode settings [--json | motion on | motion off]\n\nInspect Motion or save the preference for the interactive interface.\n--json includes the current preference and its local ui.json path.\n\n  godmode settings motion off',
     'context': 'Usage: godmode context [list | create NAME | show NAME | map NAME VARIABLE SAVED_KEY | unmap NAME VARIABLE]\n\nA context keeps its own business profile and maps selected key names to saved keys.\nUnmapped keys use the shared store. Select with godmode --context NAME run ...\nor godmode --context NAME profile. Use godmode use to save an active pair.',
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
-    'faq': 'Usage: godmode faq\n\nAnswers about keys, files, network use and source.',
-    'music': 'Usage: godmode music [init DIR --songs DIR | list | play NAME | clear | status]\n\nLocal Darunia music with a visualizer. Rendered songs stay cached. clear removes the music cache.',
+    'faq': 'Usage: godmode faq\n\nHow to start, connect your agent, switch setup and check local files.\nAlso covers provider access, network use, sealing and source.',
+    'help': 'Usage: godmode help [COMMAND]\n\nWithout a command, print the agent guide and saved key names.\nUse godmode for interactive setup or godmode --help for the command reference.\n\n  godmode help agents\n  godmode help setup',
+    'music': """GODMODE BEATZ — optional Music Pack.
+
+Usage: godmode music install                 Install the Music Pack
+       godmode music setup --songs DIR      Build its included synth; link .ootrs
+       godmode music                        Open library, queue, and player
+       godmode music play NAME              Play in the background
+       godmode music stop                   Stop audio and preparation
+       godmode music remove                 Remove pack, runtime, and cache
+
+The pack owns its player interface, synth, instruments, and original jingles.
+Your source songs stay outside its managed files. No Darunia checkout needed.
+Playback needs mpv. One-time synth setup needs Python 3.9+, C/C++, CMake,
+and FFmpeg (macOS: brew install mpv ffmpeg cmake).
+
+Controls: pause, resume, next, previous, seek SECONDS, volume 0..100,
+          repeat off|one|all, shuffle on|off, queue, status [--json].
+Enter submits search; a second Enter plays. a appends; c opens a collection;
+A appends the whole collection. Space pauses. Esc goes back. q closes the
+view while playback continues. x stops music. ? shows every control.
+
+play accepts --seconds 1..3600 (default 180) and --render-only.
+clear removes cached renders; queue clear clears the queue.
+Local previews: music install --file PACK --sha256 SHA256.
+""",
+    'jingle': """Usage: godmode jingle play [ready|success|attention] [--volume 0..100]
+       godmode jingle list
+
+Original short cues from the optional Music Pack. Needs mpv, but no synth
+setup or local tracks. Current music and queue stay unchanged.
+Install with godmode music install; remove with godmode music remove.
+""",
     'setup': "Usage: godmode setup [PROVIDER]\n\nArrow keys choose a provider; / searches. Enter opens its key page or saves\na pasted key. Tab shows the shell command. Esc returns.\n\n  godmode setup cloudflare\n  godmode --plain setup",
     'set': "Usage: godmode set NAME [--stdin]\n\nSave or replace one key. Interactive input stays masked. --stdin reads a\nvalue from a pipe or file.\n\n  godmode set GH_TOKEN\n  godmode set ACME_AUTH_JSON --stdin < credential.json",
     'list': "Usage: godmode list\n\nPrint saved key names, one per line. Values stay hidden.\nUnreadable or duplicate entries produce an error and a nonzero exit status.",
     'profile': "Usage: godmode profile [show | path | get FIELD | set FIELD | unset FIELD]\n\nNo action opens the form. show prints JSON; get prints one value.\nset accepts --stdin. All six fields are optional.\n\n  godmode profile get business_name\n  godmode profile set business_name --stdin < business-name.txt\n  godmode profile unset website",
-    'agents': "Usage: godmode agents [--print]\n\nReview the generic note and target files, then add it to detected agents.\n--print emits task instructions for the selected environment and business context.\n\n  godmode --env acme agents --print | pbcopy",
+    'agents': "Usage: godmode agents [--print]\n\nCopy instructions into your current agent chat, or choose detected agent files\nand review the note before appending. Start a fresh agent session for saved notes.\nGodmode does not install agents or detect project instruction files.\n--print emits a task note scoped to the selected keys and business details.\n\n  godmode agents --print\n  godmode --env acme agents --print | pbcopy",
     'provider': "Usage: godmode provider [PROVIDER]\n\nPrint provider names, or one provider's setup, verification and recovery guide.\n\n  godmode provider cloudflare",
     'intro': "Usage: godmode intro\n\nShow the welcome and account-access terms again.",
     'path': "Usage: godmode path\n\nPrint the key file path. No key values are printed.",
+    'source': "Usage: godmode source\n\nPrint the Python file engine embedded in the native command.\nThe release source also includes the Go interface.",
+    'build-info': "Usage: godmode build-info\n\nPrint the native command's compiler, dependencies and embedded engine hash.",
     'edit': "Usage: godmode edit\n\nOpen the key file in nano. Sealed values remain encrypted.\nSave or replace values with godmode set NAME.",
     'migrate': "Usage: godmode migrate\n\nSeal plain-text keys from an older install.\nUpdate tools that read the old file to use godmode run NAME -- command.",
     'picard': "Usage: godmode picard [link | open | show | play | stop]\n\nlink prints the media link; open opens it in the browser. show displays\nthe image; play starts audio; stop ends playback. Media downloads on request.",
 }
+
+
+def settings_command(home, args):
+    if args not in ([], ['--json'], ['motion', 'on'], ['motion', 'off']):
+        raise ValueError('Use: godmode settings [--json | motion on | motion off].')
+    preferences = (ui_preferences(globals(), home, motion=args[1] == 'on')
+                   if args[:1] == ['motion'] else ui_preferences(globals(), home))
+    if args == ['--json']:
+        print(json.dumps(preferences, indent=2, sort_keys=True))
+    else:
+        print('Motion: ' + ('on' if preferences['motion'] else 'off'))
+        command = ['godmode']
+        if home or os.environ.get('GODMODE_HOME') or os.environ.get('GODMODE_CONFIG_DIR'):
+            command += ['--home', str(profile_home(home))]
+        command += ['settings', 'motion', 'off' if preferences['motion'] else 'on']
+        print('Change with: ' + ' '.join(shlex.quote(word) for word in command))
+    return 0
 
 
 def main():
@@ -2077,9 +2183,20 @@ def main():
     if any(word in ('-h', '--help') for word in before_child):
         print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
         return 0
+    if argv[:1] == ['help'] and len(argv) > 1:
+        if len(argv) != 2 or argv[1] not in COMMAND_HELP:
+            raise ValueError('Use: godmode help COMMAND. Run godmode --help for the command reference.')
+        print(COMMAND_HELP[argv[1]])
+        return 0
     if '--version' in before_child and argv[:1] != ['update']:
         print('godmode ' + VERSION)
         return 0
+    if argv[:1] == ['settings']:
+        return settings_command(home, argv[1:])
+    # Optional music has its own state and process owner. It never resolves a
+    # business/key selection or opens a credential store, including for Stop.
+    if argv[:1] in (['music'], ['jingle']):
+        return music_command(home, argv[1:], command=argv[0])
     if selected_environment is not None:
         environment_name(selected_environment)
     if selected_context is not None:
@@ -2105,7 +2222,18 @@ def main():
     ACTIVE_SOURCES, SELECTION_SOURCE = selection['sources'], selection['selection_source']
     STARTUP_SOURCES = dict(ACTIVE_SOURCES)
     if argv[:1] == ['use']:
+        selected_pair = {'environment': ACTIVE_ENVIRONMENT, 'context': selection['context']}
+        try:
+            previous = selection_resolve(home, environ={})
+            previous_pair = {name: previous[name] for name in ('environment', 'context')}
+        except ValueError:
+            previous_pair = selected_pair
         set_active_selection(home, ACTIVE_ENVIRONMENT, selection['context'])
+        try:
+            record_recent_selection(globals(), home, selected_pair, previous_pair)
+        except (ValueError, OSError) as error:
+            detail = str(error) if isinstance(error, ValueError) else 'Check access to ui.json.'
+            print('Active setup saved, but recent setups were not updated. ' + detail, file=sys.stderr)
         print('Active setup saved. Keys: ' + ACTIVE_ENVIRONMENT + '  |  Business: ' + (selection['context'] or 'Automatic'))
         if 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ:
             print('This shell has selection overrides. New commands keep those overrides until they are unset.')
@@ -2133,8 +2261,6 @@ def main():
                   'as NAME under the variable VAR. Saved names: godmode list.')
             return 0
         return run_with_keys(effective_store(home), argv[1:])
-    if argv[:1] == ['music']:
-        return music_command(home, argv[1:])
     if any(word in ('-h', '--help') for word in argv):
         print(COMMAND_HELP.get(argv[0], USAGE) if argv else USAGE)
         return 0
@@ -2143,7 +2269,7 @@ def main():
         # The word is never repeated: it could be a key pasted in the wrong place.
         close = difflib.get_close_matches(word, [c for c in COMMANDS if c not in ('onboard', 'init')], 1)
         raise ValueError('unknown command.' + (' Did you mean godmode ' + close[0] + '?' if close else '')
-                         + ' Run godmode --help. Never put a key on the command line; pipe it with --stdin.')
+                         + ' Run godmode --help.')
     argv = parsed_argv
     parser = Arguments(description='Your business profile and API keys in one local place for your coding agents.',
                        add_help=False)

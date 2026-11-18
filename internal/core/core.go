@@ -193,6 +193,10 @@ func NewForSelection(home, context, environment string) (*Client, error) {
 	if environment != "" {
 		args = append([]string{"--env", environment}, args...)
 	}
+	return newClient(args)
+}
+
+func newClient(args []string) (*Client, error) {
 	cmd, reader, writer, err := command(args, uiEnvironment())
 	if err != nil {
 		return nil, err
