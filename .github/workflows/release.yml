@@ -41,7 +41,9 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
+      - name: Install release test dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Install terminal screen test dependencies
         run: python3 -m pip install -r scripts/demo-requirements.txt
       - name: Validate tag and source
@@ -54,19 +56,8 @@ jobs:
           test -f vendor/modules.txt
       - name: Test the engine, native UI and installer
         run: |
-          python3 scripts/build.py --verify internal/core/core.py
-          python3 -m unittest discover -s tests -p 'test_*.py'
-          sh -n install.sh scripts/build-native.sh
-          if command -v shellcheck >/dev/null; then shellcheck -s sh install.sh scripts/build-native.sh tests/install.sh tests/install-update.sh; fi
-          sh tests/install.sh
-          sh tests/install-update.sh
-          sh scripts/build-native.sh
-          go test -mod=vendor ./...
-          sh scripts/build-license-test.sh
-          python3 -m unittest discover -s tests -p 'test_native_*.py'
-          python3 -m unittest discover -s tests -p 'test_license_*.py'
+          python3 scripts/check.py --full --jobs 2 --require-shellcheck
           test "$(target/godmode-native --version)" = "godmode ${RELEASE_TAG#v}"
-          GODMODE_TEST_NATIVE_BINARY="$PWD/target/godmode-native" sh tests/install-update.sh
       - name: Package four native targets and complete source
         run: python3 scripts/package-native.py --output-dir dist
       - name: Install the native Linux archive

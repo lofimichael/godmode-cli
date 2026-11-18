@@ -1,4 +1,5 @@
 """Native paste boundaries and terminal teardown, with synthetic homes only."""
+import errno
 import os
 from pathlib import Path
 import tempfile
@@ -44,7 +45,14 @@ class NativeInput(unittest.TestCase):
                 terminal.settle(.1)
                 terminal.send(cancel)
                 time.sleep(.02)
-                terminal.send(b'synthetic_PRIVATE_LATE_TAIL\n\x1b[201~')
+                try:
+                    terminal.send(b'synthetic_PRIVATE_LATE_TAIL\n\x1b[201~')
+                except OSError as error:
+                    # On macOS the cancelled process can close its PTY before
+                    # this deliberately late write. Only that hangup is valid;
+                    # exit status, restoration and captured output still follow.
+                    if error.errno != errno.EIO:
+                        raise
                 terminal.done(130)
                 self.assertFalse((self.home / '.env.godmode').exists())
                 self.assertNotIn(b'PRIVATE_PARTIAL', terminal.capture)

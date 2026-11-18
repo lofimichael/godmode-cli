@@ -31,7 +31,7 @@ from godmode_terminal import plain_mode, quiet, read_menu, read_page, read_secre
 from godmode_terminal import read_document, animate_entrance, _Keyboard, _draw
 from godmode_bridge import ui_bridge, ui_startup_error, ui_preferences, record_recent_selection
 
-VERSION = '0.19.2'
+VERSION = '0.20.0'
 ACTIVE_CONTEXT = None
 ACTIVE_ENVIRONMENT = 'default'
 ACTIVE_SOURCES = {'environment': 'default', 'context': 'default'}
