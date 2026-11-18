@@ -14,7 +14,7 @@ The native terminal UI uses Bubble Tea v2 and Lip Gloss v2. The full account-use
 
 Profile, Providers and Agents have wider meters and numeric counts. A larger header carries the wordmark and total. Rows gain blank space when the window can hold it. Short windows keep the section names and counts.
 
-Leaving Profile focuses Providers. Leaving Providers focuses Agents. Leaving Agents focuses Help / FAQ. Help returns to its own row. Music returns to the home menu. Escape from the home returns to the shell.
+Leaving Profile focuses Providers. Leaving Providers focuses Agents. Leaving Agents focuses Help / FAQ. Help returns to its own row. Escape from the home returns to the shell.
 
 ## Sources
 

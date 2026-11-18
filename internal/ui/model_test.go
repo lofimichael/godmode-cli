@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -27,7 +26,7 @@ func fake() *fakeBackend {
 		fields = append(fields, map[string]any{"name": name, "label": strings.ToUpper(name[:1]) + name[1:], "description": "A public profile fact."})
 	}
 	return &fakeBackend{state: map[string]any{
-		"version": "test", "home": "/tmp/godmode-test", "env_path": "/tmp/godmode-test/.env.godmode", "intro_seen": true, "music_included": true, "environment": "default", "context": "",
+		"version": "test", "home": "/tmp/godmode-test", "env_path": "/tmp/godmode-test/.env.godmode", "intro_seen": true, "environment": "default", "context": "",
 		"profile": map[string]string{}, "fields": fields, "states": map[string]string{}, "progress": map[string]any{"fields": []string{}, "providers": 0, "agents": []string{}, "agent": 0, "points": 0, "percent": 0},
 		"providers": []any{map[string]any{"id": "example", "name": "Example", "about": "Example provider", "key": []any{map[string]any{"name": "EXAMPLE_TOKEN", "label": "API token"}}}},
 		"issue_url": "https://example.test/issues/new",
@@ -337,17 +336,30 @@ func TestNoColorKeepsReadableWords(t *testing.T) {
 		}
 	}
 }
-func TestRemovedMusicDoesNotLaunch(t *testing.T) {
+func TestHomeExitReturnsToTerminalWithoutAnExternalAction(t *testing.T) {
 	f := fake()
-	f.state["music_included"] = false
 	m := create(t, f, "home", "")
-	m.selected = 6
-	m = enter(m)
-	if errors.Is(m.outcome, ErrMusic) {
-		t.Fatal("removed music launched")
+	m = send(m, key(tea.KeyEnd, ""))
+	if homeNames[m.selected] != "Exit" || !strings.Contains(m.homeDescription(), "Return to your terminal") {
+		t.Fatal("last home choice does not describe Exit")
 	}
-	if m.error == "" {
-		t.Fatal("missing disabled music explanation")
+	calls := len(f.calls)
+	m = enter(m)
+	if !m.quitting || m.outcome != nil || m.error != "" || len(f.calls) != calls {
+		t.Fatal("Exit did not quit without an external command or backend action")
+	}
+}
+
+func TestRemovedCommandsAreAbsentFromHomeAndFinder(t *testing.T) {
+	m := create(t, fake(), "home", "")
+	for _, removed := range []string{"music", "jingle", "picard"} {
+		if strings.Contains(strings.ToLower(m.View().Content), removed) {
+			t.Fatal("removed command remains on the home screen: " + removed)
+		}
+		m.query = removed
+		if len(m.matchActions()) != 0 {
+			t.Fatal("removed command remains in the action finder: " + removed)
+		}
 	}
 }
 

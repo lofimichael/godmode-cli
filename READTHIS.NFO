@@ -23,8 +23,6 @@ Commands
   godmode active        show selected business and keys
   godmode use ENV        switch the saved key environment
   godmode faq           keys, files and source
-  godmode music         local synth and audio visualizer
-  godmode music clear   clear synthesized music
 
 Source
 
@@ -34,19 +32,6 @@ Source
   is embedded in it. The separate source archive includes Go, Python
   and pinned vendored dependencies.
   godmode source prints the engine. godmode build-info lists dependencies.
-
-Music
-
-  Darunia's CLI: https://github.com/lofimichael/darunias-cli
-  Local tools and songs stay outside this archive.
-
-  godmode picard link   the original YTMND URL
-  godmode picard play   loop its audio
-  godmode picard stop   stop the player
-
-  Picard downloads media from https://picard.ytmnd.com/ on request.
-  Music by DarkMateria. Godmode's source-available license covers its code, not that
-  image or recording, Darunia's code, soundfonts or songs.
 
 Credits
 

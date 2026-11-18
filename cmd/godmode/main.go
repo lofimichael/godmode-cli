@@ -113,7 +113,7 @@ func selectRoute(args []string) route {
 	switch r.command {
 	case "onboard", "init":
 		r.command, r.interactive = "home", len(words) == 1
-	case "intro", "profile", "agents", "faq", "settings", "music":
+	case "intro", "profile", "agents", "faq", "settings":
 		r.interactive = len(words) == 1
 	case "setup":
 		r.interactive = len(words) <= 2 && !strings.HasPrefix(r.arg, "-")
@@ -157,56 +157,43 @@ func run(args []string) int {
 		!term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 		return core.Run(args)
 	}
-	if r.command == "music" {
-		return runMusic(r)
+	client, err := core.NewForSelection(r.home, r.context, r.environment)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "godmode:", err)
+		return 1
 	}
-	for {
-		client, err := core.NewForSelection(r.home, r.context, r.environment)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "godmode:", err)
-			return 1
+	err = ui.Run(client, r.command, r.arg, ui.Options{Home: r.home, Plain: r.plain, NoMotion: r.noMotion})
+	// The terminal session is over. Interrupt any remaining read/validation
+	// even when exit came from a parser error or external terminal signal.
+	// Completed writes have already returned before their quit command.
+	client.Abort()
+	client.Close()
+	var external *ui.CommandExit
+	if errors.As(err, &external) {
+		r.context, r.environment = external.Context, external.Environment
+		if r.context == "" {
+			r.context = "-"
 		}
-		err = ui.Run(client, r.command, r.arg, ui.Options{Home: r.home, Plain: r.plain, NoMotion: r.noMotion})
-		// The terminal session is over. Interrupt any remaining read/validation
-		// even when exit came from a parser error or external terminal signal.
-		// Completed writes have already returned before their quit command.
-		client.Abort()
-		client.Close()
-		var external *ui.CommandExit
-		if errors.As(err, &external) {
-			r.context, r.environment = external.Context, external.Environment
-			if r.context == "" {
-				r.context = "-"
-			}
-			if r.environment == "" {
-				r.environment = "default"
-			}
+		if r.environment == "" {
+			r.environment = "default"
 		}
-		if errors.Is(err, ui.ErrUpdate) {
-			return core.Run(selectedArgs(r, "update"))
-		}
-		if errors.Is(err, ui.ErrMusic) {
-			if status := runMusic(r); status != 0 {
-				// Keep setup failures visible in the restored terminal.
-				return status
-			}
-			r.command, r.arg = "home", ""
-			continue
-		}
-		var receipt *ui.ReceiptExit
-		if errors.As(err, &receipt) {
-			fmt.Println(receipt.Message)
-			return 0
-		}
-		if errors.Is(err, ui.ErrCancelled) {
-			return 130
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "godmode:", err)
-			return 1
-		}
+	}
+	if errors.Is(err, ui.ErrUpdate) {
+		return core.Run(selectedArgs(r, "update"))
+	}
+	var receipt *ui.ReceiptExit
+	if errors.As(err, &receipt) {
+		fmt.Println(receipt.Message)
 		return 0
 	}
+	if errors.Is(err, ui.ErrCancelled) {
+		return 130
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "godmode:", err)
+		return 1
+	}
+	return 0
 }
 
 func selectedArgs(r route, command string) []string {

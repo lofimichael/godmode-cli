@@ -23,7 +23,6 @@ type Options struct {
 	Plain, NoMotion bool
 }
 
-var ErrMusic = errors.New("godmode music")
 var ErrUpdate = errors.New("godmode update")
 var ErrCancelled = errors.New("cancelled")
 
@@ -66,7 +65,6 @@ type snapshot struct {
 	Preferences      struct{ Motion *bool }
 	PreferencesError string `json:"preferences_error"`
 
-	MusicIncluded                       bool   `json:"music_included"`
 	StoreError                          string `json:"store_error"`
 	ProfileError                        string `json:"profile_error"`
 	Version, Home, Context, Environment string
@@ -868,12 +866,6 @@ func (m *model) enterAction() tea.Cmd {
 		case 5:
 			m.loadFAQ()
 		case 6:
-			if !m.state.MusicIncluded {
-				m.error = "Music is not included in this build."
-				return nil
-			}
-			return m.external(ErrMusic)
-		case 7:
 			m.quitting = true
 			return tea.Quit
 		}

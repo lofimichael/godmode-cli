@@ -17,7 +17,7 @@ func typeText(m model, text string) model {
 }
 
 func TestNavigationOrderKeepsTaskActionsBeforeSettings(t *testing.T) {
-	wantHome := []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Music", "Exit"}
+	wantHome := []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Exit"}
 	wantSettings := []string{"Motion", "Check setup", "Update Godmode", "Replay intro", "Back"}
 	if !reflect.DeepEqual(homeNames, wantHome) || !reflect.DeepEqual(settingsNames, wantSettings) {
 		t.Fatal("home or Settings task order changed")

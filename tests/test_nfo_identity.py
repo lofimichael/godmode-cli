@@ -62,7 +62,7 @@ class NfoIdentityTests(unittest.TestCase):
                 screen = '\n'.join(Screen(40).feed(terminal.capture).lines())
                 self.assertIn('Environment default', screen)
                 self.assertNotIn('Setup 0%', screen)
-                labels = ('Active setup', 'Providers', 'Agents', 'Business details', 'Doctor', 'Update', 'Help / FAQ', 'Music', 'Done')
+                labels = ('Active setup', 'Providers', 'Agents', 'Business details', 'Doctor', 'Update', 'Help / FAQ', 'Done')
                 for index, label in enumerate(labels):
                     if index:
                         terminal.send(b'\x1b[B')

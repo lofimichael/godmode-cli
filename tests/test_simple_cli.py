@@ -1252,7 +1252,7 @@ class CLI(unittest.TestCase):
         run = subprocess.run(self.command + ['run', '--help'], env=self.env, capture_output=True, text=True)
         self.assertEqual(run.returncode, 0)
         self.assertIn('godmode run VAR=NAME... -- CMD', run.stdout)
-        for name in ('setup', 'set', 'list', 'profile', 'agents', 'provider', 'intro', 'path', 'edit', 'migrate', 'picard'):
+        for name in ('setup', 'set', 'list', 'profile', 'agents', 'provider', 'intro', 'path', 'edit', 'migrate'):
             result = self.godmode(name, '--help')
             self.assertEqual(result.returncode, 0)
             self.assertTrue(result.stdout.startswith('Usage: godmode ' + name))

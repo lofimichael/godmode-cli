@@ -1,9 +1,0 @@
-ok  	github.com/lofimichael/godmode-cli/cmd/godmode	(cached)
-ok  	github.com/lofimichael/godmode-cli/cmd/godmode-music	1.516s
-ok  	github.com/lofimichael/godmode-cli/internal/core	(cached)
-ok  	github.com/lofimichael/godmode-cli/internal/license	(cached)
-ok  	github.com/lofimichael/godmode-cli/internal/musiccore	(cached)
-ok  	github.com/lofimichael/godmode-cli/internal/musicpackui	(cached)
-ok  	github.com/lofimichael/godmode-cli/internal/musicui	(cached)
-ok  	github.com/lofimichael/godmode-cli/internal/ui	(cached)
-?   	github.com/lofimichael/godmode-cli/tests/license-fixture	[no test files]

@@ -22,10 +22,8 @@ TARGETS = {
     'aarch64-unknown-linux-musl': ('linux', 'arm64'),
 }
 SOURCE_FILES = ('LICENSE', 'README.md', 'READTHIS.NFO', 'SECURITY.md', 'VERSION',
-                'godmode.py', 'providers.json', 'install.sh', 'go.mod', 'go.sum', '.gitignore',
-                '.gitattributes')
-SOURCE_DIRS = ('cmd', 'internal', 'lib', 'scripts', 'tests', 'docs', 'registry', 'vendor',
-               'music_assets', '.github')
+                'godmode.py', 'providers.json', 'install.sh', 'go.mod', 'go.sum', '.gitignore')
+SOURCE_DIRS = ('cmd', 'internal', 'lib', 'scripts', 'tests', 'docs', 'registry', 'vendor', '.github')
 
 
 def digest(path):

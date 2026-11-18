@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var homeNames = []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Music", "Exit"}
+var homeNames = []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Exit"}
 var settingsNames = []string{"Motion", "Check setup", "Update Godmode", "Replay intro", "Back"}
 
 type setupPair struct{ Environment, Context string }

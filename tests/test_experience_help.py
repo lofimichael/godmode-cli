@@ -105,19 +105,32 @@ class ExperienceHelp(unittest.TestCase):
             self.assertNotIn('do not run me', bad.stderr)
             self.assertIn('Source differs', bad.stderr)
 
-    def test_no_music_build_keeps_key_commands(self):
+    def test_cli_help_omits_removed_commands(self):
+        for command in ('music', 'jingle', 'picard'):
+            with self.subTest(command=command):
+                self.assertNotIn(command, cli.COMMANDS)
+                self.assertNotIn(command, cli.COMMAND_HELP)
+                self.assertNotIn('godmode ' + command, cli.USAGE)
+                with patch.object(sys, 'argv', ['godmode', 'help', command]), \
+                        self.assertRaisesRegex(ValueError, 'godmode help COMMAND'):
+                    cli.main()
+
+    def test_source_and_build_reject_removed_commands_without_creating_state(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'godmode'
             home = Path(directory) / 'home'
-            subprocess.run([sys.executable, str(ROOT / 'scripts/build.py'), '--without-music',
+            subprocess.run([sys.executable, str(ROOT / 'scripts/build.py'),
                             '--output', str(path)], check=True, capture_output=True)
-            result = subprocess.run([sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(path), '--home', str(home), 'list'],
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(path), '--home', str(home), 'music'],
-                                    capture_output=True, text=True, cwd=directory)
-            self.assertEqual(result.returncode, 2)
-            self.assertIn('not included', result.stderr)
+            for entrypoint in (ROOT / 'godmode.py', path):
+                base = [sys.executable, str(ROOT / 'tests/engine_fixture.py'), str(entrypoint),
+                        '--home', str(home)]
+                result = subprocess.run(base + ['list'], capture_output=True, text=True, cwd=directory)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for command in ('music', 'jingle', 'picard'):
+                    with self.subTest(entrypoint=entrypoint, command=command):
+                        result = subprocess.run(base + [command], capture_output=True, text=True, cwd=directory)
+                        self.assertEqual(result.returncode, 2)
+                        self.assertIn('unknown command', result.stderr)
             self.assertFalse(home.exists())
 
 

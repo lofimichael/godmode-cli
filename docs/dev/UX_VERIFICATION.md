@@ -1,5 +1,8 @@
 # Godmode 0.15.1
 
+This historical record describes version 0.15. Its captures may show features
+that have since been removed; they are not screenshots of the current CLI.
+
 Godmode uses Bubble Tea 2 and Lip Gloss 2 for its native terminal interface. A readable embedded Python engine owns credentials, profiles and append-only agent notes. Direct commands and plain prompts use the same engine.
 
 ## Checks
@@ -18,8 +21,6 @@ Godmode uses Bubble Tea 2 and Lip Gloss 2 for its native terminal interface. A r
 | Native artifacts | macOS arm64/amd64 and Linux arm64/amd64 compiled; archive CPU headers checked |
 | Source rebuild | Extracted source archive rebuilt byte-identically with the pinned Go compiler on PATH, GOPROXY=off and GOSUMDB=off |
 | Embedded engine | `godmode source` matched the readable source assembler byte-for-byte |
-| Optional music | Real local synthesis, repeated cache reuse, WAV decoding, playback, PCM visualization, stop cleanup and scoped cache clearing exercised |
-| Music removal | `--without-music` build omitted the adapter and kept key/profile commands working |
 | Credential-pattern scan | Only the PEM validator and existing synthetic service-account fixture matched; no live credentials found |
 
 The full suites ran before the final UTF-8 refusal case was added; the final native suites include it. The source rebuild used an already installed Go 1.26.7 compiler. Other CPU targets were compiled and inspected, not executed. Terminal sessions used synthetic homes and keys. Human newcomer task completion and screen-reader speech output have not been measured.

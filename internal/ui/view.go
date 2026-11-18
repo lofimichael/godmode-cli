@@ -136,15 +136,12 @@ func (m model) homeView() []string {
 		rows = append(rows, m.wrap(next)...)
 		rows = append(rows, "")
 	}
-	statuses := []string{countLabel(m.state.KeyCount, "key") + " saved", countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added", "optional", "", "", "", "optional", ""}
+	statuses := []string{countLabel(m.state.KeyCount, "key") + " saved", countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added", "optional", "", "", "", ""}
 	if m.state.StoreError != "" {
 		statuses[0] = "needs attention"
 	}
 	if m.state.ProfileError != "" {
 		statuses[2] = "needs attention"
-	}
-	if !m.state.MusicIncluded {
-		statuses[6] = "not included"
 	}
 	choices := []string{}
 	for i, name := range homeNames {
