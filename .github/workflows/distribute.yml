@@ -1,0 +1,88 @@
+name: Prepare CLI website distribution
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+    secrets:
+      GODMODE_DISTRIBUTION_APP_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published stable tag (vX.Y.Z)
+        required: true
+        type: string
+      source_sha:
+        description: Full CLI source commit for the tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: godmode-cli-website-distribution
+  queue: max
+
+jobs:
+  prepare:
+    if: >-
+      github.repository == 'lofimichael/godmode-cli' &&
+      github.ref == 'refs/heads/main' &&
+      (!github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true')
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download published assets from the CLI repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 scripts/distribute_release.py download --version "$RELEASE_VERSION" \
+            --source-sha "$SOURCE_SHA" --directory "$RUNNER_TEMP/cli-release"
+      - name: Verify the website App is configured
+        env:
+          APP_CLIENT_ID: ${{ vars.GODMODE_DISTRIBUTION_APP_CLIENT_ID }}
+          APP_KEY: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}
+        run: |
+          if [[ -z "$APP_CLIENT_ID" || -z "$APP_KEY" ]]; then
+            echo '::error::Configure the website GitHub App using docs/dev/RELEASING.md, then retry this handoff.'
+            exit 1
+          fi
+      - name: Mint a website-only installation token
+        id: website
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GODMODE_DISTRIBUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}
+          owner: lofimichael
+          repositories: godmode-build
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: lofimichael/godmode-build
+          ref: refs/heads/main
+          token: ${{ steps.website.outputs.token }}
+          path: distribution-site
+          persist-credentials: false
+      - name: Prepare the distribution PR
+        env:
+          GH_TOKEN: ${{ steps.website.outputs.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 scripts/distribute_release.py promote --version "$RELEASE_VERSION" \
+            --source-sha "$SOURCE_SHA" --directory "$RUNNER_TEMP/cli-release" \
+            --site distribution-site

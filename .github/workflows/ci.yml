@@ -32,6 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          # The main-branch Linux release advisory needs tags and ancestry.
+          fetch-depth: ${{ runner.os == 'Linux' && github.ref == 'refs/heads/main' && '0' || '1' }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -50,6 +52,11 @@ jobs:
         run: python3 -m pip install -r scripts/demo-requirements.txt
       - name: Check all supported behavior
         run: python3 scripts/check.py ${{ matrix.checks }} --jobs 2 --require-shellcheck
+      - name: Compare runtime with the live release
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        timeout-minutes: 1
+        run: python3 scripts/release_status.py
       - name: Show check summary
         if: always()
         run: |
