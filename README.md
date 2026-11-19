@@ -34,5 +34,6 @@ A saved key means Godmode stored it locally. Verify access against the intended 
 - [Choose an environment and business](docs/CONTEXTS.md) or [set up a remote machine](docs/REMOTE.md).
 - [Read the command reference](docs/COMMANDS.md), [release notes](docs/CHANGELOG.md), or [online docs](https://godmode.build/docs).
 - [Review credential storage and verify a release](docs/SECURITY.md), or run the [development checks](docs/dev/TESTING.md).
+- Follow the [contributing guide](docs/CONTRIBUTING.md) for pull requests and releases.
 
 The CLI is free for local use without an account or activation. The [source-available license](LICENSE) permits inspection and private modification and restricts redistribution. See [Licensing](docs/LICENSING.md) for earlier purchases and receipts.
