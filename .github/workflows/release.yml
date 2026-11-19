@@ -179,5 +179,3 @@ jobs:
     with:
       version: ${{ needs.publish.outputs.version }}
       source_sha: ${{ needs.publish.outputs.source_sha }}
-    secrets:
-      GODMODE_DISTRIBUTION_APP_KEY: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}

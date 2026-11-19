@@ -9,9 +9,6 @@ on:
       source_sha:
         required: true
         type: string
-    secrets:
-      GODMODE_DISTRIBUTION_APP_KEY:
-        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -36,6 +33,9 @@ jobs:
       github.repository == 'lofimichael/godmode-cli' &&
       github.ref == 'refs/heads/main' &&
       (!github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true')
+    environment:
+      name: cli-distribution
+      deployment: false
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:

@@ -98,9 +98,10 @@ for editorial changes and manual recovery.
 1. Create a dedicated private GitHub App owned by `lofimichael`. Turn off
    webhooks. Give it repository **Contents** and **Pull requests** read/write
    permissions and install it on `godmode-build` only.
-2. Save its client ID as the CLI repository Actions variable
-   `GODMODE_DISTRIBUTION_APP_CLIENT_ID`. Generate an App key and save its PEM
-   in the CLI repository Actions secret `GODMODE_DISTRIBUTION_APP_KEY`.
+2. In the CLI repository, create the Actions environment `cli-distribution`
+   and allow deployments from the `main` branch only. Save the App's client ID
+   as the environment variable `GODMODE_DISTRIBUTION_APP_CLIENT_ID`. Generate an
+   App key and save its PEM as the environment secret `GODMODE_DISTRIBUTION_APP_KEY`.
 3. Keep the site's review and required checks in place. The installation token
    creates a branch and opens its PR. Production deployment credentials stay
    in the site's `production` environment.
