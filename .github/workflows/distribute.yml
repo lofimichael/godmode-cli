@@ -9,6 +9,9 @@ on:
       source_sha:
         required: true
         type: string
+    secrets:
+      GODMODE_DISTRIBUTION_APP_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -56,8 +59,12 @@ jobs:
           APP_CLIENT_ID: ${{ vars.GODMODE_DISTRIBUTION_APP_CLIENT_ID }}
           APP_KEY: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}
         run: |
-          if [[ -z "$APP_CLIENT_ID" || -z "$APP_KEY" ]]; then
-            echo '::error::Configure the website GitHub App using docs/dev/RELEASING.md, then retry this handoff.'
+          if [[ -z "$APP_CLIENT_ID" ]]; then
+            echo '::error::Set GODMODE_DISTRIBUTION_APP_CLIENT_ID in the cli-distribution environment. See docs/dev/RELEASING.md.'
+            exit 1
+          fi
+          if [[ -z "$APP_KEY" ]]; then
+            echo '::error::The handoff cannot access GODMODE_DISTRIBUTION_APP_KEY in the cli-distribution environment. See docs/dev/RELEASING.md.'
             exit 1
           fi
       - name: Mint a website-only installation token
