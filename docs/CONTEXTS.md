@@ -1,128 +1,102 @@
 # Businesses and environments
 
-Client work needs its own keys and business details. An environment selects a complete key file. A business context selects reusable business facts.
+A key environment selects one complete key file. A business context selects a named [profile](PROFILE.md) you can reuse across environments.
 
 ## Select the active setup
 
-Open **Active setup** in `godmode`. Choose the key environment and business profile once. New commands use that pair, including `godmode profile get FIELD`, `godmode list` and `godmode run`.
+Open **Switch setup** in `godmode`, choose a **Key environment** and **Business profile**, then select **Use this setup**. From the shell, use `godmode use` after creating the environment and context:
 
 ```sh
 godmode use --env acme-test --context acme
 godmode active
-godmode profile get business_name
 ```
 
-The choices must already exist. With `godmode use acme-test` or `godmode use --context acme`, the omitted choice retains its currently resolved value, including any shell override; the complete resulting pair is saved. Pass both flags to save an exact pair. No keys or business fields are copied. Choose **Automatic** for the selected environment's own profile:
-
-```sh
-godmode use --env default --context -
-```
-
-The active pair is saved in `active.json` in the Godmode home. Existing installations keep their default files until you choose a different setup. A missing saved file or business produces an error instead of falling back to another account.
+`use` saves the pair in `active.json` for new commands. Open Godmode sessions keep the pair they started with. If you omit one flag, Godmode saves that choice's currently resolved value, including shell overrides. Choose **Automatic** or pass `--context -` to use the selected environment's own profile.
 
 ## Copy a key file
 
-A copy keeps the providers you already use while letting you replace a few keys.
+Start empty when you need a separate account or client:
 
 ```sh
-godmode env create acme-test --copy default
-godmode --env acme-test setup stripe
+godmode env create acme-test
+godmode --env acme-test --context - setup stripe
 ```
 
-This creates `.env.godmode.acme-test` beside `.env.godmode`. Every source key is copied. Later changes stay in the file you edit; rotations do not spread to copies. The source file is untouched. Existing destinations are refused.
-
-For a client who needs only their own keys, start empty:
-
-```sh
-godmode env create client-test
-godmode --env client-test setup
-```
-
-A missing key stays missing. Named files never borrow keys from the default file. A name such as `acme-live` does not change a key's Stripe account or mode.
+To start with the keys from another file, use `godmode env create acme-test --copy default` in place of the first command. A copy takes a snapshot of every key. Key rotations and profile edits stay with the files you change. Godmode refuses an existing destination and keeps missing keys missing in the selected environment.
 
 ## Reuse one business profile
 
-Test and live environments can share one business address and legal name.
+Create a named context for details shared by test and live setups:
 
 ```sh
 godmode context create acme
-godmode --context acme profile
-godmode env create acme-live
 godmode --env acme-test --context acme profile
-godmode --env acme-live --context acme setup stripe
+godmode use --env acme-test --context acme
 ```
 
-`--context acme` selects the same business profile in both environments. With the Automatic business profile (`--context -`), a named environment has its own empty profile. Copying keys does not copy business facts.
+Use `--context acme` with a different environment to select those same facts. Under **Automatic**, each environment has its own profile.
 
 ## Give an agent the selection
 
-Pin the pair at the start of a task. Two agents can then work for different businesses while you change the saved default.
+Generate a scoped note to paste into the agent task. Use the same prefix for discovery and execution:
 
 ```sh
 godmode --env acme-test --context acme agents --print
 godmode --env acme-test --context acme help
 godmode --env acme-test --context acme run \
-  STRIPE_SECRET_KEY=STRIPE_TEST_SECRET_KEY -- your-command
+  STRIPE_API_KEY=STRIPE_TEST_SECRET_KEY -- stripe balance retrieve
 ```
 
-Copy the note into the agent's task. The Agents menu keeps this note visible after all agents are connected. Installed global instructions stay generic; a client selection belongs to that client's task.
+The final command requires the Stripe CLI and a saved test key. `godmode active --command` prints the prefix for the current pair. Installed global agent instructions are generic. Use the scoped note when an ongoing task needs a specific account.
 
-Menu selections become the saved default for new commands. Already running Godmode sessions keep their current pair. A new unscoped command in another terminal uses the saved default, so copy a scoped task note or pin the shell for work that must stay on one account.
+Selection order applies separately to keys and business facts:
 
-```sh
-export GODMODE_ENV=acme-test
-export GODMODE_CONTEXT=acme
-# Start your agent in this shell.
-```
+| Priority | Keys | Business |
+| --- | --- | --- |
+| 1 | `--env NAME` | `--context NAME` |
+| 2 | `GODMODE_ENV` | `GODMODE_CONTEXT` |
+| 3 | Saved environment | Saved context |
+| 4 | `default` | Automatic |
 
-Explicit `--env` / `--context` options win, then shell variables, then the saved active pair. Each axis resolves separately. `GODMODE_CONTEXT=-` selects the environment's own profile. Use `unset GODMODE_ENV GODMODE_CONTEXT` to follow the saved default again.
-
-`godmode active --command` prints the exact scoped command prefix. `godmode active --json` reports names, paths and where each choice came from. `run` pins both selections in its child environment and supplies only the requested saved keys. Other inherited variables and native provider logins remain available. The new setup does not change another tool's own login or grant permission to use it.
+Set both shell variables before launching an agent to carry the scope into that shell's processes. Use `unset GODMODE_ENV GODMODE_CONTEXT` to follow the saved pair again. `run` also passes the resolved selections to the child. Each provider tool still controls its own login and account.
 
 ## Inspect the files
 
-Names and paths reveal the selection without exposing values.
-
 ```sh
+godmode active --json
 godmode env list --json
 godmode env show acme-test
-godmode --env acme-test --context acme doctor --json
+godmode context show acme
 ```
 
-```text
-~/.godmode/
-  active.json                    saved environment/business names
-  .env.godmode                    default keys
-  .env.godmode.acme-test          independent test keys
-  .env.godmode.acme-live          independent live keys
-  seal.key                       shared local seal key
-  profile.json                   default business facts
-  environments/acme-test/
-    profile.json                 facts when no context is selected
-  contexts/acme/
-    context.json                 optional key-name mappings
-    profile.json                 reusable Acme facts
-```
+`active --json` includes the selected names, paths and selection sources. `godmode path` prints the active key-file path.
 
-Existing legacy homes are detected. `--home DIR` selects a different home explicitly. `godmode path` shows the selected key file.
+| Path under the Godmode home | Contents |
+| --- | --- |
+| `active.json` | Saved environment and business names |
+| `.env.godmode` / `.env.godmode.NAME` | Default or independent named key file |
+| `seal.key` | Shared seal key for these files |
+| `profile.json` / `environments/NAME/profile.json` | Default or named environment's Automatic profile |
+| `contexts/NAME/profile.json` | Reusable business facts |
+| `contexts/NAME/context.json` | Context metadata, including optional key aliases |
 
 ## Reuse a saved key name
 
-Aliases keep older setups working without copying values inside one file.
+Use a context mapping when a tool will keep asking for the same variable. This example maps the Stripe CLI's input to a saved test key:
 
 ```sh
-godmode context map acme STRIPE_SECRET_KEY ACME_STRIPE_KEY
-godmode --env acme-test --context acme run STRIPE_SECRET_KEY -- your-command
+godmode context map acme STRIPE_API_KEY STRIPE_TEST_SECRET_KEY
+godmode --env acme-test --context acme run STRIPE_API_KEY -- stripe balance retrieve
 ```
 
-The mapping resolves once inside the selected file. Missing mapped keys stop the command. Unmapped names use that same file. `context unmap acme STRIPE_SECRET_KEY` restores the ordinary name in that file. Mapped edits show and change the actual saved name.
+Aliases resolve once inside the selected file. A missing mapped key stops the command. An unmapped name uses its ordinary entry in that file. To remove the mapping, run `godmode context unmap acme STRIPE_API_KEY`.
 
 ## Repair a missing selection
 
-`godmode env list` and `godmode context list` remain available if a selected file was moved. Select an existing pair to repair the default:
+Run `godmode env list` and `godmode context list` to see available choices, then save a valid pair. To return to the default environment and its own profile:
 
 ```sh
 godmode use --env default --context -
 ```
 
-A malformed or unsafe `active.json` is refused. Explicitly supplying both selections lets a task continue without reading that file. Correct the JSON or move the damaged file aside yourself before saving a replacement. Godmode never silently clears unreadable selection metadata.
+If `active.json` is malformed or unsafe, supply both flags to scope a task while you repair the saved file. Correct its JSON or move the file aside before saving a replacement.

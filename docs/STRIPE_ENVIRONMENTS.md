@@ -1,46 +1,43 @@
 # Stripe accounts and sandboxes
 
-The wrong Stripe key can put a product, payment or webhook in the wrong account. Keep business facts, key files and deployment settings separate.
+Use a named Godmode environment for each Stripe account and sandbox you work on. Give deployments their own Stripe configuration so code can check the target before a write.
 
-| Detail | Where it belongs |
+| Detail | Where to keep it |
 | --- | --- |
-| Legal name, address, public contact | Reusable business profile |
-| API keys for one chosen setup | Named Godmode environment |
-| Expected `acct_…`, test/live mode, price IDs | Project deployment configuration |
-| Webhook signing secret | That endpoint's runtime secret store |
+| Legal name, address, public contact | [Business profile](PROFILE.md) |
+| API keys for the selected setup | [Godmode key environment](CONTEXTS.md) |
+| Expected `acct_…`, test or live mode, resource IDs | Project deployment configuration |
+| Webhook signing secret | The endpoint's runtime secret store |
 
 ## Select the account and sandbox
 
-Stripe accounts can share a legal entity while keeping their products and payments separate. Independently operating projects or businesses need separate accounts. A consultant's clients keep their own accounts. [Stripe account guidance](https://docs.stripe.com/get-started/account/multiple-accounts)
+1. In the Stripe Dashboard, select the account and sandbox. General sandboxes have isolated data and settings. The `sk_test_` or `rk_test_` prefix alone cannot identify a sandbox. [Stripe accounts](https://docs.stripe.com/get-started/account/multiple-accounts), [Sandboxes](https://docs.stripe.com/sandboxes).
+2. Create a key environment and open the Stripe key editor.
 
-General sandboxes have separate data and settings. Legacy test mode shares some settings with live. Both use test-prefixed keys; `sk_test_` or `rk_test_` alone cannot identify the sandbox. [Sandbox guidance](https://docs.stripe.com/sandboxes), [API keys](https://docs.stripe.com/keys)
+   ```sh
+   godmode env create acme-test
+   godmode --env acme-test --context - setup stripe
+   ```
 
-```sh
-godmode env create acme-test
-godmode --env acme-test setup stripe
-godmode --env acme-test --context acme help
-```
-
-Select the intended account and sandbox in Stripe before saving its key. A verified business's sandbox still makes test payments. Real payments require its live keys and enabled payment capabilities.
+3. Save the test key you need. For a restricted key, give it the permissions needed for the task. [Stripe API keys](https://docs.stripe.com/keys).
 
 ## Check the target before changing it
 
-A local filename is a label. The provider's response establishes where the key works.
+Have the consuming tool retrieve the authenticated account and compare its ID with the configured account. Check the sandbox and the `livemode` field on relevant resources. Confirm the deployment destination before writing. An organization key also needs explicit account routing and an API version. [Retrieve an account](https://docs.stripe.com/api/accounts/retrieve), [Organization keys](https://docs.stripe.com/keys/organization-api-keys).
 
-The project script should read the authenticated account, compare its ID with the configured account, check test/live mode on resources, and verify the deployment destination before writes. A denied restricted key stops the operation; it does not justify trying a broader key. Prefer restricted keys with the permissions that the task needs. [Restricted keys](https://docs.stripe.com/keys/restricted-api-keys)
+For a read-only API call using an installed Stripe CLI, map the stored test key to `STRIPE_API_KEY`:
 
-Organization keys require explicit account routing and API versions. Account keys are simpler for one project. [Organization keys](https://docs.stripe.com/keys/organization-api-keys)
+```sh
+godmode --env acme-test --context - run \
+  STRIPE_API_KEY=STRIPE_TEST_SECRET_KEY -- stripe balance retrieve
+```
+
+The balance response tests access to that endpoint. Confirm account and sandbox separately before making changes.
 
 ## Keep webhook secrets with their endpoints
 
-Each webhook endpoint has its own signing secret. Test and live endpoints can share a URL and still have different secrets. Stripe CLI forwarding has another secret. [Webhook signatures](https://docs.stripe.com/webhooks)
-
-Use a separate deployment for each account and sandbox. Store its matching endpoint secret there. Verify the raw request signature, expected mode and project ownership before changing membership or order data.
-
-A created endpoint does not prove delivery. Save the endpoint ID, install its secret, then send a signed event and confirm the receiver's result. If secret installation fails, repair that step before declaring the endpoint ready.
+Each endpoint has its own secret, including test and live endpoints at the same URL. Stripe CLI forwarding uses another secret. Install the matching secret on the receiver, verify the signature against the raw request body, then send a test event and check the receiver's result. [Stripe webhooks](https://docs.stripe.com/webhooks).
 
 ## Reuse facts and verified resources
 
-Reuse the business profile across test and live. Copy a key file when you want a snapshot of shared providers. Keep product, price, customer and webhook IDs separate for each Stripe account and environment.
-
-Provisioning should first retrieve saved IDs, validate their ownership and settings, and search all result pages before creating anything. Multiple matches require resolution. Idempotency keys protect retries; they are not a permanent registry. [Stripe idempotency](https://docs.stripe.com/api/idempotent_requests)
+Reuse a business profile across test and live. Scope product, price, customer and webhook IDs to their Stripe account and sandbox. Before creating a resource, check saved IDs and search existing resources. Use idempotency keys for retries. [Stripe idempotency](https://docs.stripe.com/api/idempotent_requests).

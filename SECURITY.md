@@ -1,5 +1,5 @@
 # Security
 
-Report vulnerabilities privately: https://github.com/lofimichael/godmode-cli/security/advisories/new. Do not include real keys.
+Email [godmode@lofilabs.xyz](mailto:godmode@lofilabs.xyz) privately to report a vulnerability. Include the affected version and a reproducible example with synthetic credentials.
 
-How Godmode stores keys: [docs/SECURITY.md](docs/SECURITY.md).
+For storage, command access and release verification, see [How Godmode handles keys](docs/SECURITY.md).
