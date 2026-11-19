@@ -19,6 +19,7 @@ import release
 SOURCE = '1' * 40
 OTHER_SOURCE = '2' * 40
 VERSION = 'v0.21.0'
+CHANGELOG = '## v0.21.0\n\n2026-11-19\n\n- Ship release automation.\n'
 
 
 class FakeGitHub:
@@ -93,9 +94,13 @@ class ReleasePlanTests(unittest.TestCase):
         return subprocess.check_output(['git', '-c', 'user.name=Release Test',
                                         '-c', 'user.email=release@example.test', *args], text=True).strip()
 
-    def commit(self, version):
+    def commit(self, version, changelog=None):
         (self.root / 'VERSION').write_text(version + '\n')
-        self.git('add', 'VERSION')
+        (self.root / 'docs').mkdir(exist_ok=True)
+        if changelog is None:
+            changelog = f'## v{version}\n\n2026-11-19\n\n- Updated Godmode.\n'
+        (self.root / 'docs/CHANGELOG.md').write_text(changelog)
+        self.git('add', 'VERSION', 'docs/CHANGELOG.md')
         self.git('commit', '--allow-empty', '-m', version)
         return self.git('rev-parse', 'HEAD')
 
@@ -135,7 +140,7 @@ class ReleasePlanTests(unittest.TestCase):
             self.dispatch(release.MAIN, head, dry_run='false', tag='v0.21.1')
 
     def test_published_tag_reuses_release_bytes_even_with_newer_tag(self):
-        head = self.commit('0.21.0')
+        head = self.commit('0.21.0', '# Historical notes\n')
         self.git('tag', VERSION, head)
         self.github.references.update({VERSION: head, 'v0.22.0': OTHER_SOURCE})
         self.github.releases[VERSION] = {'id': 1, 'draft': False}
@@ -145,6 +150,33 @@ class ReleasePlanTests(unittest.TestCase):
     def test_version_rollback_is_rejected(self):
         with self.assertRaisesRegex(release.ReleaseError, 'must increase'):
             self.push(self.commit('0.19.0'))
+
+    def test_missing_notes_prevent_push_and_dry_run_before_packaging(self):
+        head = self.commit('0.21.0', '# Historical notes\n')
+        with self.assertRaisesRegex(release.ReleaseError, 'needs one ## v0.21.0 section'):
+            self.push(head)
+        with self.assertRaisesRegex(release.ReleaseError, 'needs one ## v0.21.0 section'):
+            self.dispatch('refs/heads/feature', head)
+
+    def test_notes_support_dates_bullets_and_safe_links(self):
+        release.validate_changelog(CHANGELOG, VERSION)
+        release.validate_changelog(
+            '## v0.21.0\r\n\r\nNovember 19, 2026\r\n\r\n'
+            '* See [install](/docs/install), [FAQ](#faq) and [GitHub](https://github.com/lofimichael).\r\n',
+            VERSION,
+        )
+
+    def test_notes_reject_duplicate_sections_invalid_dates_and_unsafe_links(self):
+        cases = (
+            (CHANGELOG + CHANGELOG, 'needs one'),
+            (CHANGELOG.replace('2026-11-19', '2026-02-31'), 'valid date'),
+            (CHANGELOG.replace('- Ship', 'Ship'), 'change bullet'),
+            (CHANGELOG + '- See [details](//example.com).\n', 'Use HTTPS'),
+            (CHANGELOG + '- See [details](README.md).\n', 'Use HTTPS'),
+        )
+        for changelog, error in cases:
+            with self.subTest(changelog=changelog), self.assertRaisesRegex(release.ReleaseError, error):
+                release.validate_changelog(changelog, VERSION)
 
 
 class ReleasePublishTests(unittest.TestCase):
@@ -169,6 +201,7 @@ class ReleasePublishTests(unittest.TestCase):
             files = {'BUILD.json': build, 'install.sh': installer}
             if target == 'source':
                 files['VERSION'] = (VERSION[1:] + '\n').encode()
+                files['docs/CHANGELOG.md'] = CHANGELOG.encode()
             else:
                 files['godmode'] = binary
             with tarfile.open(self.directory / name, 'w:gz') as tar:

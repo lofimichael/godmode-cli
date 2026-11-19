@@ -2,6 +2,7 @@
 """Plan, verify, and publish a commit-bound Godmode CLI release."""
 
 import argparse
+from datetime import date, datetime
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from urllib.parse import urlsplit
 
 
 MAIN = 'refs/heads/main'
@@ -55,6 +57,40 @@ def sha_at_tag(tag):
     return checked_sha(git('rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'))
 
 
+def validate_changelog(changelog, version):
+    """Check the section consumed by the website release importer."""
+    if len(changelog.encode()) > 512 * 1024:
+        raise ReleaseError('docs/CHANGELOG.md exceeds its release archive size limit.')
+    changelog = changelog.replace('\r\n', '\n')
+    headings = list(re.finditer(r'^##[ \t]+(.+?)[ \t]*$', changelog, re.MULTILINE))
+    matches = [index for index, heading in enumerate(headings) if heading[1] == version]
+    if len(matches) != 1:
+        raise ReleaseError(f'docs/CHANGELOG.md needs one ## {version} section.')
+    index = matches[0]
+    end = headings[index + 1].start() if index + 1 < len(headings) else len(changelog)
+    body = changelog[headings[index].end():end].strip()
+    if len(body) > 32768 or any(ord(character) < 32 and character not in '\n\t' for character in body):
+        raise ReleaseError(f'CLI release notes for {version} contain unsupported text.')
+    lines = body.splitlines()
+    if not lines or not any(re.match(r'^[-*] +\S', line) for line in lines[1:]):
+        raise ReleaseError(f'CLI release notes for {version} need a date and a change bullet.')
+    try:
+        if re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', lines[0]):
+            date.fromisoformat(lines[0])
+        else:
+            datetime.strptime(lines[0], '%B %d, %Y')
+    except ValueError as error:
+        raise ReleaseError(f'CLI release notes for {version} need a valid date.') from error
+    for link in re.findall(r'\[[^\]\n]+\]\(([^)\s]+)\)', body):
+        if re.fullmatch(r'#[a-z0-9-]+', link):
+            continue
+        if link.startswith('/') and not link.startswith('//') and '\\' not in link:
+            continue
+        parsed = urlsplit(link)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or '\\' in link:
+            raise ReleaseError('Use HTTPS links, site-relative paths or section anchors in CLI release notes.')
+
+
 def plan(event_name, ref, head, event, github):
     if git('rev-parse', 'HEAD') != checked_sha(head):
         raise ReleaseError('Planner checkout does not match the workflow commit.')
@@ -91,17 +127,17 @@ def plan(event_name, ref, head, event, github):
     else:
         raise ReleaseError('Unknown release event.')
 
-    if dry_run:
-        return {'mode': 'dry-run', 'version': version, 'source_sha': sha}
-
-    if ref != MAIN:
-        raise ReleaseError('Publishing must run from main.')
-    github.require_main_commit(sha)
-    tags, release = current_state(github, version, sha)
-    if release and not release['draft']:
-        return {'mode': 'reuse', 'version': version, 'source_sha': sha}
-    require_newest(tags, version)
-    return {'mode': 'build', 'version': version, 'source_sha': sha}
+    mode = 'dry-run' if dry_run else 'build'
+    if not dry_run:
+        if ref != MAIN:
+            raise ReleaseError('Publishing must run from main.')
+        github.require_main_commit(sha)
+        tags, release = current_state(github, version, sha)
+        if release and not release['draft']:
+            return {'mode': 'reuse', 'version': version, 'source_sha': sha}
+        require_newest(tags, version)
+    validate_changelog(git('show', f'{sha}:docs/CHANGELOG.md'), version)
+    return {'mode': mode, 'version': version, 'source_sha': sha}
 
 
 def artifacts(version):
@@ -127,15 +163,15 @@ def archive_member(archive, name):
     return archive.extractfile(matches[0])
 
 
-def archive_text(archive, name):
+def archive_text(archive, name, limit=65536):
     with archive_member(archive, name) as stream:
-        value = stream.read(65537)
-    if len(value) > 65536:
+        value = stream.read(limit + 1)
+    if len(value) > limit:
         raise ReleaseError(f'{name} exceeds its size limit in {archive.name}.')
     return value
 
 
-def verify_bundle(directory, version, sha):
+def verify_bundle(directory, version, sha, *, require_notes=True):
     version_key(version)
     checked_sha(sha)
     archives = artifacts(version)
@@ -153,6 +189,9 @@ def verify_bundle(directory, version, sha):
     with tarfile.open(entries[archives['source']], 'r:gz') as source:
         build_json = archive_text(source, 'BUILD.json')
         recorded_version = archive_text(source, 'VERSION').decode().strip()
+        if require_notes:
+            changelog = archive_text(source, 'docs/CHANGELOG.md', limit=512 * 1024).decode()
+            validate_changelog(changelog, version)
     build = json.loads(build_json)
     if not isinstance(build, dict) or not isinstance(build.get('binaries'), dict):
         raise ReleaseError('Expected a build manifest with native binary digests.')
@@ -286,6 +325,14 @@ def check_uploaded(github, asset, path, digest):
         raise ReleaseError(f'Existing asset {path.name} differs from the tested bytes.')
 
 
+def verify_uploaded_bundle(github, release, directory, hashes):
+    assets = release_assets(release, hashes.keys())
+    if assets.keys() != hashes.keys():
+        raise ReleaseError('The remote release asset set is incomplete.')
+    for name, asset in assets.items():
+        check_uploaded(github, asset, directory / name, hashes[name])
+
+
 def verify_published(github, release, version, sha):
     names = {'install.sh', 'SHA256SUMS', *artifacts(version).values()}
     assets = release_assets(release, names)
@@ -294,7 +341,7 @@ def verify_published(github, release, version, sha):
     with tempfile.TemporaryDirectory() as directory:
         for name, asset in assets.items():
             github.download(asset, Path(directory) / name)
-        verify_bundle(Path(directory), version, sha)
+        verify_bundle(Path(directory), version, sha, require_notes=False)
 
 
 def publish(github, version, sha, directory):
@@ -303,7 +350,10 @@ def publish(github, version, sha, directory):
     github.require_main_commit(sha)
     tags, release = current_state(github, version, sha)
     if release and not release['draft']:
-        verify_published(github, release, version, sha)
+        if directory is None:
+            verify_published(github, release, version, sha)
+        else:
+            verify_uploaded_bundle(github, release, directory, verify_bundle(directory, version, sha))
         return
     require_newest(tags, version)
     if directory is None:
@@ -342,21 +392,13 @@ def publish(github, version, sha, directory):
     require_newest(tags, version)
     if not draft or not draft['draft'] or draft['id'] != release['id']:
         raise ReleaseError('The draft changed before it could be published.')
-    assets = release_assets(draft, hashes.keys())
-    if assets.keys() != hashes.keys():
-        raise ReleaseError('The draft upload is incomplete.')
-    for name, asset in assets.items():
-        check_uploaded(github, asset, directory / name, hashes[name])
+    verify_uploaded_bundle(github, draft, directory, hashes)
     github.require_main_commit(sha)
     github.publish(draft['id'])
     _, published = current_state(github, version, sha)
     if not published or published['draft'] or published['id'] != draft['id']:
         raise ReleaseError('The remote did not confirm the published release.')
-    published_assets = release_assets(published, hashes.keys())
-    if published_assets.keys() != hashes.keys():
-        raise ReleaseError('Published release assets are incomplete.')
-    for name, asset in published_assets.items():
-        check_uploaded(github, asset, directory / name, hashes[name])
+    verify_uploaded_bundle(github, published, directory, hashes)
 
 
 def write_outputs(**values):
