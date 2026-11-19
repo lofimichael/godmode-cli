@@ -172,7 +172,8 @@ jobs:
 
   distribution:
     needs: publish
-    if: needs.publish.outputs.version != ''
+    # Published releases can be reused with a skipped build matrix.
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     permissions:
       contents: read
     uses: ./.github/workflows/distribute.yml
