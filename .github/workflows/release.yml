@@ -180,3 +180,6 @@ jobs:
     with:
       version: ${{ needs.publish.outputs.version }}
       source_sha: ${{ needs.publish.outputs.source_sha }}
+    # The called job reads the named key from its protected environment.
+    secrets:
+      GODMODE_DISTRIBUTION_APP_KEY: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}
