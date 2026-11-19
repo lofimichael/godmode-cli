@@ -4,29 +4,33 @@ Set up Godmode on a remote machine or copy a specific environment over SSH. A co
 
 ## Copy the default environment to a fresh home
 
-Use a remote account you trust. Replace `devbox` with its SSH host. First create a private destination and install there without opening setup:
+Use a remote account you trust. Replace `devbox` with its SSH host. Create a private destination and run the direct installer with `--install-only`.
 
 ```sh
-ssh devbox 'umask 077 && mkdir "$HOME/.godmode-remote" &&
-  curl -fsSL https://get.godmode.build | bash -s -- --home "$HOME/.godmode-remote" --no-setup &&
-  test -x "$HOME/.godmode-remote/bin/godmode"'
+ssh devbox '
+  umask 077
+  remote_godmode="$HOME/.godmode-remote"
+  mkdir "$remote_godmode" &&
+  curl -fsSL https://godmode.build/install.sh -o "$remote_godmode/install.sh" &&
+  sh "$remote_godmode/install.sh" --home "$remote_godmode" --install-only
+'
 ```
 
 Continue only after this succeeds. If the directory already exists, choose a new destination. The matching seal key is shared by all environments in its home.
 
-On the source machine, use `godmode --env default --context - path` to confirm the default key file location. If you use legacy plain-text keys, [migrate them first](INSTALLATION.md#upgrading-from-09-or-earlier). For the standard home:
+On the source machine, use `godmode --env default --context - path` to confirm the default key file location. If you use legacy plain-text keys, [migrate them first](INSTALLATION.md#upgrading-from-09-or-earlier). This example copies from the standard home.
 
 ```sh
 scp -p ~/.godmode/.env.godmode ~/.godmode/seal.key devbox:.godmode-remote/
 ```
 
-Copy the optional profile separately if you want those business facts on the remote machine. You can use this step by itself after installing when the remote machine only needs the profile:
+Copy the optional profile separately. If the remote machine only needs business details, use this step by itself after installing.
 
 ```sh
 scp -p ~/.godmode/profile.json devbox:.godmode-remote/
 ```
 
-`scp -p` preserves the required file mode of 0600. Check the saved names on the remote host:
+`scp -p` preserves the required file mode of 0600. List the key names to check the copy.
 
 ```sh
 ssh devbox '~/.godmode-remote/bin/godmode --home ~/.godmode-remote --env default --context - list'

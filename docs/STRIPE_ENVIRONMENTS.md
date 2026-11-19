@@ -25,7 +25,7 @@ Use a named Godmode environment for each Stripe account and sandbox you work on.
 
 Have the consuming tool retrieve the authenticated account and compare its ID with the configured account. Check the sandbox and the `livemode` field on relevant resources. Confirm the deployment destination before writing. An organization key also needs explicit account routing and an API version. [Retrieve an account](https://docs.stripe.com/api/accounts/retrieve), [Organization keys](https://docs.stripe.com/keys/organization-api-keys).
 
-For a read-only API call using an installed Stripe CLI, map the stored test key to `STRIPE_API_KEY`:
+With the Stripe CLI installed, map the stored test key to `STRIPE_API_KEY` to make a read-only request.
 
 ```sh
 godmode --env acme-test --context - run \

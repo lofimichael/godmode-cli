@@ -4,7 +4,7 @@ A key environment selects one complete key file. A business context selects a na
 
 ## Select the active setup
 
-Open **Switch setup** in `godmode`, choose a **Key environment** and **Business profile**, then select **Use this setup**. From the shell, use `godmode use` after creating the environment and context:
+Open **Switch setup** in `godmode`, choose a **Key environment** and **Business profile**, then select **Use this setup**. From the shell, use `godmode use` once the environment and context exist.
 
 ```sh
 godmode use --env acme-test --context acme
@@ -15,7 +15,7 @@ godmode active
 
 ## Copy a key file
 
-Start empty when you need a separate account or client:
+For a separate account or client, create an empty environment before adding keys.
 
 ```sh
 godmode env create acme-test
@@ -26,7 +26,7 @@ To start with the keys from another file, use `godmode env create acme-test --co
 
 ## Reuse one business profile
 
-Create a named context for details shared by test and live setups:
+A named context lets test and live setups share one profile.
 
 ```sh
 godmode context create acme
@@ -38,7 +38,7 @@ Use `--context acme` with a different environment to select those same facts. Un
 
 ## Give an agent the selection
 
-Generate a scoped note to paste into the agent task. Use the same prefix for discovery and execution:
+Generate a scoped note to paste into the agent task. Use the same prefix when looking up and using keys.
 
 ```sh
 godmode --env acme-test --context acme agents --print
@@ -49,7 +49,7 @@ godmode --env acme-test --context acme run \
 
 The final command requires the Stripe CLI and a saved test key. `godmode active --command` prints the prefix for the current pair. Installed global agent instructions are generic. Use the scoped note when an ongoing task needs a specific account.
 
-Selection order applies separately to keys and business facts:
+Godmode resolves keys and business facts independently.
 
 | Priority | Keys | Business |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ godmode context show acme
 
 ## Reuse a saved key name
 
-Use a context mapping when a tool will keep asking for the same variable. This example maps the Stripe CLI's input to a saved test key:
+Use a context mapping when a tool will keep asking for the same variable. The Stripe CLI reads `STRIPE_API_KEY`, which you can map to a saved test key.
 
 ```sh
 godmode context map acme STRIPE_API_KEY STRIPE_TEST_SECRET_KEY
@@ -93,7 +93,7 @@ Aliases resolve once inside the selected file. A missing mapped key stops the co
 
 ## Repair a missing selection
 
-Run `godmode env list` and `godmode context list` to see available choices, then save a valid pair. To return to the default environment and its own profile:
+Run `godmode env list` and `godmode context list` to see available choices, then save a valid pair. Select `default` and Automatic to return to the original profile and key file.
 
 ```sh
 godmode use --env default --context -

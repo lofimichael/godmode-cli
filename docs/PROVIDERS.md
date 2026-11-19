@@ -21,13 +21,13 @@ For numbered menus, use `godmode --plain setup`. Press Enter to review the value
 2. Look up the environment variable the installed tool expects. Pass only the keys it needs with `godmode run`, using `VARIABLE=SAVED_KEY` to rename a key for the command.
 3. Make a read-only request to check the account, resource and permissions. Keep writes within the task the user authorized and verify their result at the provider.
 
-For example, with the GitHub CLI installed and `GH_TOKEN` saved:
+The GitHub CLI can report the signed-in account using your saved `GH_TOKEN`.
 
 ```sh
 godmode run GH_TOKEN -- gh api user --jq .login
 ```
 
-You can choose your own saved key name. Run `godmode set ACME_API_TOKEN` for the masked prompt, or use a private file for an import:
+You can choose your own saved key name. Run `godmode set ACME_API_TOKEN` for the masked prompt, or import a credential from a private file.
 
 ```sh
 godmode set ACME_OAUTH_JSON --stdin < /private/path/grant.json

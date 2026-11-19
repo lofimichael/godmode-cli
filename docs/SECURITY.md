@@ -39,7 +39,7 @@ Revoke an exposed credential at the provider. Local edits only change the select
 
 `godmode source` prints the embedded Python file engine. `godmode build-info` lists the Go compiler, dependency versions and engine SHA-256. The release's separate source archive includes the Go interface, build scripts and vendored dependencies.
 
-To compare an installed binary against reviewed source, check out the matching release commit and select the exact Go toolchain in `go.mod`. Confirm the selected compiler with `GOTOOLCHAIN=local go version`. Then run this on the binary's OS and architecture:
+To compare an installed binary against reviewed source, check out the matching release commit and select the exact Go toolchain in `go.mod`. Confirm the selected compiler with `GOTOOLCHAIN=local go version`. Rebuild on the same OS and architecture as the installed binary.
 
 ```sh
 GOPROXY=off GOSUMDB=off sh scripts/build-native.sh
