@@ -17,7 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import godmode_terminal as terminal
-from pty_support import Screen, Terminal
+from pty_support import Screen, Terminal, write_pty
 
 DOT = "•".encode()
 DOTS = DOT * 5
@@ -108,15 +108,7 @@ class Session:
         self.wait(marker)
 
     def send(self, data):
-        pending = memoryview(data)
-        deadline = time.monotonic() + 5
-        while pending:
-            if time.monotonic() > deadline:
-                raise AssertionError("PTY write timed out; capture withheld")
-            try:
-                pending = pending[os.write(self.master, pending):]
-            except BlockingIOError:
-                self.drain(0.02)
+        write_pty(self.master, data, lambda: self.drain(0.02), timeout=5)
 
     def drain(self, duration=0.1):
         end = time.monotonic() + duration
@@ -236,7 +228,9 @@ class TerminalTests(unittest.TestCase):
             self.assertIn(b"REJECTED", session.output)
             self.assertNotIn(b"SYNTHETIC", session.output)
         menu = self.menu()
+        mark = len(menu.output)
         menu.send(b"\x1b[200~bad\0" + b"SYNTHETIC_PASTE_LINE\r\n" * 2500 + b"\x1b[201~")  # About 50 KB.
+        menu.wait(b"MENU_HINT", start=mark)
         self.assertEqual(self.pointed(menu), "Alpha")
         self.assertIsNone(menu.process.poll(), "a menu ignores every paste, whatever is in it")
         self.assertNotIn(b"SYNTHETIC", menu.output)
