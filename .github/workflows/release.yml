@@ -1,81 +1,181 @@
-name: Build draft release
+name: Release CLI
 
-# Explicit dispatch only. A tag does not publish or spend build minutes.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
+      dry_run:
+        description: Test and package without publishing
+        type: boolean
+        default: true
       tag:
-        description: Existing vX.Y.Z tag on main to package into a private draft
-        required: true
+        description: Existing vX.Y.Z tag to retry
+        type: string
+      commit:
+        description: Full commit SHA to test or release
         type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ inputs.tag }}
-  cancel-in-progress: false
-
 jobs:
-  package:
-    # The repository owner must opt in before a private runner can start.
+  plan:
+    # The repository owner opts in before private runners can start.
     if: "!github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true'"
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    env:
-      RELEASE_TAG: ${{ inputs.tag }}
-      CGO_ENABLED: '0'
-      GOTOOLCHAIN: local
-      GOPROXY: 'off'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        name: Select the exact release candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Read VERSION before and after the push. GitHub path filters only inspect 300 files.
+        run: python3 scripts/release.py plan
+
+  check:
+    needs: plan
+    if: needs.plan.outputs.mode == 'build' || needs.plan.outputs.mode == 'dry-run'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: '3.9'
+            checks: '--full'
+          - os: macos-15
+            python: '3.14'
+            checks: ''
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ needs.plan.outputs.version }}
+      RELEASE_SHA: ${{ needs.plan.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install release test dependencies
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install Linux test dependencies
+        if: runner.os == 'Linux'
+        run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
+      - name: Install macOS test dependencies
+        if: runner.os == 'macOS'
+        run: command -v shellcheck || brew install shellcheck
       - name: Install terminal screen test dependencies
         run: python3 -m pip install -r scripts/demo-requirements.txt
-      - name: Validate tag and source
+      - name: Run the CLI test suite
         shell: bash
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
-          git merge-base --is-ancestor HEAD origin/main
-          test "$RELEASE_TAG" = "v$(cat VERSION)"
-          test -f vendor/modules.txt
-      - name: Test the engine, native UI and installer
-        run: |
-          python3 scripts/check.py --full --jobs 2 --require-shellcheck
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(cat VERSION)" = "${RELEASE_TAG#v}"
+          python3 scripts/check.py ${{ matrix.checks }} --jobs 2 --require-shellcheck
           test "$(target/godmode-native --version)" = "godmode ${RELEASE_TAG#v}"
-      - name: Package four native targets and complete source
-        run: python3 scripts/package-native.py --output-dir dist
-      - name: Install the native Linux archive
+      - name: Show check summary
+        if: always()
+        run: |
+          if [ -f target/checks/summary.json ]; then cat target/checks/summary.json; fi
+      - name: Package the four native targets and complete source
+        if: runner.os == 'Linux'
+        run: python3 scripts/package-native.py
+      - name: Check out the release verifier
+        if: runner.os == 'Linux'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: target/release-automation
+          persist-credentials: false
+          sparse-checkout: scripts/release.py
+          sparse-checkout-cone-mode: false
+      - name: Verify archives and exact source
+        if: runner.os == 'Linux'
+        run: python3 target/release-automation/scripts/release.py verify --version "$RELEASE_TAG" --source-sha "$RELEASE_SHA" --directory target/dist
+      - name: Smoke-test the packaged Linux installer and updater
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           release_home=$(mktemp -d)
-          HOME="$release_home" SHELL=/bin/sh sh dist/install.sh --archive "dist/godmode-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz" --checksum dist/SHA256SUMS --path
-          test "$("$release_home/.godmode/bin/godmode" --version)" = "godmode ${RELEASE_TAG#v}"
-          cmp install.sh "$release_home/.godmode/bin/godmodeup"
-          test ! -e "dist/godmode-$RELEASE_TAG-unix.tar.gz"
-      - name: Create draft release
-        working-directory: dist
+          trap 'rm -rf "$release_home"' EXIT
+          archive="target/dist/godmode-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz"
+          sh target/dist/install.sh --archive "$archive" --checksum target/dist/SHA256SUMS --home "$release_home" --install-only
+          test "$("$release_home/bin/godmode" --version)" = "godmode ${RELEASE_TAG#v}"
+          cmp install.sh "$release_home/bin/godmodeup"
+          "$release_home/bin/godmodeup" --archive "$archive" --checksum target/dist/SHA256SUMS --install-only
+          test "$("$release_home/bin/godmode" --version)" = "godmode ${RELEASE_TAG#v}"
+      - name: Save tested release files
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-release
+          path: target/dist/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    needs: [plan, check]
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.result == 'success'
+      && (needs.plan.outputs.mode == 'reuse'
+      || (needs.plan.outputs.mode == 'build' && needs.check.result == 'success'))
+    concurrency:
+      group: cli-release-publish
+      queue: max
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+      source_sha: ${{ steps.publish.outputs.source_sha }}
+    env:
+      RELEASE_TAG: ${{ needs.plan.outputs.version }}
+      RELEASE_SHA: ${{ needs.plan.outputs.source_sha }}
+      RELEASE_MODE: ${{ needs.plan.outputs.mode }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/release.py
+          sparse-checkout-cone-mode: false
+      - name: Download tested release files
+        if: needs.plan.outputs.mode == 'build'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-release
+          path: target/dist/
+      - id: publish
+        name: Publish or verify the stable CLI release
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+        shell: bash
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo 'Release already exists; inspect it before retrying.' >&2
-            exit 1
+          arguments=(publish --version "$RELEASE_TAG" --source-sha "$RELEASE_SHA")
+          if [[ "$RELEASE_MODE" == build ]]; then
+            arguments+=(--directory target/dist)
           fi
-          gh release create "$RELEASE_TAG" ./*.tar.gz install.sh SHA256SUMS \
-            --verify-tag --draft --title "Godmode $RELEASE_TAG" --generate-notes
+          python3 scripts/release.py "${arguments[@]}"
+
+  distribution:
+    needs: publish
+    if: needs.publish.outputs.version != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/distribute.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+      source_sha: ${{ needs.publish.outputs.source_sha }}
