@@ -21,6 +21,25 @@ import termios
 import time
 
 
+def write_pty(master, data, drain, timeout):
+    """Send bounded chunks while draining the child's terminal output."""
+    pending = memoryview(data)
+    deadline = time.monotonic() + timeout
+    while pending:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('PTY write timed out; capture suppressed')
+        ready, writable, _ = select.select([master], [master], [], min(remaining, 0.05))
+        if ready:
+            drain()
+        if writable:
+            try:
+                sent = os.write(master, pending[:1024])
+            except BlockingIOError:
+                continue
+            pending = pending[sent:]
+
+
 class Terminal:
     def __init__(self, command, env, cols=110, rows=36):
         self.master, self.slave = os.openpty()
@@ -82,20 +101,7 @@ class Terminal:
         self.seen(text)
 
     def send(self, data):
-        view = memoryview(data)
-        deadline = time.monotonic() + 10
-        while view:
-            if time.monotonic() > deadline:
-                raise RuntimeError('PTY write timed out; capture suppressed')
-            ready, writable, _ = select.select([self.master], [self.master], [], 0.05)
-            if ready:
-                self.drain(0)
-            if writable:
-                try:
-                    sent = os.write(self.master, view[:1024])
-                    view = view[sent:]
-                except BlockingIOError:
-                    pass
+        write_pty(self.master, data, lambda: self.drain(0), timeout=10)
 
     def paste(self, text):
         self.send(b'\x1b[200~' + text.encode() + b'\x1b[201~')

@@ -18,15 +18,17 @@ Install
 
 Commands
 
-  godmode               active setup, providers and agents
-  godmode intro         replay the warning and power-up
-  godmode active        show selected business and keys
-  godmode use ENV        switch the saved key environment
-  godmode faq           keys, files and source
+  godmode               open the terminal interface
+  godmode help          read the agent guide and saved key names
+  godmode agents        copy or append the agent note
+  godmode active        show the selected business and key environment
+  godmode --help        list available commands
+  godmodeup             update a managed installation
 
-Source
+Docs and source
 
-  https://github.com/lofimichael/godmode-cli
+  https://godmode.build/docs
+  https://godmode.build/install#release-files
 
   Bubble Tea and Lip Gloss drive the Go interface. The Python file engine
   is embedded in it. The separate source archive includes Go, Python

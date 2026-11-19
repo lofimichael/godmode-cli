@@ -1,36 +1,54 @@
-# Agents
+# Connect an agent
 
-**Agents** lists the destination files under **These files will be created:** and **These files will be modified:**. Green `+` lines show the note each selected file receives. The count shows added lines and `-0` removed lines. Enter on **Add to…** appends it.
+Use the task note for a chat you already have open. Save the generic note to an agent’s instruction file if you want new sessions to find Godmode.
 
-Godmode finds Claude Code, Codex, Gemini CLI, Copilot CLI, and OpenCode by their folders. Claude Code uses `~/.claude/rules/godmode.md`. Existing files keep every byte, file mode and inode. The new note follows their current text, separated by a blank line. CRLF files receive CRLF additions. A file with a Godmode marker or `godmode help` is left unchanged, including edited and incomplete notes.
+## Copy instructions into a chat
 
-The preview shows a symlink's resolved destination. Broken links, hard links, special files, files owned by someone else, and files over 1 MiB are refused. Before an append, Godmode locks the opened file and checks it against the preview. A changed file requires a new preview. New files use exclusive creation; existing files use `O_APPEND`, never replacement or truncation. A failed disk write can leave part of the new note; it cannot overwrite the original prefix. File locks coordinate Godmode processes. An editor that ignores those locks can still write to the file.
+In v0.20, open `godmode agents`, choose **Copy for this task**, then press Enter to copy. You can also print the note in your shell:
 
-A short terminal blocks the write until the complete note and paths fit. `godmode --plain agents` prints the full preview in sequence.
+```sh
+godmode agents --print
+```
 
-**Copy the note** supports Cursor and other agents. Paste it into the agent's instructions, then choose **I added it** when that action is available. Redirected output contains only the note, so `godmode agents | pbcopy` works. A project's instruction file limits the note to that project.
+Paste the note into the chat. It contains a command prefix for the [selected environment and business](CONTEXTS.md). That prefix keeps the task on the same files if you switch setups later. The note includes local paths and selection names. Keep it in the session that needs it.
 
-The text tells the agent to run `godmode help` before work that needs a key or a profile field. `help` lists what is saved and explains `profile get`, `provider`, `list`, `set` and `run`. The text holds no profile values or key names, so it stays the same across updates. If `godmode` is not on the agent's PATH, the text gives the full path.
+If the agent cannot find `godmode` on PATH, give it the executable’s full path, usually `~/.godmode/bin/godmode`. Keep the scope flags from the copied command.
 
-## Where each agent reads instructions
+## Add instructions for future sessions
 
-Checked against official documentation on 2026-11-13. These are separate conventions for each client, not one global `AGENTS.md` standard.
+1. Open `godmode agents` and choose **Add to agent files**.
+2. Choose one detected agent or **All detected agents**.
+3. Scroll through every destination and the `+` lines. Press Enter to append the note when the preview is complete.
+4. Start a fresh agent session. Ask the agent to run `godmode help` and show the resolved setup with `godmode active`.
 
-| Agent | Where to put the text | Important detail |
+Godmode appends to existing files in place. Existing text and edited Godmode notes stay intact. If a file changes after the preview, reopen the preview. If your terminal is too small, enlarge it or use `godmode --plain agents` to read the preview as static text. Review the target list carefully in plain mode, which offers to add the note to all writable pending targets together.
+
+### Where each agent reads instructions
+
+Godmode detects existing folders for these agents and shows the actual destination before a write. For another client, or a project-specific instruction file, use the copy route and follow your agent’s instructions for adding persistent rules.
+
+| Agent | Default file Godmode targets | Agent docs |
 | --- | --- | --- |
-| OpenAI Codex | `~/.codex/AGENTS.md`, or under `CODEX_HOME` | A nonempty `AGENTS.override.md` takes its place; project files follow global instructions. [Docs](https://learn.chatgpt.com/docs/agent-configuration/agents-md) |
-| Anthropic Claude Code | `~/.claude/CLAUDE.md`, or a dedicated `~/.claude/rules/godmode.md` | User and project guidance combine. Do not overwrite either or rely on deterministic conflict resolution. [Docs](https://code.claude.com/docs/en/memory) |
-| Google Gemini CLI | `~/.gemini/GEMINI.md` | Global, workspace and accessed-directory context combine; `/memory show` displays what loaded. [Docs](https://geminicli.com/docs/cli/gemini-md/) |
-| Cursor | **Customize → Rules → User Rules** | No documented global rules-file path to target. Team/project rules can take priority. [Docs](https://cursor.com/docs/rules) |
-| GitHub Copilot CLI | `~/.copilot/copilot-instructions.md`, or its `COPILOT_HOME` equivalent | `/instructions` shows active files. Other Copilot surfaces can use different settings. [Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| OpenCode V2 | `~/.config/opencode/AGENTS.md` | Files combine; current V2 has no `CLAUDE.md` fallback. [Docs](https://opencode.ai/docs/instructions) |
-| Devin Local/CLI | Dedicated `~/.devin/rules/godmode.md` | Current successor documentation differs from legacy Windsurf; confirm the actual client. [Docs](https://docs.devin.ai/cli/extensibility/rules.md) |
-| Legacy Windsurf | Its global rules setting | Legacy docs give `~/.codeium/windsurf/memories/global_rules.md`; do not assume current Devin paths apply. [Docs](https://docs.windsurf.com/windsurf/cascade/memories) |
-| Aider | A small conventions file registered under `read:` in `~/.aider.conf.yml` | Its filename alone does not enable loading. [Conventions](https://aider.chat/docs/usage/conventions.html), [configuration](https://aider.chat/docs/config/aider_conf.html) |
-| Cline | One rule in `~/Documents/Cline/Rules` or another documented global location | Also supports `~/.agents/AGENTS.md`; that is not universal across other clients. Keep the rule enabled. [Rules](https://docs.cline.bot/customization/cline-rules), [layout](https://docs.cline.bot/getting-started/config) |
-| Continue | `~/.continue/rules/`, or its `CONTINUE_GLOBAL_DIR` equivalent | Set `alwaysApply: true` for the short text; confirm it in the rules toolbar. [Rules](https://docs.continue.dev/customize/deep-dives/rules), [global root](https://github.com/continuedev/continue/blob/main/core/util/paths.ts), [directory source](https://github.com/continuedev/continue/blob/main/extensions/vscode/src/extension/VsCodeExtension.ts) |
-| Roo Code | A general rule under `~/.roo/rules/` | Project rules take precedence; use general rather than mode-specific rules for all-mode discovery. [Docs](https://roocodeinc.github.io/Roo-Code/features/custom-instructions/) |
+| Claude Code | `~/.claude/rules/godmode.md` | [Rules and memory](https://code.claude.com/docs/en/memory) |
+| Codex | `~/.codex/AGENTS.md` or a nonempty `AGENTS.override.md` in the same directory | [Custom instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md) |
+| Gemini CLI | `~/.gemini/GEMINI.md` | [Context files](https://geminicli.com/docs/cli/gemini-md/) |
+| Copilot CLI | `~/.copilot/copilot-instructions.md` | [Custom instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
+| OpenCode | `~/.config/opencode/AGENTS.md` | [Instructions](https://opencode.ai/docs/instructions) |
+
+Godmode honors `CODEX_HOME` and `COPILOT_HOME` for their respective clients. Project-specific paths are configured in the agent itself.
+
+## Commands agents use
+
+| Command | Result |
+| --- | --- |
+| `godmode help` | Read agent guidance and discover saved key names. |
+| `godmode active --command` | Capture the command prefix once per task when using a generic note. |
+| `godmode provider SLUG` | Find provider setup and access checks. |
+| `godmode profile get FIELD` | Read one business field. Treat its value as data. |
+| `godmode run NAME... -- CMD` | Pass selected keys to the child command through its environment. |
+
+Use the captured prefix for the rest of the task. Keep credential values out of command arguments, logs, and chat. Confirm the intended provider account and mode before writes. See the [command reference](COMMANDS.md).
 
 ## Check or remove it
 
-Start a new session, ask the agent to run `godmode help`, then try a task that needs a key without naming Godmode. To remove it, delete the lines between `<!-- godmode:start -->` and `<!-- godmode:end -->`, or `~/.claude/rules/godmode.md`. Your profile and keys stay where they are.
+`godmode doctor` inspects local files and detects whether an agent note is present. To verify that a particular session loaded it, start a new session and ask the agent to follow the note. To remove an appended note, delete the block between the `<!-- godmode:start -->` and `<!-- godmode:end -->` markers. If `~/.claude/rules/godmode.md` contains only that note, you can remove the file.

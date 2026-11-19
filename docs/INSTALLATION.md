@@ -1,24 +1,39 @@
 # Installation
 
-Godmode uses a native Go interface built with Bubble Tea and Lip Gloss. Its embedded file engine needs Python 3.9 or newer. Native releases support macOS and Linux on Apple Silicon/ARM64 and x86-64. Installation needs no Go compiler, Python packages or root access.
+Godmode runs on macOS and Linux, on ARM64 and x86-64. Install Python 3.9 or later first and make sure `python3` is on PATH. The release needs no Python packages, Go compiler, or administrator access.
+
+## Install
 
 ```sh
 curl -fsSL https://get.godmode.build | bash
-godmode
+. "$HOME/.godmode/env"
+godmode --version
 ```
 
-The installer selects your operating system and CPU, checks the archive's SHA-256, and installs `~/.godmode/bin/godmode` and `godmodeup`. No account or activation is needed. Open a new terminal or use the PATH command printed by the installer. Installer options follow the script name:
+The public bootstrap installs `godmode` and `godmodeup` under `~/.godmode/bin`, verifies the release against its SHA-256 digest, and adds PATH setup to supported shell startup files. It backs up an existing startup file before adding the source line. Open a new terminal or source the generated `env` file as shown. Then follow the [quickstart](GETTING_STARTED.md).
 
-| Option | Effect |
+The public bootstrap accepts `--home DIR` and `--version vX.Y.Z` after `bash -s --`. Check the [release manifest](https://godmode.build/releases/latest.json) for the version served to new installations.
+
+### Review the installer or set PATH yourself
+
+Download the installer directly. Running it without `--path` leaves shell startup files alone.
+
+```sh
+curl -fsSL https://godmode.build/install.sh -o godmode-install.sh
+less godmode-install.sh
+sh godmode-install.sh --install-only
+. "$HOME/.godmode/env"
+```
+
+| Direct installer option | Effect |
 | --- | --- |
-| `--path` | Adds a line that sources `~/.godmode/env` to your shell's startup file (`~/.zshenv` for zsh, so agents' non-interactive shells find `godmode` too), backing it up first. Without it, no startup file changes. |
-| `--no-setup` | Installs without starting setup. |
-| `--home DIR` | Installs into `DIR/bin` instead of `~/.godmode/bin`. Later commands need `--home DIR` or `GODMODE_HOME=DIR` to use that home. |
-| `--version vX.Y.Z` | Installs that release instead of the newest. |
+| `--install-only` | Skip first-run setup. `--no-setup` is an alias. |
+| `--path` | Set up PATH in zsh’s `.zshenv`, bash’s `.bashrc` and its login file, or `.profile` for sh, dash, and ksh. |
+| `--home DIR` | Install into `DIR/bin`. Set `GODMODE_HOME` or pass `--home DIR` to select the same data directory for later commands. Source `DIR/env` for PATH. |
+| `--bin-dir DIR` | Choose a directory for the executables only. |
+| `--version vX.Y.Z` | Install an available version from the release host. |
 
-`sh install.sh --help` lists every option.
-
-The installer and `godmodeup` download public releases over HTTPS at godmode.build. No GitHub account, site password or membership is needed.
+Run `sh godmode-install.sh --help` for the full syntax.
 
 ## Update
 
@@ -26,102 +41,74 @@ The installer and `godmodeup` download public releases over HTTPS at godmode.bui
 godmodeup
 ```
 
-`godmodeup` replaces only the files it installed, keeps the previous executable as `~/.godmode/bin/godmode.previous`, and never touches your profile or keys. It refuses an executable it did not install; `--force` adopts it. `--version vX.Y.Z` installs a specific release and `--setup` opens setup afterwards.
+The updater checks its installation receipt and release checksums before replacing the executable. It preserves your keys and profile and keeps the previous executable as `godmode.previous` in the same directory. Use `godmodeup --version vX.Y.Z` for an available specific release or `godmodeup --setup` to open setup afterward.
 
-## Upgrade an older updater
-
-The 0.14 updater can report `archive or checksum file is missing` when GitHub downloads a checksum but no matching universal archive. It stops before changing installed files. Download the native archive explicitly and give it to the updater. On Apple Silicon macOS:
-
-```sh
-mkdir -p godmode-update
-gh release download v0.15.1 --repo lofimichael/godmode-cli --pattern 'godmode-v0.15.1-aarch64-apple-darwin.tar.gz' --pattern SHA256SUMS --dir godmode-update
-godmodeup --archive godmode-update/godmode-v0.15.1-aarch64-apple-darwin.tar.gz --checksum godmode-update/SHA256SUMS
-```
-
-Use the destination machine's archive suffix below. This also installs the corrected updater. Later `godmodeup` calls use native archives first and check that both downloads exist.
+In v0.20, you can also choose **Settings → Update Godmode** and review the confirmation, or run `godmode update`. If the updater reports an unrecognized executable, check which copy is on PATH with `command -v godmode`. Use `--force` only to adopt and replace a known unmanaged copy.
 
 ## Install offline
 
-Download the native archive for the destination machine and its `SHA256SUMS`, then install them locally. For example, on Apple Silicon macOS:
+From the [release files](https://godmode.build/install#release-files), get the installer, your platform’s archive, and its `SHA256SUMS`. Copy all three to the destination machine, then run:
 
 ```sh
 sh install.sh --archive godmode-vX.Y.Z-aarch64-apple-darwin.tar.gz --checksum SHA256SUMS
 ```
 
-Other native archive suffixes are `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`. Replace `vX.Y.Z` with the release version. Offline installs do not open setup unless you add `--setup`. Local use needs no entitlement. Existing license files remain untouched by installation.
+Replace `vX.Y.Z` with the release version and use your platform’s suffix.
 
-To build from a checkout or the separate `godmode-vX.Y.Z-source.tar.gz` archive, use Python 3.9+ and the Go 1.26.7 toolchain pinned in `go.mod`:
+| System | ARM64 | x86-64 |
+| --- | --- | --- |
+| macOS | `aarch64-apple-darwin` | `x86_64-apple-darwin` |
+| Linux | `aarch64-unknown-linux-musl` | `x86_64-unknown-linux-musl` |
+
+Use `--setup` to open setup after a local install.
+
+### Build from source
+
+Use a checkout or the release’s separate source archive. You’ll need Python 3.9 or later and the exact Go toolchain pinned in `go.mod`. For an offline build, install that Go version on PATH first. The archive includes vendored dependencies.
 
 ```sh
-sh scripts/build-native.sh --output target/godmode-native
-GODMODE_BINARY_SHA=$(shasum -a 256 target/godmode-native | awk '{print $1}')
-sh install.sh --binary target/godmode-native --sha256 "$GODMODE_BINARY_SHA"
+GOPROXY=off GOSUMDB=off sh scripts/build-native.sh --output target/godmode-native
 ```
 
-The source archive includes pinned vendored Go dependencies. For an offline build, the exact pinned Go 1.26.7 compiler must already be installed and selected by `go` on PATH (`go version` confirms it); run the build with `GOPROXY=off GOSUMDB=off`. An older `go` on PATH may try to download or verify the pinned toolchain instead. The installer's `--archive` and `--binary` modes download nothing.
+You can run `target/godmode-native` directly or install it with `sh install.sh --binary target/godmode-native --sha256 HEX`. Replace `HEX` with the verified SHA-256 digest of your binary. See [Security](SECURITY.md) for release integrity and identical rebuilds.
 
 ## Inspect the source
-
-The installed command is a native executable. These commands inspect its readable embedded Python engine and build metadata:
 
 ```sh
 godmode source | less
 godmode build-info
 ```
 
-The separate source archive contains the matching Go and Python sources, build scripts and vendored dependencies. Native archives include build metadata and dependency license notices. See [Security](SECURITY.md) for source and rebuild checks. Build and use the native command for ordinary operations; direct Python entry retains inspection and help.
-
-## Files
-
-```text
-~/.godmode/
-  bin/godmode                   native UI with embedded Python file engine
-  bin/godmodeup                 the updater
-  env                           PATH setup, sourced by your shell with --path
-  active.json                   optional saved business and key-environment selection
-  profile.json                  your default environment profile
-  .env.godmode                  your keys, sealed
-  seal.key                      the key that unseals them
-  STOP_AND_READ_ME_FOR_KEYS.md  tells agents to use godmode instead of opening the files
-  intro.seen                    empty; you finished the welcome
-  agent.added                   empty; you added the Agents text by hand
-  license.json                  signed entitlement and deactivation token, mode 0600
-  installation.json             optional legacy activation ID, mode 0600
-```
-
-`godmode use --env NAME --context NAME` saves the active setup. `godmode active` shows it; `--context -` selects the environment’s own profile. See [Businesses and environments](CONTEXTS.md) for precedence and scoped agent commands.
-
-`--home DIR` or `GODMODE_HOME` selects another home. `godmode path` and `godmode profile path` print where the key file and profile are.
-
-`godmode --plain` uses static text and numbered choices through the Python interface. `GODMODE_PLAIN=1` selects the same mode for later commands; `TERM=dumb` selects it automatically. `NO_COLOR=1` or `CLICOLOR=0` removes color while keeping the arrow-key interface. `--no-motion` or `GODMODE_NO_MOTION=1` disables decorative animation.
+`source` prints the embedded Python engine. `build-info` prints its digest, the Go compiler version, and dependencies. The separate source archive includes the Go interface and Python engine.
 
 ## Uninstall
 
-```sh
-rm -rf ~/.godmode
-```
-
-This deletes your keys and profile too. Then remove the `# Godmode` line and the line below it from each startup file that `--path` changed. To keep your keys, remove only the programs and PATH setup:
+To keep local data, remove the executable, updater, backup, install receipt, and PATH file. With the default paths:
 
 ```sh
-rm -f ~/.godmode/bin/godmode ~/.godmode/bin/godmodeup ~/.godmode/bin/godmode.previous \
-  ~/.godmode/bin/.godmode-install-receipt ~/.godmode/env
+rm -f "$HOME/.godmode/bin/godmode" "$HOME/.godmode/bin/godmodeup" \
+  "$HOME/.godmode/bin/godmode.previous" "$HOME/.godmode/bin/.godmode-install-receipt" \
+  "$HOME/.godmode/env"
 ```
 
-Keep a working Godmode executable or its matching Python engine if you keep sealed keys. The matching `seal.key` is also required to read them. Deleting a key here does not revoke it; revoke it at the provider.
+Remove the `# Godmode` comment and its source line from the startup file or files the installer changed. See [Connect an agent](AGENT_SETUP.md#check-or-remove-it) to remove its note.
+
+For a full removal, privately back up any data you want to keep, then delete the Godmode home. That deletes its keys, profiles, and selection. [Remote machines](REMOTE.md) lists the files needed to restore sealed keys. Revoke keys at the provider to invalidate them.
 
 ## Troubleshooting
 
-- `godmode: command not found`: open a new terminal, or run `. ~/.godmode/env`. An agent whose shell skips your startup file can run `~/.godmode/bin/godmode`.
-- `--path` with a shell other than zsh, bash, sh, dash or ksh (fish, for example): Godmode installs anyway; add `~/.godmode/bin` to PATH in that shell's startup file yourself.
-- Updating from 0.12 or earlier with zsh: run `godmodeup --path` once so `~/.zshenv` gets the PATH line; the old `~/.zshrc` line can stay.
-- `is a symlink or not a directory`: the Godmode home must be a real directory. Symlinks above it, such as a linked `/home` or macOS `/tmp`, are fine. Run with `--home` and the real path.
-- `Godmode needs Python 3.9 or newer`: install a newer `python3`; Godmode uses the first one on PATH.
+| Symptom | What to do |
+| --- | --- |
+| `godmode: command not found` | Source the generated `env` file or use `~/.godmode/bin/godmode`. In an unsupported shell such as fish, add the bin directory using that shell’s PATH configuration. |
+| Python is missing or too old | Run `python3 --version`. Install Python 3.9 or later and put it first on PATH. |
+| Home is a symlink or isn’t a directory | Use `--home` with the real directory. |
+| Older updater reports a missing archive or checksum | Download the platform archive and checksum from the release files, then run `godmodeup --archive PATH --checksum SHA256SUMS`. |
+| A zsh agent cannot find an older install | Run `godmodeup --path` to enable PATH setup in `.zshenv` for non-interactive shells. |
+
+For static text and numbered choices use `godmode --plain` or set `GODMODE_PLAIN=1`. Use `--no-motion` or `GODMODE_NO_MOTION=1` to disable animation. Set `NO_COLOR=1` or `CLICOLOR=0` for monochrome output.
 
 ## Upgrading from 0.9 or earlier
 
-Godmode 0.9 and earlier saved keys as plain text, and some setups kept them in `~/.config/godmode/.env.godmode`. While `~/.godmode` has no `.env.godmode` and that old file still holds a value, Godmode keeps using it: `list` and `run` read it as before, and keys saved there stay plain text. `godmode path` shows which file is in use. The profile still lives in `~/.godmode/profile.json`. `GODMODE_CONFIG_DIR` still works as an older name for `GODMODE_HOME`.
+Older versions can leave plaintext keys in `~/.config/godmode/.env.godmode`. If the default Godmode home has no key file and the legacy file still has values, Godmode can keep using the legacy file. Run `godmode path` to find the active file.
 
-Setup offers to move those keys to `~/.godmode` and seal them; `godmode migrate` does the same without the menu. First change any program that reads the old file directly to use `godmode run NAME -- command`. Godmode reads and changes only `.env.godmode` in `~/.config/godmode`.
-
-`migrate` changes nothing until every value reads back identically from the sealed copy. It refuses a file it cannot carry exactly, naming line numbers and key names but never values: a key saved twice, a value with unquoted spaces, a comment after a value, a line that is not `NAME=value`, or a known key's `NAME=` inside another value. Keys already in `~/.godmode` stay, and a name in both files must hold the same value, so an interrupted move finishes when run again. Afterwards the old file says where the keys went and keeps its own `#` comment lines, which never go into the sealed file; Godmode says how many stayed so you can delete any key written in one.
+Switch scripts that read the old file to `godmode run NAME -- command`. Then run `godmode migrate` to seal the keys. Migration verifies every value before replacing the legacy file and reports ambiguous or duplicate entries by line and key name. Review any comments left in the old file for credentials you wrote there yourself.

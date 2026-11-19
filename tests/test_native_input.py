@@ -1,9 +1,7 @@
 """Native paste boundaries and terminal teardown, with synthetic homes only."""
-import errno
 import os
 from pathlib import Path
 import tempfile
-import time
 import unittest
 
 from test_native_cli import BINARY, NativeTerminal
@@ -36,27 +34,20 @@ class NativeInput(unittest.TestCase):
         self.sessions.append(session)
         return session
 
-    def test_partial_paste_cancels_and_discards_late_tail(self):
+    def test_partial_paste_cancels_and_discards_queued_tail(self):
         for cancel in (b'\x03', b'\x04'):
             with self.subTest(cancel=cancel):
                 terminal = self.tty('set', 'SYNTHETIC_TOKEN')
                 terminal.expect('Paste your token:')
                 terminal.send(b'\x1b[200~synthetic_PRIVATE_PARTIAL')
                 terminal.settle(.1)
-                terminal.send(cancel)
-                time.sleep(.02)
-                try:
-                    terminal.send(b'synthetic_PRIVATE_LATE_TAIL\n\x1b[201~')
-                except OSError as error:
-                    # On macOS the cancelled process can close its PTY before
-                    # this deliberately late write. Only that hangup is valid;
-                    # exit status, restoration and captured output still follow.
-                    if error.errno != errno.EIO:
-                        raise
+                # Queue the rest with the cancel key while the CLI still owns
+                # the terminal. A later write could arrive after echo returns.
+                terminal.send(cancel + b'synthetic_PRIVATE_QUEUED_TAIL\n\x1b[201~')
                 terminal.done(130)
                 self.assertFalse((self.home / '.env.godmode').exists())
                 self.assertNotIn(b'PRIVATE_PARTIAL', terminal.capture)
-                self.assertNotIn(b'PRIVATE_LATE_TAIL', terminal.capture)
+                self.assertNotIn(b'PRIVATE_QUEUED_TAIL', terminal.capture)
 
     def test_oversized_fragmented_paste_is_refused_without_submission(self):
         terminal = self.tty('set', 'SYNTHETIC_TOKEN')
@@ -99,9 +90,8 @@ class NativeInput(unittest.TestCase):
         terminal.expect('Business: Automatic')
         terminal.paste('synthetic_PRIVATE_MENU\n\n')
         terminal.settle(.1)
-        terminal.send(b'\x1b[F\r')  # End selects Done; Enter exits.
-        time.sleep(.02)
-        terminal.send(b'synthetic_PRIVATE_EXIT_TAIL\r')
+        # End selects Done; Enter exits with the synthetic tail already queued.
+        terminal.send(b'\x1b[F\rsynthetic_PRIVATE_EXIT_TAIL\r')
         terminal.done()
         self.assertFalse((self.home / 'profile.json').exists())
         self.assertFalse((self.home / '.env.godmode').exists())

@@ -1,6 +1,6 @@
 # Setup recording
 
-The README animation is made from a scripted session of the actual native command
+The setup animation in `docs/images/setup.gif` is made from a scripted session of the actual native command
 in a pseudo-terminal. It shows choosing a provider with the arrow keys, the
 key's steps, the file and masked value preview, and the saved result. Tab
 reveals the shell equivalent. `pyte` interprets the ANSI

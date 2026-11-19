@@ -1,108 +1,51 @@
 # How Godmode handles keys
 
-Values are encrypted in .env.godmode with a random key in seal.key.
-Reading the file shows names, never values.
-Any program running as you can still ask godmode for a key.
-Anyone with both files has every key.
-Profile and key commands work offline without activation. Legacy license
-activation and deactivation contact godmode.build; `godmodeup` downloads releases from it;
-provider links open in your browser. A command
-started with `godmode run` has its own network access.
+Godmode stores provider keys on your machine. New key files store each value as authenticated ciphertext. Anyone with a key file and its matching `seal.key` can recover the values. Programs running as you can also request saved keys through Godmode, so only pass keys to commands you trust.
 
-To report a vulnerability, see [SECURITY.md](../SECURITY.md).
-
-## Source and releases
-
-The native Go interface uses Bubble Tea and Lip Gloss. It embeds a readable
-Python file engine. Python 3.9 or newer is required; startup installs no packages
-and starts no background service. The engine runs in Python isolated mode, which
-ignores Python startup customizations and module paths from the environment.
-
-The interface sends operations over a private pipe. New keys travel on stdin,
-never in command arguments or environment variables. The engine returns masks,
-file plans and saved key names; it never exports a saved secret to the interface.
-The same store validates and writes files for interactive and direct commands.
-A changed file invalidates a pending write.
-
-Every release provides a separate `-source.tar.gz` archive containing Go and
-Python source, pinned Go modules, vendored libraries and their licenses. Native
-archives contain the executable, build metadata and dependency license notices.
-From a reviewed source archive or checkout at the release commit, with the Go
-toolchain named in `go.mod`:
-
-```sh
-scripts/build-native.sh
-cmp target/godmode-native "$(command -v godmode)"
-
-godmode source > target/installed-core.py
-python3 scripts/build.py --verify target/installed-core.py
-godmode build-info
-```
-
-The native build omits local path and VCS metadata. Matching compiler, target,
-source and dependencies produce matching bytes. `godmode source` prints the
-embedded engine; `build-info` names the compiler, module versions and engine
-hash. These commands report the running program's contents. An independent
-rebuild from reviewed source supplies the comparison.
-
-Release archives have SHA-256 checksums. The installer checks the archive before
-reading its executable, refuses unrecorded replacements and keeps the previous
-executable. It streams only named archive members into files it created; archive
-paths cannot choose a destination. A checksum delivered beside an archive detects
-corruption, but an attacker who replaces both can replace the program. A pinned,
-reviewed source commit supplies a separate comparison.
-
-For an offline install from reviewed source, first put the exact Go compiler
-named in `go.mod` on PATH and confirm it with `go version`. An older compiler
-may try to fetch or verify that toolchain. With the pinned compiler selected:
-
-```sh
-GOPROXY=off GOSUMDB=off scripts/build-native.sh
-sh install.sh --binary target/godmode-native --sha256 "$(shasum -a 256 target/godmode-native | cut -d ' ' -f 1)" --no-setup
-```
-
-First-party CLI source uses the Godmode Free Source-Available License. Dependency
-licenses ship in the source archive. CLI downloads are public. Installation
-uses release archives rather than a package registry. Source builds use the
-vendored dependencies. [Licensing](LICENSING.md) covers activation, signed
-entitlements, network data and offline use.
+For vulnerability reports, see [SECURITY.md](../SECURITY.md).
 
 ## The key file
 
-- Each value is stored as `sealed:v1:…`: encrypted with HMAC-SHA256 in counter mode and authenticated with a second HMAC-SHA256 tag. `seal.key` holds a random 32-byte key; each value gets a fresh nonce, and the key's name is bound into the tag, so a value cannot be moved to another name. The code is in [godmode_store.py](../lib/godmode_store.py).
-- Sealing keeps values out of anything that reads the file as text: `cat`, `grep`, editors, agent transcripts and copies of the file alone. It is not a lock, and it does not sandbox programs or limit spending.
-- `.env.godmode`, `seal.key` and `profile.json` must be regular files you own with mode 0600, in a directory you own that others cannot write. Godmode refuses a symlink at the home or any of these files, and checks ownership, type and mode before every read and write. New directories are 0700.
-- The key file is limited to 1 MiB.
-- A save reads the file again, takes a directory lock, writes a private temporary file and renames it over the original. Unrelated lines are kept, and a file changed by another program aborts the save.
-- A Git checkout that holds the home must ignore `.env.godmode` and `seal.key` and must not track them.
-- The file starts with a short header naming the commands to use. `STOP_AND_READ_ME_FOR_KEYS.md` beside it says the same to an agent that lists the folder; Godmode writes it once and never overwrites it.
-- A sealed file keeps no comments or other text. `godmode migrate` seals a plain value added by hand and names any other line for you to delete; `godmode help` says how many remain.
-- `godmode edit` opens the file in nano. A sealed file shows names and ciphertext there; use `godmode set` to change a value.
-- Older plain-text files are covered in [Upgrading from 0.9 or earlier](INSTALLATION.md#upgrading-from-09-or-earlier).
+- Each value gets a fresh nonce. Godmode encrypts it with an HMAC-SHA256 keystream and authenticates the ciphertext and key name with a separate HMAC-SHA256 tag. See [the storage code](../lib/godmode_store.py).
+- The key file and `seal.key` must be regular files you own with mode 0600. Godmode rejects symlinks at the home or private files. New directories use mode 0700, and each key file has a 1 MiB limit.
+- Saves use a lock and atomic replacement, preserve unrelated lines and abort when a concurrent edit is detected. In a Git checkout, keep the key files and `seal.key` ignored and untracked.
+- Use `godmode set NAME` to replace a value and `godmode path` to locate the selected file. Older plain-text stores can be sealed with [the migration workflow](INSTALLATION.md#upgrading-from-09-or-earlier).
 
 ## Entering a key
 
-- The terminal reads it with echo off. A pasted value shows as its first and last three characters around five dots (`sk_•••••123`). Values shorter than 24 characters show fewer, never more than a quarter of the value, and values under 8 characters show only dots. Typed values show one dot per character. Pasting again replaces the value.
-- Menus ignore pastes, and text that arrives between screens is dropped. A paste that is too large or holds a NUL byte is read to its end and refused, so none of it reaches your shell.
-- The save preview shows the destination file and `Add NAME=…` or `Replace NAME=…`, with the value masked. Tab opens the shell equivalent: `printf` for a new key or `sed` for a saved one. The command depends on the file, never on the value. For a plain file, that command with the real value produces the same bytes; the tests check this. For a sealed file, `sealed(…)` represents encrypted data. Godmode writes the file itself; no shell runs.
-- If a value cannot be saved, for example multiline text that is not JSON, the preview says why and Enter does nothing. After a save, one receipt line stays: `✓ Saved NAME=sealed(sk_•••••123)`.
-- Some keys have a paste rule in providers.json: spaces are removed from a Gmail app password, and a Higgsfield key copied as `ID:SECRET` is split between its two entries. The preview shows the value after the rule. `godmode set NAME --stdin` saves its input as given.
-- Keys marked `"secret": false`, such as the Gmail address, show typed input; a paste into them is still masked. The prompt for a custom key's name ignores pastes.
-- A pasted multiline JSON object is compacted to one line. Names ending in `_JSON` require an object and accept a dragged file. Godmode reads one snapshot of that file and validates, previews and saves the same snapshot, and leaves the file in place; delete a downloaded key when no tool needs it.
-- JSON gets syntax checks only. The two Google service-account keys also check Google's file shape (`"type": "service_account"`, `project_id`, `private_key_id`, a PEM `private_key`, a `…gserviceaccount.com` `client_email` and Google's `token_uri`).
-- Values cannot contain control characters, and no value is evaluated as shell code. Keys are never accepted as command-line arguments.
-- `--plain` or `GODMODE_PLAIN=1` uses static prompts. Input stays hidden until Enter displays a masked review; a second Enter submits it. Pasted newlines never submit a value.
-- Neither Go nor Python guarantees that every copy of a value is erased from memory.
+Interactive setup shows a masked preview of a secret and the destination before a save. Provider-specific rules can normalize a pasted value, such as removing spaces from a Gmail app password. With `godmode set NAME --stdin`, use a pipe or file. The stored format still applies, including JSON validation for names ending in `_JSON`.
+
+The native interface sends new values to the local file engine over a private pipe. The engine returns masks and save status to the UI. Keep secrets out of shell arguments and logs.
 
 ## How agents reach keys
 
-- `godmode list` prints the names of saved keys, never values.
-- `godmode run NAME... -- command` supplies only the named stored keys and their names in `GODMODE_KEYS`. The Python engine replaces itself with the command; the native launcher waits, relays termination signals and returns its exit status. Godmode prints nothing. A missing or unreadable key stops it before the command starts, naming the key only.
-- `godmode set NAME --stdin` saves a key from a pipe or file redirection.
+Use `godmode list` for key names. Use `godmode run NAME -- command` to supply that key in a child's environment. The child inherits the usual environment and runs with your account's permissions. Missing or unreadable keys stop the command before launch.
+
+Pass only the needed keys and avoid environment dumps and shell tracing around sensitive commands. Keep the key file, seal key and imported credential files out of agent inputs and logs. The user's task defines which provider operations are authorized.
 
 ## Other actions
 
-- Profile input is visible and saved as plain JSON. Terminal control characters are escaped while you type and refused in saved fields; the mailing address allows line breaks.
-- A provider page opens only when you press Enter on an empty key prompt. The browser opener runs in the background with a small ordinary environment, not your keys; nano gets the same.
-- The installer and `godmodeup` check each download's SHA-256 against `SHA256SUMS` and replace only files they installed. A checksum cannot protect against a compromised publisher. Shell startup files change only with `--path`, and updates never touch your profile or keys.
-- In a problem report, use synthetic keys. Never include real keys, OAuth grants or unredacted recordings. Deleting a key here does not revoke it; revoke an exposed key at the provider.
+| Action | What to expect |
+| --- | --- |
+| Profile and key commands | Local operation, including offline use. The profile is plain JSON. |
+| Open a provider link | Opens the provider page in your browser. |
+| Install or update | Downloads public release files unless you select an [offline install](INSTALLATION.md#install-offline). |
+| Legacy license commands | Activation and deactivation contact `godmode.build`. See [Licensing](LICENSING.md). |
+| `godmode run` | The child can access the network according to its own configuration. |
+
+Revoke an exposed credential at the provider. Local edits only change the selected key file.
+
+## Source and releases
+
+`godmode source` prints the embedded Python file engine. `godmode build-info` lists the Go compiler, dependency versions and engine SHA-256. The release's separate source archive includes the Go interface, build scripts and vendored dependencies.
+
+To compare an installed binary against reviewed source, check out the matching release commit and select the exact Go toolchain in `go.mod`. Confirm the selected compiler with `GOTOOLCHAIN=local go version`. Rebuild on the same OS and architecture as the installed binary.
+
+```sh
+GOPROXY=off GOSUMDB=off sh scripts/build-native.sh
+cmp target/godmode-native "$(command -v godmode)"
+godmode source > target/installed-core.py
+python3 scripts/build.py --verify target/installed-core.py
+```
+
+The installer verifies the archive against `SHA256SUMS`. An independent rebuild from reviewed source gives you a separate comparison if the archive and its checksum share a publisher. See [Installation](INSTALLATION.md) for the release files and offline options.
