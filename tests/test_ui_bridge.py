@@ -47,6 +47,29 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn('EXISTING_SECRET', json.dumps(state))
         self.assertEqual(state['states']['DEMO_KEY'], 'set')
 
+    def test_catalog_examples_are_display_only_in_both_editors(self):
+        state = self.call('state')
+        with patch.object(cli, 'plain_mode', return_value=True):
+            for field in state['fields']:
+                name, example = field['name'], field['example']
+                with self.subTest(profile=name):
+                    prompt = cli.ProfilePrompt(self.bridge.profile, name, '')
+                    self.assertIn('Example: ' + example, '\n'.join(prompt.render('', 90)))
+                    self.assertFalse(self.call('profile_save', field=name, value='')['changed'])
+            keys = [key['name'] for provider in state['providers'] for key in provider['key']]
+            for name in keys + ['CUSTOM_TOKEN', 'CUSTOM_JSON']:
+                with self.subTest(key=name):
+                    plan = self.call('key_plan', name=name)
+                    prompt = cli.KeyPrompt(self.bridge.store, cli.named(name))
+                    self.assertIn('Example: ' + plan['example'], '\n'.join(prompt.render('', 90)))
+                    for value in ('', plan['example']):
+                        self.assertFalse(prompt.enter(value))
+                        checked = self.call('key_check', id=plan['id'], value=value)
+                        self.assertFalse(checked['valid'])
+                        with self.assertRaisesRegex(ValueError, 'Review'):
+                            self.call('key_save', id=plan['id'], value=value)
+        self.assertFalse(self.home.exists())
+
     def test_key_requires_preview_and_old_plan_cannot_replay(self):
         plan = self.call('key_plan', name='DEMO_KEY')
         value = 'synthetic_NEW_SECRET_123456'

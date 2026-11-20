@@ -181,7 +181,7 @@ class ModularIntroTests(unittest.TestCase):
                     complete_intro(session)
                 session.expect(MENU)
                 mark = len(session.capture)
-                session.send(b"\r")  # Provider keys is the first row.
+                session.send(b"\r")  # GitHub opens its key field directly.
                 session.after(mark, "GitHub")
                 output = plain(session.capture[mark:])
                 self.assertNotIn("Enter accept", output)
@@ -244,7 +244,7 @@ class ModularIntroTests(unittest.TestCase):
                 session.settle(.1)
                 rows = Screen(80).feed(session.capture).lines()
                 screen = "\n".join(rows)
-                for text in ("Profile", "Provider keys", "Connect agent", "Done", "Environment default", "~/.godmode", "0 keys saved", "0 notes added"):
+                for text in ("Godmode Loadout", "Keys default", "Profile default", "0 of 12 saved locally", "GitHub", "Cloudflare", "Add key", "Brand name"):
                     self.assertIn(text, screen)
                 self.assertTrue(all(len(row.rstrip()) <= 79 for row in rows))
                 self.assertIsNone(re.search(rb"\x1b\[[0-9;]*m", session.capture))
@@ -273,13 +273,13 @@ class ModularIntroTests(unittest.TestCase):
         self.assertFalse((legacy / "intro.seen").exists())
         self.assertEqual(self.okay("path").strip(), str(key))
 
-    def test_small_home_keeps_setup_count_and_all_three_components(self):
+    def test_small_home_keeps_selected_keys_profile_and_provider_actions(self):
         self.home.mkdir(mode=0o700)
         os.close(os.open(self.marker, os.O_WRONLY | os.O_CREAT, 0o600))
         session = self.terminal(cols=40, rows=12)
         session.expect(MENU)
         screen = "\n".join(Screen(40).feed(session.capture).lines())
-        for text in ("Environment default", "Profile", "Provider keys", "Connect agent"):
+        for text in ("Keys default", "Profile default", "Providers", "GitHub"):
             self.assertIn(text, screen)
         self.assertTrue(all(len(row) <= 39 for row in screen.splitlines()))
         session.send(b"\x1b")

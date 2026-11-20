@@ -206,7 +206,7 @@ class AgentDiffTerminalTests(unittest.TestCase):
         session = self.terminal('agents')
         session.expect('These files will be created:')
         session.expect('These files will be modified:')
-        session.expect('Add to Claude Code and Codex')
+        session.expect('Add to agent files Claude Code and Codex')
         session.expect('+ <!-- godmode:start -->')
         self.assertIn(b'\x1b[32m', session.capture)
         self.assertIn(b'\x1b[31m-0', session.capture)
@@ -219,7 +219,7 @@ class AgentDiffTerminalTests(unittest.TestCase):
 
     def test_preview_edit_race_preserves_later_user_content(self):
         session = self.terminal('agents')
-        session.expect('Add to Claude Code and Codex')
+        session.expect('Add to agent files Claude Code and Codex')
         self.existing.write_bytes(b'Edited while reviewing\n')
         session.send(b'\r')
         session.expect('changed; open Agents again. Nothing written.')
@@ -240,7 +240,7 @@ class AgentDiffTerminalTests(unittest.TestCase):
         for folder in ('.gemini', '.copilot', '.config/opencode'):
             (self.root / folder).mkdir(parents=True)
         session = self.terminal('agents', cols=80, rows=24)
-        session.expect('Add to 5 agents')
+        session.expect('Add to agent files 5 agents')
         screen = '\n'.join(Screen(80).feed(session.capture).lines())
         for text in ('These files will be created:', '~/.claude/rules/godmode.md', '~/.codex/AGENTS.md',
                      '~/.gemini/GEMINI.md', '~/.copilot/copilot-instructions.md',

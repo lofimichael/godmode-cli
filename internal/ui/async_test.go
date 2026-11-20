@@ -106,8 +106,9 @@ func asyncResult(t *testing.T, result <-chan tea.Msg) tea.Msg {
 func TestAsyncDispatchKeepsNavigationAndReadsResponsive(t *testing.T) {
 	b := newGatedBackend(t, "agents_plan")
 	m := asyncModel(t, b, "home", "")
+	m.selected = homeItemIndex(t, m, "Agent instructions") - 1
 	m, cmd := updateAsync(m, key(tea.KeyDown, ""))
-	if m.selected != 1 || m.busy || cmd != nil {
+	if m.selected != homeItemIndex(t, m, "Agent instructions") || m.busy || cmd != nil {
 		t.Fatal("ordinary navigation was delayed")
 	}
 	m, cmd = updateAsync(m, key(tea.KeyEnter, ""))
@@ -212,7 +213,7 @@ func TestAsyncCompletionPreservesLivePresentationAndReviewBoundary(t *testing.T)
 	b := newGatedBackend(t, "agents_plan")
 	b.base.longAgent = true
 	m := asyncModel(t, b, "home", "")
-	m.selected = 1
+	m.selected = homeItemIndex(t, m, "Agent instructions")
 	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
 	result := runAsyncWorker(t, b, asyncWorker(t, cmd))
 	m, _ = updateAsync(m, tea.WindowSizeMsg{Width: 42, Height: 18})
@@ -243,7 +244,7 @@ func TestAsyncCompletionPreservesLivePresentationAndReviewBoundary(t *testing.T)
 func TestAsyncStaleResultsCannotReplaceCurrentOperation(t *testing.T) {
 	b := newGatedBackend(t, "agents_plan")
 	m := asyncModel(t, b, "home", "")
-	m.selected = 1
+	m.selected = homeItemIndex(t, m, "Agent instructions")
 	m, cmd := updateAsync(m, key(tea.KeyEnter, ""))
 	work := asyncWorker(t, cmd)
 	wrong := m
@@ -404,6 +405,7 @@ func TestAsyncWorkCannotLeaveNavigationPulseRunning(t *testing.T) {
 	b := newGatedBackend(t, "agents_plan")
 	m := asyncModel(t, b, "home", "")
 	m.opts.NoMotion, m.colors = false, true
+	m.selected = homeItemIndex(t, m, "Agent instructions") - 1
 	m, _ = updateAsync(m, key(tea.KeyDown, ""))
 	if m.pulseFrame <= 0 {
 		t.Fatal("navigation did not create a finite accent pulse")

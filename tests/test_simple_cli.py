@@ -425,7 +425,7 @@ class CLI(unittest.TestCase):
         terminal.send(b'\x1b');terminal.after(mark,MENU)
         self.assertTrue(self.pointed(terminal).startswith('GitHub'))  # Nothing saved: the pointer stays.
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
-        self.assertIn('Profile 0 optional fields · 0 keys saved · 0 agents added',plain(terminal.capture))
+        self.assertIn('Profile 0 optional fields · 0 keys saved · 0 agent files',plain(terminal.capture))
         self.assertIn('godmode loadout',plain(terminal.capture))
         self.assertNotIn('GH_TOKEN',values(self.file))
         failing,_=self.opener('exit 1\n')
@@ -541,7 +541,7 @@ class CLI(unittest.TestCase):
             self.assertTrue(self.pointed(terminal).startswith(name),name)
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
         # A key outside the catalog counts as a provider: three ready providers and ACME_API_TOKEN.
-        self.assertIn('Profile 0 optional fields · 4 keys saved · 0 agents added',plain(terminal.capture))
+        self.assertIn('Profile 0 optional fields · 4 keys saved · 0 agent files',plain(terminal.capture))
         self.assertEqual(values(self.file)['ACME_API_TOKEN'],'acme_DEMO_ONLY_value_123456')
         self.assertNotIn(b'DEMO_ONLY',terminal.capture)
 
@@ -760,7 +760,7 @@ class CLI(unittest.TestCase):
         full.send(b'\r');full.expect(SUMMARY);full.done()
         # The receipt counts saved keys, independent of optional profile fields.
         lines=Screen(100).feed(full.capture).lines()
-        self.assertIn('  Profile 0 optional fields · %d keys saved · 0 agents added' % len(values(self.file)),lines)
+        self.assertIn('  Profile 0 optional fields · %d keys saved · 0 agent files' % len(values(self.file)),lines)
         self.assertIn('  godmode agents',lines)
         self.assertNotIn('Done. Your keys are in',plain(full.capture))
 
@@ -871,7 +871,7 @@ class CLI(unittest.TestCase):
         self.assertTrue(self.pointed(move).startswith('Vercel'))  # The moved keys count as saved.
         self.assertIn('  Providers',Screen(100).feed(move.capture).lines())
         move.send(b'\x1b');move.expect(SUMMARY);move.done()
-        self.assertIn('Profile 0 optional fields · 2 keys saved · 0 agents added',plain(move.capture))
+        self.assertIn('Profile 0 optional fields · 2 keys saved · 0 agent files',plain(move.capture))
         self.assertNotIn('SYNTHETIC',old.read_text()+self.file.read_text())
         self.assertNotIn(b'SYNTHETIC',move.capture+keep.capture)
         self.assertEqual(values(self.file)['GH_TOKEN'],'ghp_SYNTHETIC_value_000000000002')

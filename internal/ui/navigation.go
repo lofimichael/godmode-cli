@@ -9,6 +9,7 @@ import (
 // History stores navigation identifiers, never input, key plans or credential previews.
 type location struct {
 	page                                string
+	homeKind, homeName                  string
 	selected, scroll                    int
 	query                               string
 	filtering                           bool
@@ -33,6 +34,11 @@ func (m model) location() location {
 	l := location{page: m.page, selected: m.selected, scroll: m.scroll, query: m.query, filtering: m.filtering,
 		providerAt: m.providerAt, providerKeyAt: m.providerKeyAt, faqAt: m.faqAt,
 		scopeReturn: m.scopeReturn, profileReturn: m.profileReturn}
+	if m.page == "home" {
+		if item, ok := m.homeSelection(); ok {
+			l.homeKind, l.homeName = item.kind, item.name
+		}
+	}
 	if m.selectedProvider != nil {
 		l.providerID = m.selectedProvider.ID
 	}
@@ -80,6 +86,15 @@ func (m model) backNeedsAgentReload() bool {
 func (m *model) restore(l location) {
 	reloadAgent := m.needsAgentReload(l)
 	m.page, m.selected, m.scroll = l.page, l.selected, l.scroll
+	if l.page == "home" {
+		m.selected = 0
+		for i, item := range m.homeItems() {
+			if item.kind == l.homeKind && item.name == l.homeName {
+				m.selected = i
+				break
+			}
+		}
+	}
 	m.query, m.filtering = l.query, l.filtering
 	m.providerAt, m.providerKeyAt, m.faqAt = l.providerAt, l.providerKeyAt, l.faqAt
 	m.scopeReturn, m.profileReturn = l.scopeReturn, l.profileReturn
@@ -237,7 +252,7 @@ type action struct{ title, detail, keywords, route, arg string }
 func (m model) actions() []action {
 	items := []action{
 		{"Provider keys", "Add or replace a key", "setup providers accounts credentials tokens", "providers", ""},
-		{"Connect agent", "Copy instructions or add them to an agent", "agents codex claude gemini copilot opencode instructions", "agents", ""},
+		{"Agent instructions", "Copy a task note or append it to an instruction file", "connect agent agents codex claude gemini copilot opencode instructions", "agents", ""},
 		{"Profile", "Name, contact details and address", "business details profile terms privacy email address", "profile", ""},
 		{"Switch loadout", "Choose a key environment and profile", "active context environment profile switch", "active", ""},
 		{"Key environments", "Switch or create an independent set of keys", "env copy duplicate new create account sandbox", "environments", ""},
@@ -331,25 +346,9 @@ func (m model) searchAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) homeDescription() string {
-	text := []string{
-		"Give your agent access to the services you use.",
-		"Copy instructions into a task or save them for future sessions.",
-		"Names and contact details for your site, receipts and policies.",
-		"Choose the profile and key environment for new commands.",
-		"Appearance, local checks and updates.",
-		"Quickstart, keyboard controls and common questions.",
-		"Return to your terminal. Saved changes stay saved.",
-	}
-	if m.selected >= 0 && m.selected < len(text) {
-		return text[m.selected]
-	}
-	return ""
-}
-
 func (m model) shortcuts() []string {
 	return []string{
-		"Navigation", "↑ / ↓ or j / k    Move through a list", "Enter              Choose the selected item", "Esc                Go back or cancel an edit", "q                  Quit from Home", "Ctrl-C             Exit from any screen", "",
+		"Navigation", "↑ / ↓ or j / k    Move through a list", "Tab / Shift-Tab    Change section on Home", "Enter              Choose the selected item", "Esc                Go back or cancel an edit", "q                  Quit from Home", "Ctrl-C             Exit from any screen", "",
 		"Find", "/                  Search providers or find an action", "Ctrl-K             Find an action from a menu", "s                  Switch loadout from Home", "?                  Show these shortcuts", "",
 		"Editing", "Enter              Save the reviewed value", "Ctrl-O             Open the provider link", "Ctrl-U             Clear the input", "Tab                Toggle guide and edit details", "Esc                Leave details or cancel the edit", "",
 		"Reading", "↑ / ↓              Scroll one line", "PgUp / PgDn        Scroll one page", "Home / End         Go to the start or end", "",

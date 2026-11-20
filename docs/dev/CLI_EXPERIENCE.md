@@ -1,6 +1,6 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies selected keys to commands. These captures show the native interface with an empty local profile and key environment.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. The dashboard capture uses fictional provider and profile data.
 
 ![Godmode home](../images/current/home.png)
 
@@ -8,7 +8,7 @@ Godmode stores profile fields and provider keys, then supplies selected keys to 
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the welcome and guided views. Home opens Provider keys, Connect agent, Profile, Switch loadout, Settings and Help. The active profile and key environment appear above each task. Switch loadout stages both choices until Use this loadout applies them to new commands. Recent loadouts lets you review and reuse any of the last five pairs.
+Bubble Tea 2 and Lip Gloss 2 draw the welcome and guided views. Home presents the active loadout. Providers and profile fields open directly for editing, alongside Agent instructions, Switch loadout, Settings and Help. The active profile and key environment appear above each task. Switch loadout stages both choices until Use this loadout applies them to new commands. Recent loadouts lets you review and reuse any of the last five pairs.
 
 Ctrl-K finds an action. The slash key filters providers or opens the finder from other menus. Esc returns to the parent with its selection and query. On Home, q quits and s opens Switch loadout. In a field or search box, both remain ordinary text. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro design](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
@@ -34,18 +34,20 @@ The current [navigation research](navigation-audit/research.md) compares ten CLI
 ```mermaid
 flowchart TD
     Entry[godmode] --> Welcome[First-use intro if needed]
-    Welcome --> Home[Task menu]
-    Home --> Providers[Provider keys and local filter]
+    Welcome --> Home[Loadout dashboard]
+    Home -->|Select provider| Input
+    Catalog[Provider catalog and local filter] --> Providers[Provider keys]
     Providers --> Input[Choose key and review masked edit]
     Input -->|Explicit Enter save| Providers
-    Home --> Connect[Connect agent]
+    Home --> Connect[Agent instructions]
     Connect --> Copy[Copy scoped note for current task]
     Connect --> Target[Choose one agent or All]
     Target --> Diff[Exact file and addition preview]
     Diff -->|Review then append| Connect
-    Home --> Profile[Optional profile fields]
+    Home -->|Select profile field| Field
+    Profile[Optional profile fields]
     Profile --> Field[Edit one field]
-    Field -->|Save or cancel| Profile
+    Field -->|Save or cancel| Origin[Calling profile or dashboard]
     Home --> Switch[Stage environment and profile]
     Switch -->|Use this loadout| Home
     Switch -->|Cancel selection| Home
@@ -65,23 +67,23 @@ flowchart TD
 
 Recent loadouts is available from Switch loadout, its `r` shortcut, and the action finder when history exists. It records up to five applied pairs in `ui.json`; browsing, cancellation and unselected creation do not add history. Choosing a row shows both names before Enter applies them together. A separate history-write warning does not undo an already saved active pair. See the [tested semantics](NAVIGATION_AUDIT.md#recent-setup-pairs).
 
-Back restores provider, help, scope and agent-target identity as well as menu position. Recent entries are matched by pair, so reordered history cannot change what a detail screen means. Returning to Connect agent after a non-agent detour reloads its plan asynchronously; an exact target is retained when available, and a refreshed file diff must be reviewed again. Missing targets and an old All preview return to Connect agent rather than expanding the write.
+Back restores provider, help, scope and agent-target identity as well as menu position. Recent entries are matched by pair, so reordered history cannot change what a detail screen means. Returning to Agent instructions after a non-agent detour reloads its plan asynchronously; an exact target is retained when available, and a refreshed file diff must be reviewed again. Missing targets and an old All preview return to Agent instructions rather than expanding the write.
 
 ## Guided tasks
 
 | Surface | Visible content | Action and return |
 | --- | --- | --- |
 | Welcome | Original block lettering and account-access consequences | Enter advances only while the required statement/action fit. Esc exits without recording completion. |
-| Home | Three primary tasks, loadout, settings, help and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
+| Home | Active loadout, provider inventory, profile fields and tools | Enter edits the selected item. Saved state reflects local inventory. |
 | Provider keys | Names, provider uses, saved state and overflow position | / filters locally. Esc clears active filtering first. No-match Enter cannot open a provider or URL. |
 | Provider key | Provider benefit, numbered steps, official destination and masked input | Ctrl-O opens the link with or without a value. Tab shows the full URL and edit details. Enter saves a valid value after the change preview fits. Esc cancels the field. |
 | Multiple-key provider | Provider benefit, credential choices and saved states | Choose a field for your task. Paired credentials indicate that each field is needed. |
 | Custom key | Name entry, then masked input | Name fields ignore pastes. Supported JSON values retain the existing validation path. |
 | Profile | Six optional fields and existing values | Opens directly from Home. Saving a detail does not publish it. |
 | Profile field | Prefilled text and explicit clear behavior | Save/unchanged/remove receipt reflects the backend result. Esc discards the draft. Return retains the field-list route. |
-| Connect agent | Copy for this task or Add to agent files | Current-task copy is separate from permanent instruction-file changes. |
+| Agent instructions | Copy instructions for chat or Add to agent files | Current-task copy is separate from permanent instruction-file changes. |
 | Agent target choice | Detected destinations plus explicit All and Back | Choose one or all, then inspect the exact preview. Arbitrary project files are not detected. |
-| Agent preview | Selected paths, additions/removals and append block | Continuous review unlocks Enter append; jumping past unseen lines does not. Width changes restart review. Append returns to Connect agent. |
+| Agent preview | Selected paths, additions/removals and append block | Continuous review unlocks Enter append; jumping past unseen lines does not. Width changes restart review. Append returns to Agent instructions. |
 | Switch loadout | Current pair and staged environment/profile choices | Use this loadout saves both once. Back cancels the selection. Explicitly created records remain even if selection is later canceled. |
 | Recent loadouts | Up to five applied environment/profile pairs | Choose a pair, review both names, then Enter uses it. Cancel preserves active state and any unapplied manual draft. |
 | Settings | Motion, Check local files, Update Godmode, Replay intro | Motion persists in ui.json; command no-motion overrides do not rewrite it. Update requires confirmation before external handoff. |

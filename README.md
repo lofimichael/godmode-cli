@@ -12,15 +12,15 @@ curl -fsSL https://get.godmode.build | bash
 godmode --version
 ```
 
-Follow the [quickstart](docs/GETTING_STARTED.md) to save a key and connect your agent. See [Installation](docs/INSTALLATION.md) for shell configuration, offline installs, and updates.
+Follow the [quickstart](docs/GETTING_STARTED.md) to save a key and give your agent its instructions. See [Installation](docs/INSTALLATION.md) for shell configuration, offline installs, and updates.
 
-These guides describe v0.21.0. The [public release manifest](https://godmode.build/releases/latest.json) shows the version available from the installer.
+These guides describe v0.22.0. The [public release manifest](https://godmode.build/releases/latest.json) shows the version available from the installer.
 
 ## Use Godmode
 
 | To | Run |
 | --- | --- |
-| Open the terminal menu | `godmode` |
+| View and edit your loadout | `godmode` |
 | Get guidance for an agent | `godmode help` |
 | Print a note for the selected loadout | `godmode agents --print` |
 | Check local files | `godmode doctor` |
@@ -30,7 +30,7 @@ A saved key means Godmode stored it locally. Verify access against the intended 
 
 ## Documentation
 
-- [Connect an agent](docs/AGENT_SETUP.md), [set up a provider](docs/PROVIDERS.md), or [add business details](docs/PROFILE.md).
+- [Copy agent instructions](docs/AGENT_SETUP.md), [add a provider key](docs/PROVIDERS.md), or [edit your profile](docs/PROFILE.md).
 - [Choose an environment and profile](docs/CONTEXTS.md) or [set up a remote machine](docs/REMOTE.md).
 - [Read the command reference](docs/COMMANDS.md), [release notes](docs/CHANGELOG.md), or [online docs](https://godmode.build/docs).
 - [Review credential storage and verify a release](docs/SECURITY.md), or run the [development checks](docs/dev/TESTING.md).

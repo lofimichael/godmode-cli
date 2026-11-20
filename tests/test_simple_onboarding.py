@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import struct
 import subprocess
@@ -120,31 +121,112 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
         complete_intro(session)
-        self.choice(session, "Provider keys")
+        self.choice(session, "GitHub")
+        session.expect("Esc quit")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Switch loadout", "Profile", "Provider keys", "Connect agent", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
+        for label in ("Switch loadout", "Brand name", "Providers", "Agent instructions", "Done", "Keys default", "Optional details", "0 of 12 saved locally", "0 agent files", "Save a key, then copy the chat note."):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
-        session.send(b"\x1b[B" * 2)
-        self.choice(session, "Profile")
-        session.send(b"\r")
-        self.open_choice(session, LABELS[0])
-        # Enter on an empty field skips it and opens the next empty one: one Enter per field.
+        session.send(b"brand")
         for index, label in enumerate(LABELS):
-            mark = len(session.capture)
+            if index:
+                session.send(b"\x1b[B")
+            self.open_choice(session, label)
             self.assertIn("Enter skips", plain(session.capture))
             session.send(b"\r")
-            if index + 1 < len(LABELS):
-                self.prompt(session, mark, LABELS[index + 1])
-        # After the sixth field the pointer rests on Back, not a separator or the first field.
-        self.choice(session, "Back")
+            self.choice(session, label)  # A direct edit returns to this field on Home.
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
-        session.send(b"\r")
-        self.choice(session, "Profile")  # Home keeps the section that was opened.
         session.send(b"\x1b")
         session.expect("Profile 0 optional fields")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
+
+    def test_plain_home_editing_preserves_focus_after_reordering_and_hides_custom_values(self):
+        self.seen()
+        self.okay('set', 'STUDIO_TOKEN', '--stdin', input='synthetic_private_value_12345')
+        session = self.terminal('--plain')
+
+        def menu(mark=0):
+            session.after(mark, 'Esc quit.')
+            return plain(session.capture[mark:])
+
+        def open_item(output, name):
+            index = re.search(r'(?m)^(\d+)\. ' + re.escape(name) + r'(?:[:\r\n]|$)', output)
+            self.assertIsNotNone(index, name)
+            session.send(index[1].encode() + b'\r')
+
+        first = menu()
+        self.assertIn('Custom keys', first)
+        self.assertIn('STUDIO_TOKEN: Saved', first)
+        self.assertNotIn('synthetic_private_value', first)
+        open_item(first, 'STUDIO_TOKEN')
+        session.expect('Tab reviews')
+        mark = len(session.capture)
+        session.send(b'\x1b')
+        second = menu(mark)
+        custom_index = re.search(r'(?m)^(\d+)\. STUDIO_TOKEN:', second)[1]
+        self.assertIn('Number, then Enter (' + custom_index + ')', second)
+        open_item(second, 'Cloudflare')
+        session.expect('CLOUDFLARE_API_TOKEN')
+        session.paste('synthetic_new_cloudflare_token_67890')
+        session.send(b'\t')
+        session.expect('Enter saves')
+        mark = len(session.capture)
+        session.send(b'\r')
+        saved = menu(mark)
+        self.assertIn('1. Cloudflare: Saved', saved)
+        self.assertIn('Number, then Enter (1)', saved)
+        self.assertNotIn('synthetic_new_cloudflare', saved)
+        open_item(saved, 'Brand name')
+        session.expect('Enter skips')
+        session.paste('Sample Studio')
+        session.send(b'\r')
+        session.expect('Enter saves')
+        mark = len(session.capture)
+        session.send(b'\r')
+        profile = menu(mark)
+        self.assertIn('Profile default | Sample Studio', profile)
+        self.assertIn('Brand name: Sample Studio', profile)
+        self.assertNotIn('Example: Harbor Studio\r', profile)
+        session.send(b'\x1b')
+        session.done()
+
+    def test_plain_home_keeps_read_errors_separate_and_can_switch_out_of_a_broken_environment(self):
+        self.seen()
+        self.okay('env', 'create', 'preview')
+        self.okay('use', '--env', 'preview', '--context', '-')
+        self.okay('profile', 'set', 'business_name', '--stdin', input='Preview Studio')
+        key_file = self.home / '.env.godmode.preview'
+        key_file.chmod(0o644)
+        session = self.terminal('--plain')
+        session.expect('Esc quit.')
+        output = plain(session.capture)
+        self.assertIn('GitHub: Unreadable', output)
+        self.assertIn('Brand name: Preview Studio', output)
+        self.assertNotIn('0 of 12 saved', output)
+        switch = re.search(r'(?m)^(\d+)\. Switch loadout', output)[1]
+        session.send(switch.encode() + b'\r')
+        session.expect('Use this loadout')
+        session.send(b'1\r')
+        session.expect('preview: Unreadable')
+        session.send(b'1\r')
+        session.expect('Key environment: default')
+        mark = len(session.capture)
+        session.send(b'3\r')
+        session.after(mark, 'Esc quit.')
+        self.assertIn('Keys default | Profile default', plain(session.capture[mark:]))
+        session.send(b'\x1b')
+        session.done()
+        self.seed(self.home / 'profile.json', '{bad')
+        (self.root / '.codex' / 'AGENTS.md').mkdir(parents=True)
+        broken = self.terminal('--plain')
+        broken.expect('Esc quit.')
+        self.assertIn('Brand name: Unreadable', plain(broken.capture))
+        self.assertIn('GitHub: Add key', plain(broken.capture))
+        self.assertIn('Agent instructions: Unreadable', plain(broken.capture))
+        broken.send(b'\x1b')
+        broken.expect('Profile unreadable')
+        broken.done()
 
     def test_visible_profile_entry_rejects_controls_and_accepts_multiline_address(self):
         session = self.terminal("profile")
@@ -188,7 +270,7 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
         complete_intro(session)
-        self.choice(session, "Provider keys")
+        self.choice(session, "GitHub")
         session.send(b"\x1b")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
@@ -340,7 +422,7 @@ class ModularOnboardingTests(unittest.TestCase):
         (self.root / ".gemini" / "GEMINI.md").write_text("Run godmode help when you need keys.\n")
         note = self.okay("agents")
         session = self.terminal("agents")
-        session.expect("Add to Claude Code and Codex")
+        session.expect("Add to agent files Claude Code and Codex")
         screen = plain(session.capture)
         for text in ("These files will be created:", "~/.claude/rules/godmode.md",
                      "These files will be modified:", "~/.codex/AGENTS.md",
@@ -364,7 +446,7 @@ class ModularOnboardingTests(unittest.TestCase):
         # A non-empty override is the file Codex reads, so it is the target.
         (codex / "AGENTS.override.md").write_text("# Override\n")
         override = self.terminal("agents")
-        override.expect("Add to Codex")
+        override.expect("Add to agent files Codex")
         self.assertIn("~/.codex/AGENTS.override.md", plain(override.capture))
         override.send(b"\x1b")
         override.done()
@@ -436,7 +518,7 @@ class ModularOnboardingTests(unittest.TestCase):
         self.assertIsNone(session.process.poll())
         mark = len(session.capture)
         fcntl.ioctl(session.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 80, 0, 0))
-        session.after(mark, "Add to Claude Code")
+        session.after(mark, "Add to agent files")
         screen = "\n".join(Screen(80).feed(session.capture[mark:]).lines())
         self.assertIn("~/.claude/rules/godmode.md", screen)
         self.assertIn("<!-- godmode:start -->", screen)
@@ -451,7 +533,7 @@ class ModularOnboardingTests(unittest.TestCase):
             (self.root / folder).mkdir(parents=True, exist_ok=True)
         session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], self.env, cols=80, rows=24)
         self.addCleanup(session.close)
-        session.expect("Add to 5 agents")
+        session.expect("Add to agent files 5 agents")
         screen = "\n".join(Screen(80).feed(session.capture).lines())
         for name in ("~/.claude/rules/godmode.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md",
                      "~/.copilot/copilot-instructions.md", "~/.config/opencode/AGENTS.md",
@@ -469,7 +551,7 @@ class ModularOnboardingTests(unittest.TestCase):
         session = Terminal([sys.executable, str(REPO / 'tests/engine_fixture.py'), str(self.script), "agents"], env)
         self.addCleanup(session.close)
         session.expect("I added it")
-        self.assertIn("Print task instructions", plain(session.capture))
+        self.assertIn("Print instructions for chat", plain(session.capture))
         before = self.snapshot()
         session.send(b"\x1b")
         session.done()

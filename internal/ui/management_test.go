@@ -15,8 +15,8 @@ import (
 
 func TestHomeShortKeepsEveryFocusedActionAndExitVisible(t *testing.T) {
 	for _, size := range [][2]int{{28, 12}, {40, 18}, {80, 24}, {110, 36}} {
-		for at, name := range homeNames {
-			m := create(t, fake(), "home", "")
+		m := create(t, fake(), "home", "")
+		for at, name := range m.choiceNames() {
 			m = send(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m.selected = at
 			view := ansi.Strip(m.View().Content)
@@ -32,19 +32,14 @@ func TestHomeShortKeepsEveryFocusedActionAndExitVisible(t *testing.T) {
 
 func TestBusinessProfileReturnsToItsParent(t *testing.T) {
 	m := create(t, fake(), "home", "")
-	m = openHomeItem(t, m, "Profile")
-	if m.page != "profile" {
-		t.Fatal("Profile did not open fields directly")
-	}
-	m.selected = 2
-	m = enter(m)
-	m = escape(m)
-	if m.page != "profile" || m.selected != 2 {
-		t.Fatal("field edit lost its profile selection")
+	at := homeItemIndex(t, m, "Legal")
+	m = openHomeItem(t, m, "Legal")
+	if m.page != "profile_field" || m.fieldAt != 2 {
+		t.Fatal("Home did not open the chosen field directly")
 	}
 	m = escape(m)
-	if m.page != "home" || m.selected != 2 {
-		t.Fatal("profile lost home focus")
+	if m.page != "home" || m.selected != at {
+		t.Fatal("profile edit lost Home focus")
 	}
 }
 
@@ -178,10 +173,10 @@ func TestInstalledAgentsKeepTaskInstructionsAndCopyAction(t *testing.T) {
 	}
 	m = enter(m)
 	if m.page != "agent_copy" {
-		t.Fatal("Copy for this task did not open the task note")
+		t.Fatal("Copy instructions for chat did not open the task note")
 	}
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"Copy for this task", m.agents.CopyBlock, "c copy"} {
+	for _, want := range []string{"Copy instructions for chat", m.agents.CopyBlock, "c copy"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("installed screen hides %q", want)
 		}

@@ -1,6 +1,6 @@
 # Command reference
 
-These commands cover Godmode v0.21.0. Run `godmode --help` for the installed command list or `godmode help COMMAND` for most commands. In the examples below, replace uppercase placeholders with your own names or command.
+These commands cover Godmode v0.22.0. Run `godmode --help` for the installed command list or `godmode help COMMAND` for most commands. In the examples below, replace uppercase placeholders with your own names or command.
 
 ## Open and inspect
 
@@ -43,7 +43,7 @@ Keep credentials out of command arguments and chat. For an account check, run a 
 | `godmode agents` | Copy the selected task note or review additions to detected agent files. |
 | `godmode agents --print` | Print the note scoped to the selected loadout. |
 
-See [Profile](PROFILE.md) for field names and [Connect your agent](AGENT_SETUP.md) for the review and verification steps.
+See [Profile](PROFILE.md) for field names and [Agent instructions](AGENT_SETUP.md) for the review and verification steps.
 
 ## Home and display settings
 
