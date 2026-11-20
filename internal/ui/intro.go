@@ -222,22 +222,28 @@ func (m model) introRowsFit(rows []string) bool {
 func (m model) cinematicIntroView() []string {
 	p := m.palette()
 	rows := m.cinematicIntroLines()
+	escape := "Esc to exit"
+	if len(m.trail) > 0 {
+		escape = "Esc back"
+	}
 	if !m.introRowsFit(rows) {
-		return append(m.styledWrap("Enlarge the terminal to read the account-access statement.", p.warn), "", p.muted.Render("Esc to exits"))
+		return append(m.styledWrap("Enlarge the terminal to read the account-access statement.", p.warn), "", p.muted.Render(escape))
 	}
 	if m.error != "" {
 		rows = append(rows, m.introText(m.error, p.bad)...)
 	}
-	action := "Enter to continue  ·  Esc to exit"
+	action := "Enter to continue"
 	if m.introStage > 0 {
-		action = "Enter to open Godmode  ·  Esc to exit"
-		if m.initialRoute == "intro" {
-			action = "Enter to finish  ·  Esc to exit"
+		action = "Enter to open Godmode"
+		if m.initialRoute == "intro" || len(m.trail) > 0 {
+			action = "Enter to finish"
 		}
 	}
-	if m.innerWidth() < 31 {
-		action = "Enter continue · Esc to exit"
+	if ansi.StringWidth(action+"  ·  "+escape) > m.innerWidth() {
+		action = strings.Replace(action, " to ", " ", 1)
+		action = strings.TrimSuffix(action, " Godmode")
 	}
+	action += " · " + escape
 	rows = append(rows, "", m.introCenter(p.title.Render(action)))
 	// Keep the small scene poised in a large terminal without introducing
 	// blank-screen frames or letting decorative padding hide the controls.

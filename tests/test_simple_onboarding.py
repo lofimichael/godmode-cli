@@ -18,8 +18,7 @@ from test_simple_intro import complete_intro
 REPO = Path(__file__).resolve().parents[1]
 FIELDS = ("operator_name", "business_name", "legal_name", "website",
           "public_email", "business_mailing_address")
-LABELS = ("Your name", "Business name", "Legal name", "Website",
-          "Public email", "Mailing address")
+LABELS = ("Brand name", "Website", "Public email", "Legal name", "Mailing address", "Your name")
 FACTS = ("Zoë Example", "Example Studio", "Example LLC", "https://example.test",
          "hello@example.test", "123 Example Street\nExample City")
 
@@ -121,13 +120,13 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_default_menu_and_all_six_optional_fields_can_be_skipped(self):
         session = self.terminal()
         complete_intro(session)
-        self.choice(session, "Active setup")
+        self.choice(session, "Provider keys")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        for label in ("Active setup", "Business details", "Providers", "Agents", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
+        for label in ("Switch loadout", "Profile", "Provider keys", "Connect agent", "Done", "Environment default", "0 fields", "0 keys saved", "0 notes added"):
             self.assertIn(label, screen)
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
-        session.send(b"\x1b[B" * 3)
-        self.choice(session, "Business details")
+        session.send(b"\x1b[B" * 2)
+        self.choice(session, "Profile")
         session.send(b"\r")
         self.open_choice(session, LABELS[0])
         # Enter on an empty field skips it and opens the next empty one: one Enter per field.
@@ -141,7 +140,7 @@ class ModularOnboardingTests(unittest.TestCase):
         self.choice(session, "Back")
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
         session.send(b"\r")
-        self.choice(session, "Business details")  # Home keeps the section that was opened.
+        self.choice(session, "Profile")  # Home keeps the section that was opened.
         session.send(b"\x1b")
         session.expect("Profile 0 optional fields")
         session.done()
@@ -149,7 +148,7 @@ class ModularOnboardingTests(unittest.TestCase):
 
     def test_visible_profile_entry_rejects_controls_and_accepts_multiline_address(self):
         session = self.terminal("profile")
-        self.open_choice(session, "Your name")
+        self.open_choice(session, "Brand name")
         unsafe = "Example\x1b]0;UNSAFE_TITLE\x07"
         mark = len(session.capture)
         session.paste(unsafe)
@@ -158,36 +157,38 @@ class ModularOnboardingTests(unittest.TestCase):
         session.send(b"\r")
         session.after(mark, "contains control characters")
         self.assertFalse(self.profile.exists())
-        self.prompt(session, mark, "Your name")  # The same field opens again.
+        self.prompt(session, mark, "Brand name")  # The same field opens again.
         mark = len(session.capture)
-        session.send(FACTS[0].encode())
-        session.after(mark, FACTS[0])  # Facts are visible while entered, unlike credentials.
+        session.send(FACTS[1].encode())
+        session.after(mark, FACTS[1])  # Facts are visible while entered, unlike credentials.
         self.assertFalse(self.profile.exists())
         session.send(b"\r")
-        self.prompt(session, mark, "Business name")  # Saving opens the next empty field.
-        self.assertEqual(json.loads(self.profile.read_text()), {FIELDS[0]: FACTS[0]})
+        self.prompt(session, mark, "Website")  # Saving opens the next empty field.
+        self.assertEqual(json.loads(self.profile.read_text()), {FIELDS[1]: FACTS[1]})
         session.send(b"\x1b")
-        self.choice(session, "Business name")
+        self.choice(session, "Website")
         screen = "\n".join(Screen(110).feed(session.capture).lines())
-        self.assertIn(FACTS[0], screen)  # The list shows saved values.
-        session.send(b"\x1b[B" * 4)
+        self.assertIn(FACTS[1], screen)  # The list shows saved values.
+        session.send(b"\x1b[B" * 3)
         self.open_choice(session, "Mailing address")
         mark = len(session.capture)
         session.paste("123 Example Street\r\nExample City\r\n")
         session.after(mark, "123 Example Street ↵ Example City")
+        session.send(b"\r")
+        self.prompt(session, mark, "Your name")
         session.send(b"\r")
         self.choice(session, "Done")
         self.assertIn("123 Example Street, Example City", "\n".join(Screen(110).feed(session.capture).lines()))
         session.send(b"\r")
         session.done()
         self.assertEqual(json.loads(self.profile.read_text()),
-                         {FIELDS[0]: FACTS[0], FIELDS[-1]: FACTS[-1]})
+                         {FIELDS[1]: FACTS[1], FIELDS[-1]: FACTS[-1]})
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["profile.json"])
 
     def test_installer_init_enters_optional_onboarding_without_creating_a_store(self):
         session = self.terminal("init")
         complete_intro(session)
-        self.choice(session, "Active setup")
+        self.choice(session, "Provider keys")
         session.send(b"\x1b")
         session.done()
         self.assertEqual(sorted(p.name for p in self.home.iterdir()), ["intro.seen"])
@@ -309,9 +310,9 @@ class ModularOnboardingTests(unittest.TestCase):
     def test_clearing_a_profile_value_and_saved_values_in_the_form(self):
         self.okay("profile", "set", "website", "--stdin", input=FACTS[3])
         session = self.terminal("profile")
-        self.choice(session, "Your name")  # The first empty field.
+        self.choice(session, "Brand name")  # The first empty field.
         self.assertIn(FACTS[3], "\n".join(Screen(110).feed(session.capture).lines()))
-        session.send(b"\x1b[B" * 3)
+        session.send(b"\x1b[B")
         self.open_choice(session, "Website")
         self.assertIn("Saved: " + FACTS[3], plain(session.capture))
         self.assertIn("Enter keeps it · /clear removes", plain(session.capture))
@@ -509,19 +510,29 @@ class ModularOnboardingTests(unittest.TestCase):
         self.seed(self.home / "seal.key", "not a real key\n")
         before = self.snapshot()
         catalog = self.okay("provider", guidance=True)
-        self.assertIn("github", catalog)
-        self.assertIn("cloudflare", catalog)
-        guide = self.okay("provider", "github", guidance=True)
-        self.assertIn("GH_TOKEN", guide)
-        self.assertIn("https://github.com/", guide)
-        self.assertIn("Verify", guide)
-        self.assertIn("Recover", guide)
+        providers = json.loads((REPO / "providers.json").read_text())
+        for provider in providers:
+            with self.subTest(provider=provider["id"]):
+                self.assertIn(provider["id"], catalog)
+                guide = self.okay("provider", provider["id"], guidance=True)
+                self.assertTrue(provider["benefit"].strip())
+                self.assertIn(provider["benefit"], " ".join(guide.split()))
+                self.assertIn("Verify", guide)
+                self.assertIn("Recover", guide)
+                self.assertNotIn("synthetic_fixture", guide)
+                for key in provider["key"]:
+                    self.assertIn(key["name"], guide)
+                    page = key.get("console", provider["console"])
+                    if page:
+                        self.assertIn(page, guide)
+                for source in provider["docs"]:
+                    self.assertIn(source["url"], guide)
         bad = self.cli("provider", "not-a-real-provider", guidance=True)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("Unknown provider", bad.stderr)
         self.assertNotIn("Traceback", bad.stderr)
         self.assertEqual(self.snapshot(), before)
-        self.assertNotIn("synthetic_fixture", catalog + guide + bad.stdout + bad.stderr)
+        self.assertNotIn("synthetic_fixture", catalog + bad.stdout + bad.stderr)
 
 
 class BundledOnboardingTests(ModularOnboardingTests):

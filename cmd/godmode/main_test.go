@@ -16,7 +16,8 @@ func TestRoutesKeepAutomationAndChildFlagsDirect(t *testing.T) {
 		{nil, "home", true},
 		{[]string{"profile"}, "profile", true},
 		{[]string{"profile", "show"}, "profile", false},
-		{[]string{"setup", "cloudflare"}, "setup", true},
+		{[]string{"setup", "cloudflare"}, "loadout", true},
+		{[]string{"loadout", "cloudflare"}, "loadout", true},
 		{[]string{"set", "TOKEN"}, "set", true},
 		{[]string{"set", "TOKEN", "--stdin"}, "set", false},
 		{[]string{"run", "TOKEN", "--", "tool", "--plain"}, "run", false},
@@ -46,7 +47,7 @@ func TestRoutesKeepAutomationAndChildFlagsDirect(t *testing.T) {
 
 func TestEnvironmentSelectionAndExternalActionsKeepScope(t *testing.T) {
 	r := selectRoute([]string{"--context", "acme", "--env=acme-test", "setup", "stripe"})
-	if r.context != "acme" || r.environment != "acme-test" || !r.interactive || r.command != "setup" {
+	if r.context != "acme" || r.environment != "acme-test" || !r.interactive || r.command != "loadout" {
 		t.Fatal("selected setup lost scope")
 	}
 	for _, args := range [][]string{{"--env=", "profile"}, {"--env", "a", "--env", "b"}, {"--env"}} {

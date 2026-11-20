@@ -40,6 +40,9 @@ func (m model) workLabel(message tea.Msg) string {
 	if (m.page == "agents" || m.page == "agent_copy") && (k == "c" || k == "m" || k == "enter") {
 		return "Updating agent instructions"
 	}
+	if k == "ctrl+o" && m.page == "key" && m.key.Page != "" {
+		return "Opening browser"
+	}
 	if k != "enter" {
 		return ""
 	}
@@ -56,7 +59,7 @@ func (m model) workLabel(message tea.Msg) string {
 			return "Opening help"
 		}
 	case "recent_details":
-		return "Saving active setup"
+		return "Saving active loadout"
 	case "actions":
 		return "Opening action"
 	case "settings":
@@ -65,23 +68,23 @@ func (m model) workLabel(message tea.Msg) string {
 		}
 	case "active":
 		if m.selected == 2 {
-			return "Saving active setup"
+			return "Saving active loadout"
 		}
 		if m.selected < 2 {
-			return "Reading saved setups"
+			return "Reading loadouts"
 		}
 	case "business":
 		if m.selected == 1 {
-			return "Reading businesses"
+			return "Reading profiles"
 		}
 	case "environment_new":
 		if m.selected == 2 {
 			return "Reading environments"
 		}
 	case "contexts", "environments", "scope_details":
-		return "Selecting active setup"
+		return "Selecting active loadout"
 	case "scope_name":
-		return "Creating setup"
+		return "Creating file"
 	case "providers":
 		matches := m.providerMatches()
 		if m.selected >= 0 && m.selected < len(matches) {
@@ -95,11 +98,11 @@ func (m model) workLabel(message tea.Msg) string {
 		return "Opening key"
 	case "key":
 		if m.text == "" {
-			return "Opening browser"
+			return ""
 		}
 		return "Saving key"
 	case "profile_field":
-		return "Saving business details"
+		return "Saving profile"
 	}
 	if m.backNeedsAgentReload() {
 		return "Reading agent instructions"
@@ -213,7 +216,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.busy, m.busyVisible, m.busyValidation, m.pendingInput = false, false, false, nil
 					return m.updateNow(message)
 				}
-				if msg.String() != "enter" {
+				if msg.String() != "enter" && msg.String() != "ctrl+o" {
 					m.pendingInput = append(m.pendingInput, msg)
 				}
 				return m, nil

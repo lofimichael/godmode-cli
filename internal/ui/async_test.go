@@ -275,7 +275,7 @@ func TestAsyncLargePasteValidatesWithoutSubmittingOrRevealingValue(t *testing.T)
 	if m.text != value || m.check.Valid || !strings.Contains(m.View().Content, "•") {
 		t.Fatal("large paste did not immediately show a masked, unvalidated candidate")
 	}
-	footer := strings.Join(m.footer(), "\n")
+	footer := ansi.Strip(strings.Join(m.footer(), "\n"))
 	if !strings.Contains(footer, "edits retained") || strings.Contains(footer, "Enter save") {
 		t.Fatal("pending validation advertises submission instead of retained editing")
 	}
@@ -382,7 +382,7 @@ func TestAsyncEscapeDiscardsReadOnlyValidationAndQueuedSecrets(t *testing.T) {
 func TestEnvironmentBackRestoresInspectedListWithoutAnotherRead(t *testing.T) {
 	b := fake()
 	m := create(t, b, "home", "")
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	m.selected = len(m.environments)
 	m = enter(m)

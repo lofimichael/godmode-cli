@@ -169,7 +169,7 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign
         first = root / "first"
         output = run(first)
         assert (first / ".godmode/bin/godmode").read_bytes().startswith(b"#!/bin/sh")
-        assert b"To set up, run:" in output.stdout
+        assert b"To open your loadout, run:" in output.stdout
         assert b"Activate:" not in output.stdout
         assert len(state["requests"]) == 2 and not any(auth for _, auth in state["requests"])
         assert state["user_agents"] == ["godmode-installer/3", "godmode-installer/3"]

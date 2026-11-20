@@ -84,7 +84,7 @@ func (f *fakeBackend) Call(action string, args map[string]any) (map[string]any, 
 		f.state["env_path"] = "/tmp/godmode-test/.env.godmode." + args["name"].(string)
 		return f.state, nil
 	case "doctor":
-		return map[string]any{"ok": false, "checks": []any{map[string]any{"name": "Synthetic file", "status": "warn", "detail": "Missing example", "action": "godmode setup example"}}}, nil
+		return map[string]any{"ok": false, "checks": []any{map[string]any{"name": "Synthetic file", "status": "warn", "detail": "Missing example", "action": "godmode loadout example"}}}, nil
 	case "key_plan":
 		return map[string]any{"id": "key-1", "name": args["name"], "title": "Example · API token", "visit": "Visit Example's token page", "page": "https://example.test/token", "steps": []string{"Make a token with **full scope**. Choose an expiration date."}, "prompt": "Paste your token:", "path": "/tmp/godmode-test/.env.godmode", "sealed": true, "saved": true, "lines": []int{4}}, nil
 	case "key_check":
@@ -267,7 +267,7 @@ func TestAgentAppendRequiresEveryPreviewLine(t *testing.T) {
 	m := create(t, f, "agents", "")
 	m = openAgentDiff(t, m)
 	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	if strings.Contains(strings.Join(m.footer(), "\n"), "Enter append") {
+	if strings.Contains(ansi.Strip(strings.Join(m.footer(), "\n")), "Enter append") {
 		t.Fatal("unreviewed diff advertises append")
 	}
 	m = enter(m)
@@ -286,7 +286,7 @@ func TestAgentAppendRequiresEveryPreviewLine(t *testing.T) {
 	if m.reviewedUntil < len(m.agentLines()) {
 		t.Fatalf("continuous paging did not review all lines: %d/%d", m.reviewedUntil, len(m.agentLines()))
 	}
-	if !strings.Contains(strings.Join(m.footer(), "\n"), "Enter append") {
+	if !strings.Contains(ansi.Strip(strings.Join(m.footer(), "\n")), "Enter append") {
 		t.Fatal("reviewed diff does not expose append")
 	}
 	m = enter(m)
@@ -411,15 +411,26 @@ func TestUnreadableProfileIsShownAndCannotWrite(t *testing.T) {
 	}
 }
 
-func TestFailedBrowserOpenDoesNotClaimSuccess(t *testing.T) {
+func TestProviderLinkAndSaveHaveSeparateBindings(t *testing.T) {
 	f := fake()
 	m := create(t, f, "set", "EXAMPLE_TOKEN")
 	m = enter(m)
-	if m.notice != "Open the link above." {
-		t.Fatalf("wrong browser receipt: %q", m.notice)
+	if count(f.calls, "open_url") != 0 || count(f.calls, "key_save") != 0 || m.error == "" {
+		t.Fatal("empty Enter opened a link or appeared to save")
 	}
-	if count(f.calls, "key_save") != 0 {
-		t.Fatal("empty key saved")
+	open := tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl})
+	m = send(m, open)
+	if count(f.calls, "open_url") != 1 || !m.details || !strings.Contains(m.notice, "Copy the link") || !strings.Contains(m.View().Content, m.key.Page) {
+		t.Fatal("unavailable browser did not reveal the complete URL for manual opening")
+	}
+	m = send(m, tea.PasteMsg{Content: "synthetic_pending"})
+	m = send(m, open)
+	if f.saved != "" || m.text != "synthetic_pending" || count(f.calls, "open_url") != 2 || !strings.Contains(m.View().Content, m.key.Page) {
+		t.Fatal("Ctrl-O with input changed or submitted the value")
+	}
+	m = enter(m)
+	if f.saved != "synthetic_pending" || count(f.calls, "open_url") != 2 {
+		t.Fatal("Enter did not save exactly the pending value")
 	}
 }
 
@@ -454,7 +465,7 @@ func TestNoSearchResultsAllowExplicitRecovery(t *testing.T) {
 func TestLinklessKeyHasNoOpenLinkHint(t *testing.T) {
 	m := create(t, fake(), "set", "EXAMPLE_TOKEN")
 	m.key.Page = ""
-	if strings.Contains(strings.Join(m.footer(), "\n"), "open link") {
+	if strings.Contains(ansi.Strip(strings.Join(m.footer(), "\n")), "open link") {
 		t.Fatal("linkless field promises a link")
 	}
 }

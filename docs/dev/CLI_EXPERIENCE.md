@@ -1,18 +1,16 @@
 # Godmode CLI experience
 
-Godmode stores profile fields and provider keys, then supplies selected keys to commands. This guide describes the current native source candidate; its navigation changes are not released yet. Direct commands and the Python plain/compatibility interface retain their own output contracts. The [navigation audit](NAVIGATION_AUDIT.md) records the earlier navigation work and its evidence. The home capture below shows the current candidate.
+Godmode stores profile fields and provider keys, then supplies selected keys to commands. These captures show the native interface with an empty local profile and key environment.
 
 ![Godmode home](../images/current/home.png)
 
-The setup and key-edit images are historical examples.
-
-![Godmode active setup](../images/v019/active-setup.png)
-
-![Masked key edit](../images/native/key-preview.png)
+![Cloudflare onboarding in Godmode](../images/current/cloudflare.png)
 
 ## Native interface
 
-Bubble Tea 2 and Lip Gloss 2 draw the NFO welcome and guided views. Home leads with Provider keys, Connect agent and Business details, followed by Switch setup, Settings, Help and Exit. The active business and key environment remain visible. Switch setup stages both choices until Use this setup saves the pair. Recent setups recalls up to five used pairs and requires a review before applying one. Ctrl-K finds an action; / filters providers or opens the finder from other menus. Esc returns to the actual parent, retaining focus and query; q quits from menus and remains text in an input. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro direction](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
+Bubble Tea 2 and Lip Gloss 2 draw the welcome and guided views. Home opens Provider keys, Connect agent, Profile, Switch loadout, Settings and Help. The active profile and key environment appear above each task. Switch loadout stages both choices until Use this loadout applies them to new commands. Recent loadouts lets you review and reuse any of the last five pairs.
+
+Ctrl-K finds an action. The slash key filters providers or opens the finder from other menus. Esc returns to the parent with its selection and query. On Home, q quits and s opens Switch loadout. In a field or search box, both remain ordinary text. See the [navigation audit](NAVIGATION_AUDIT.md), [active selection contract](ACTIVE_SELECTION.md), [intro design](INTRO_DIRECTION.md) and [performance review](PERFORMANCE_REVIEW.md).
 
 ```mermaid
 flowchart LR
@@ -45,16 +43,16 @@ flowchart TD
     Connect --> Target[Choose one agent or All]
     Target --> Diff[Exact file and addition preview]
     Diff -->|Review then append| Connect
-    Home --> Profile[Optional business fields]
+    Home --> Profile[Optional profile fields]
     Profile --> Field[Edit one field]
     Field -->|Save or cancel| Profile
-    Home --> Switch[Stage environment and business]
-    Switch -->|Use this setup| Home
+    Home --> Switch[Stage environment and profile]
+    Switch -->|Use this loadout| Home
     Switch -->|Cancel selection| Home
-    Switch --> Recent[Recent setups / r]
+    Switch --> Recent[Recent loadouts / r]
     Recent --> Pair[Review both names]
     Pair -->|Enter use| Recent
-    Home --> Settings[Motion / Check setup / Update / Replay intro]
+    Home --> Settings[Motion / Check local files / Update / Replay intro]
     Settings --> Confirm[Update confirmation]
     Confirm -->|Explicit update| Shell[Restore terminal before updater]
     Home --> Help[Quickstart and FAQ]
@@ -63,30 +61,30 @@ flowchart TD
     Destination -->|Esc retains query| Finder
 ```
 
-`intro` replays the welcome. On a fresh home, native `setup` and `set NAME` also show it before their requested route. Native `profile`, `agents`, `faq` and `settings` open their sections directly. Back follows the actual navigation history. Leaving a direct entry route returns to the terminal; a provider reached through the finder returns to its query. See the audit for the complete route map and scope semantics.
+`intro` replays the welcome. On a fresh home, native `loadout` and `set NAME` also show it before their requested route. Native `profile`, `agents`, `faq` and `settings` open their sections directly. Back follows the actual navigation history. Leaving a direct entry route returns to the terminal; a provider reached through the finder returns to its query. See the audit for the complete route map and scope semantics.
 
-Recent setups is available from Switch setup, its `r` shortcut, and the action finder when history exists. It records up to five applied pairs in `ui.json`; browsing, cancellation and unselected creation do not add history. Choosing a row shows both names before Enter applies them together. A separate history-write warning does not undo an already saved active pair. See the [tested semantics](NAVIGATION_AUDIT.md#recent-setup-pairs).
+Recent loadouts is available from Switch loadout, its `r` shortcut, and the action finder when history exists. It records up to five applied pairs in `ui.json`; browsing, cancellation and unselected creation do not add history. Choosing a row shows both names before Enter applies them together. A separate history-write warning does not undo an already saved active pair. See the [tested semantics](NAVIGATION_AUDIT.md#recent-setup-pairs).
 
 Back restores provider, help, scope and agent-target identity as well as menu position. Recent entries are matched by pair, so reordered history cannot change what a detail screen means. Returning to Connect agent after a non-agent detour reloads its plan asynchronously; an exact target is retained when available, and a refreshed file diff must be reviewed again. Missing targets and an old All preview return to Connect agent rather than expanding the write.
 
-## Guided setup
+## Guided tasks
 
 | Surface | Visible content | Action and return |
 | --- | --- | --- |
 | Welcome | Original block lettering and account-access consequences | Enter advances only while the required statement/action fit. Esc exits without recording completion. |
-| Home | Three primary tasks, secondary setup/settings/help and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
-| Provider keys | Names, saved state, selected description and overflow position | / filters locally. Esc clears active filtering first. No-match Enter cannot open a provider or URL. |
-| Provider key | Guidance, shortened link, masked input, destination and change preview | Empty Enter can open the provider page. Paste never submits. Valid input saves on explicit Enter only when review fits; Esc abandons it. |
-| Multiple-key provider | Key checklist and saved states | Choose a key; returning preserves its list context. |
+| Home | Three primary tasks, loadout, settings, help and Exit | Empty state starts at keys; a saved key with no agent note points toward Connect agent. Counts describe inventory, not a completion score. |
+| Provider keys | Names, provider uses, saved state and overflow position | / filters locally. Esc clears active filtering first. No-match Enter cannot open a provider or URL. |
+| Provider key | Provider benefit, numbered steps, official destination and masked input | Ctrl-O opens the link with or without a value. Tab shows the full URL and edit details. Enter saves a valid value after the change preview fits. Esc cancels the field. |
+| Multiple-key provider | Provider benefit, credential choices and saved states | Choose a field for your task. Paired credentials indicate that each field is needed. |
 | Custom key | Name entry, then masked input | Name fields ignore pastes. Supported JSON values retain the existing validation path. |
-| Business details | Six optional fields and existing values | Opens directly from Home. Saving a detail does not publish it. |
+| Profile | Six optional fields and existing values | Opens directly from Home. Saving a detail does not publish it. |
 | Profile field | Prefilled text and explicit clear behavior | Save/unchanged/remove receipt reflects the backend result. Esc discards the draft. Return retains the field-list route. |
 | Connect agent | Copy for this task or Add to agent files | Current-task copy is separate from permanent instruction-file changes. |
 | Agent target choice | Detected destinations plus explicit All and Back | Choose one or all, then inspect the exact preview. Arbitrary project files are not detected. |
 | Agent preview | Selected paths, additions/removals and append block | Continuous review unlocks Enter append; jumping past unseen lines does not. Width changes restart review. Append returns to Connect agent. |
-| Switch setup | Current pair and staged environment/business choices | Use this setup saves both once. Back cancels the selection. Explicitly created records remain even if selection is later canceled. |
-| Recent setups | Up to five applied environment/business pairs | Choose a pair, review both names, then Enter uses it. Cancel preserves active state and any unapplied manual draft. |
-| Settings | Motion, Check setup, Update Godmode, Replay intro | Motion persists in ui.json; command no-motion overrides do not rewrite it. Update requires confirmation before external handoff. |
+| Switch loadout | Current pair and staged environment/profile choices | Use this loadout saves both once. Back cancels the selection. Explicitly created records remain even if selection is later canceled. |
+| Recent loadouts | Up to five applied environment/profile pairs | Choose a pair, review both names, then Enter uses it. Cancel preserves active state and any unapplied manual draft. |
+| Settings | Motion, Check local files, Update Godmode, Replay intro | Motion persists in ui.json; command no-motion overrides do not rewrite it. Update requires confirmation before external handoff. |
 | Help | Quickstart first, then connection/scope/files/source topics | Enter opens a topic; Esc returns to its list or finder origin. ? opens keyboard help from menus. |
 
 The profile fields are `operator_name`, `business_name`, `legal_name`, `website`, `public_email`, and `business_mailing_address`. A provider instruction must still name the correct scope, account and page. Brief copy does not remove information needed for a decision.
@@ -97,7 +95,7 @@ The profile fields are `operator_name`, `business_name`, `legal_name`, `website`
 | --- | --- |
 | `godmode`, `godmode onboard` | Native home in a capable interactive terminal; first-use welcome when needed |
 | `godmode intro` | Replay welcome |
-| `godmode setup [PROVIDER]` | Native catalog or requested provider |
+| `godmode loadout [PROVIDER]` | Native catalog or requested provider |
 | `godmode set NAME` | Native masked entry and preview |
 | `godmode set NAME --stdin` | Save one key from a pipe/file through the core |
 | `godmode list` | Saved key names, one per line; no values |
@@ -123,11 +121,11 @@ The profile fields are `operator_name`, `business_name`, `legal_name`, `website`
 
 `--home DIR`, `--config-dir`, `GODMODE_HOME` and `GODMODE_CONFIG_DIR` retain their existing core selection behavior. `init --accept-disclaimer` remains a compatibility route. None of these controls expands a key's authority.
 
-The native launcher handles guided routes only with both input and output attached to a suitable terminal. `--plain`, `GODMODE_PLAIN=1`, an empty/dumb `TERM`, and redirected operation use the Python path. Plain key entry displays a masked review after Enter and saves on a second Enter. The compatibility menu may advance through fields differently from the native list; it is not the native renderer without color.
+The native launcher handles guided routes only with both input and output attached to a suitable terminal. `--plain`, `GODMODE_PLAIN=1`, an empty/dumb `TERM`, and redirected operation use the Python path. In a plain terminal, Tab shows the masked edit for review and Enter saves it. The compatibility menu may advance through fields differently from the native list; it is not the native renderer without color.
 
 ## Installation and recovery
 
-The shell installer selects a compatible native release for macOS/Linux ARM64 or x86-64, checks its SHA-256, installs the executable and updater, and opens setup unless disabled. Python 3.9+ remains required. Native installation needs neither Go nor pip; source builds use pinned Go 1.26.7 and vendored modules.
+The shell installer selects a compatible native release for macOS/Linux ARM64 or x86-64, checks its SHA-256, installs the executable and updater, and opens the terminal menu on an interactive first install. Python 3.9+ remains required. Native installation needs neither Go nor pip; source builds use pinned Go 1.26.7 and vendored modules.
 
 | Route | Behavior |
 | --- | --- |
@@ -137,7 +135,7 @@ The shell installer selects a compatible native release for macOS/Linux ARM64 or
 | Alternate destination | `--home DIR` selects data/executable home; `--bin-dir DIR` changes executable directory only |
 | Shell integration | `--path` backs up startup files before adding the generated environment source line |
 | Existing executable | Receipt identifies managed files; `--force` explicitly adopts an unknown existing program |
-| Update | `godmodeup` preserves the previous executable as `godmode.previous`; `--setup` explicitly opens setup |
+| Update | `godmodeup` preserves the previous executable as `godmode.previous`. Use `--loadout` to open the terminal menu afterward |
 | Legacy keys | `migrate` verifies the sealed copy before replacing the compatible legacy file |
 | Remove programs | [Installation](../INSTALLATION.md#uninstall) distinguishes programs from keys/profile |
 | Remote machine | [Remote guide](../REMOTE.md) explains explicit selected-file copies |
@@ -159,7 +157,7 @@ File previews carry meaning in text and signs, not color alone. Native keys show
 | Responsive home | Aligned task rows; compact scope/header/footer at narrow sizes; list overflow remains visible |
 | Source inspection | Embedded engine through `source`; complete matching sources and vendor tree in the separate source archive |
 | Provider login/refresh | Provider tools own these operations; Godmode stores credentials |
-| Full-catalog completion target | Not required; only chosen services need setup |
+| Full-catalog completion target | Not required; users choose the services they need |
 | Agent append review | Chosen target paths and append block must be reviewed before write; task copy is separate; existing file text is preserved |
 | Color versus plain mode | Distinct controls; plain mode changes interaction, not only styling |
 

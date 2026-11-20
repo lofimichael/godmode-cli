@@ -32,9 +32,9 @@ func TestHomeShortKeepsEveryFocusedActionAndExitVisible(t *testing.T) {
 
 func TestBusinessProfileReturnsToItsParent(t *testing.T) {
 	m := create(t, fake(), "home", "")
-	m = openHomeItem(t, m, "Business details")
+	m = openHomeItem(t, m, "Profile")
 	if m.page != "profile" {
-		t.Fatal("Business details did not open fields directly")
+		t.Fatal("Profile did not open fields directly")
 	}
 	m.selected = 2
 	m = enter(m)
@@ -71,7 +71,7 @@ func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 	}
 
 	m = escape(m)
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	m.selected = 1
 	m = enter(m)
@@ -84,7 +84,7 @@ func TestScopeSelectionDistinguishesAutomaticAndNamedDefault(t *testing.T) {
 	m.selected = 2
 	m = enter(m)
 	if m.state.Environment != "acme-test" || m.state.Context != "" || count(f.calls, "selection_save") != 1 {
-		t.Fatal("Use this setup did not save the staged environment with Automatic business")
+		t.Fatal("Use this loadout did not save the staged environment with Automatic business")
 	}
 }
 
@@ -136,7 +136,7 @@ func TestDoctorLoadsAsCommandAndIgnoresLateResults(t *testing.T) {
 	}
 	message := cmd()
 	m = send(m, message)
-	if m.doctorLoading || !strings.Contains(m.View().Content, "Missing example") || !strings.Contains(m.View().Content, "godmode setup example") {
+	if m.doctorLoading || !strings.Contains(m.View().Content, "Missing example") || !strings.Contains(m.View().Content, "godmode loadout example") {
 		t.Fatal("Doctor did not render result and recovery action")
 	}
 	m = escape(m)
@@ -226,7 +226,7 @@ func TestManagementViewsFitWithAndWithoutColor(t *testing.T) {
 func TestLongScopeDetailsRemainScrollableAndSelectTheInspectedItem(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	longName := "acme-" + strings.Repeat("long-project-", 5) + "staging"
 	longPath := "/tmp/" + strings.Repeat("long-directory/", 20) + ".env.godmode." + longName

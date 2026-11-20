@@ -99,10 +99,10 @@ def doctor_report(store, profile, api, home=None):
             aliases = getattr(context, 'aliases', {})
             missing = sorted(name for name, target in aliases.items() if states.get(target) != 'set')
             if missing:
-                add('Keys', 'error', 'Mapped keys are missing: ' + ', '.join(missing), prefix + ' setup')
+                add('Keys', 'error', 'Mapped keys are missing: ' + ', '.join(missing), prefix + ' loadout')
             else:
-                add('Keys', 'ok' if names else 'warn', str(len(names)) + ' stored; ' + shown(store.env_path),
-                    None if names else prefix + ' setup')
+                add('Keys', 'ok' if names else 'warn', str(len(names)) + ' stored locally. ' + shown(store.env_path),
+                    None if names else prefix + ' loadout')
             if aliases and not missing:
                 add('Mappings', 'ok', str(len(aliases)) + ' aliases resolve inside this key file.')
         plain = store.plain_names() if store.exists() else []
@@ -120,10 +120,10 @@ def doctor_report(store, profile, api, home=None):
         profile_path = str(profile.path)
         data = profile.read()
         count = sum(bool(data.get(name)) for name in api['PROFILE_FIELDS'])
-        add('Business', 'ok', str(count) + ' optional fields; ' + shown(profile.path))
+        add('Profile', 'ok', str(count) + ' optional fields; ' + shown(profile.path))
     except (ValueError, OSError) as error:
         detail = str(error) if isinstance(error, ValueError) else 'The business profile cannot be read safely.'
-        add('Business', 'error', detail, prefix + ' profile')
+        add('Profile', 'error', detail, prefix + ' profile')
     try:
         targets = api['agent_targets']()
         count = sum(bool(target['added']) for target in targets)

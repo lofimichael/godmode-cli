@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -85,16 +87,42 @@ func (m model) styledWrap(s string, style lipgloss.Style) []string {
 	}
 	return out
 }
+
+func (m model) keyHints(hint string) []string {
+	p := m.palette()
+	var rows []string
+	for _, line := range strings.Split(hint, "\n") {
+		row := ""
+		for _, item := range strings.Split(line, "·") {
+			binding, action, _ := strings.Cut(strings.TrimSpace(item), " ")
+			chip := p.cyan.Render(binding) + p.muted.Render(" "+action)
+			if row != "" && ansi.StringWidth(row+" · "+chip) > m.innerWidth() {
+				rows, row = append(rows, row), ""
+			}
+			if row != "" {
+				row += p.muted.Render(" · ")
+			}
+			row += chip
+		}
+		rows = append(rows, strings.Split(ansi.Wrap(row, m.innerWidth(), ""), "\n")...)
+	}
+	return rows
+}
 func (m model) title(title, detail string) []string {
 	p := m.palette()
-	row := p.title.Render(title)
+	rows := m.styledWrap(title, p.title)
 	if detail != "" {
-		row += "  " + p.muted.Render(detail)
+		last := len(rows) - 1
+		if ansi.StringWidth(rows[last]+"  "+detail) <= m.innerWidth() {
+			rows[last] += "  " + p.muted.Render(detail)
+		} else {
+			rows = append(rows, p.muted.Render(detail))
+		}
 	}
-	if m.height < 22 {
-		return []string{row}
+	if m.height >= 22 {
+		rows = append(rows, "")
 	}
-	return []string{row, ""}
+	return rows
 }
 func (m model) path(path string) string {
 	home, e := os.UserHomeDir()
@@ -136,7 +164,13 @@ func (m model) homeView() []string {
 		rows = append(rows, m.wrap(next)...)
 		rows = append(rows, "")
 	}
-	statuses := []string{countLabel(m.state.KeyCount, "key") + " saved", countLabel(max(len(m.state.Progress.Agents), m.state.Progress.Agent), "note") + " added", "optional", "", "", "", ""}
+	statuses := []string{countLabel(m.state.KeyCount, "key") + " saved", countLabel(len(m.state.Progress.Agents), "agent note"), "optional", "", "", "", ""}
+	if m.state.Progress.ByHand && len(m.state.Progress.Agents) == 0 {
+		statuses[1] = "marked by hand"
+	}
+	if n := len(m.state.Progress.Fields); n > 0 {
+		statuses[2] = countLabel(n, "field") + " saved"
+	}
 	if m.state.StoreError != "" {
 		statuses[0] = "needs attention"
 	}
@@ -146,11 +180,8 @@ func (m model) homeView() []string {
 	choices := []string{}
 	for i, name := range homeNames {
 		if w < 45 {
-			if i == 0 {
+			if i == 0 && m.state.StoreError == "" {
 				statuses[i] = fmt.Sprintf("%d saved", m.state.KeyCount)
-			}
-			if i == 1 {
-				statuses[i] = fmt.Sprintf("%d added", max(len(m.state.Progress.Agents), m.state.Progress.Agent))
 			}
 		}
 		if w < 34 {
@@ -165,9 +196,6 @@ func (m model) homeView() []string {
 	if m.height >= 20 {
 		help := m.styledWrap(m.homeDescription(), p.muted)
 		foot = append(foot, help...)
-		for len(foot) < 2 {
-			foot = append(foot, "")
-		}
 	}
 	foot = append(foot, m.statusLines()...)
 	hint := "↑↓ move · Enter open · / find · s switch · ? keys · Esc quit"
@@ -177,7 +205,7 @@ func (m model) homeView() []string {
 	if w < 38 {
 		hint = "↑↓ Enter · / find\nEsc quit · ? keys"
 	}
-	foot = append(foot, m.styledWrap(hint, p.muted)...)
+	foot = append(foot, m.keyHints(hint)...)
 	leading := 0
 	if m.height > 12 {
 		leading = 1
@@ -185,14 +213,13 @@ func (m model) homeView() []string {
 	room := max(1, m.height-leading-len(rows)-len(foot))
 	start := m.listScroll(choices, room)
 	rows = append(rows, choices[start:min(len(choices), start+room)]...)
-	for len(rows)+len(foot) < m.height-leading {
+	if len(rows)+len(foot) < m.height-leading {
 		rows = append(rows, "")
 	}
 	return append(rows, foot...)
 }
 
-// Reserve feedback space before a write starts so copy/save/loading never move
-// the controls or silently change how much of an append preview was reviewed.
+// One line of feedback keeps a short receipt from moving the controls.
 func (m model) statusLines() []string {
 	p := m.palette()
 	text, style := "", p.good
@@ -205,37 +232,27 @@ func (m model) statusLines() []string {
 	} else {
 		text = m.notice
 	}
-	rows := m.styledWrap(text, style)
-	reserve := 2
-	if m.height < 22 {
-		reserve = 1
-	}
-	for len(rows) < reserve {
-		rows = append(rows, "")
-	}
-	return rows
+	return m.styledWrap(text, style)
 }
 
 func pad(s string, n int) string { return s + strings.Repeat(" ", max(0, n-ansi.StringWidth(s))) }
 func (m model) choice(name, status string, selected bool, width int) string {
-	p := m.palette()
-	pointer := "  "
 	name = clean(name)
-	if selected {
-		pointer = p.cyan.Render("❯ ")
-		name = p.title.Render(name)
-	}
 	var row string
 	if status != "" {
 		status = ansi.Truncate(status, max(4, width/2-2), "…")
 		room := max(4, min(28, width-ansi.StringWidth(status)-3))
 		name = ansi.Truncate(name, room, "…")
-		row = pointer + pad(name, room+1) + status
+		row = pad(name, room+1) + status
 	} else {
-		row = pointer + ansi.Truncate(name, max(1, width-2), "…")
+		row = ansi.Truncate(name, max(1, width-2), "…")
 	}
+	return m.menuLine(row, selected, width)
+}
+
+func (m model) menuLine(row string, selected bool, width int) string {
 	if selected {
-		style := p.selected
+		style := m.palette().selected
 		if m.colors {
 			if m.dark {
 				style = style.Foreground(lipgloss.Color("#EAE5FF"))
@@ -252,9 +269,9 @@ func (m model) choice(name, status string, selected bool, width int) string {
 		}
 		// Nested ANSI resets from the pointer/status would clear the row's
 		// background. One style owns the complete selected row.
-		return style.Render(pad(ansi.Strip(row), width))
+		return style.Render(pad("❯ "+ansi.Strip(row), width))
 	}
-	return row
+	return "  " + row
 }
 func (m model) header() []string {
 	rows := m.scopeLines()
@@ -275,24 +292,24 @@ func (m model) pageHeader() []string {
 	case "actions":
 		return append(m.title("Find an action", ""), p.cyan.Render("/ "+clean(m.query)+"▏"), "")
 	case "recent_setups":
-		return m.title("Recent setups", "keys / business")
+		return m.title("Recent loadouts", "keys / profile")
 	case "recent_details":
-		return m.title("Use this setup", "")
+		return m.title("Use this loadout", "")
 	case "active":
-		rows := m.title("Switch setup", "")
+		rows := m.title("Switch loadout", "")
 		if m.height >= 18 {
-			rows = append(rows, m.wrap("Choose both before switching.")...)
+			rows = append(rows, m.wrap("Pair a key environment with a profile for new commands.")...)
 			rows = append(rows, "")
 		}
 		return rows
 	case "business":
-		rows := m.title("Business details", "")
+		rows := m.title("Profile", "")
 		if m.state.Context == "" && m.height >= 20 {
-			rows = append(rows, m.wrap("Automatic uses the business details saved with this key environment.")...)
+			rows = append(rows, m.wrap("Automatic uses the profile saved with this key environment.")...)
 		}
 		return rows
 	case "contexts":
-		return m.title("Switch business", "")
+		return m.title("Switch profile", "")
 	case "environments":
 		return m.title("Key environments", "")
 	case "environment_new":
@@ -301,20 +318,20 @@ func (m model) pageHeader() []string {
 		if m.scopeKind == "environment" {
 			return m.title("New environment", "")
 		}
-		return m.title("New business", "")
+		return m.title("New profile", "")
 	case "scope_details":
 		if m.scopeReturn == "contexts" {
-			return m.title("Business details", "")
+			return m.title("Profile", "")
 		}
 		return m.title("Environment details", "")
 	case "doctor":
-		return m.title("Check setup", "local files only")
+		return m.title("Check local files", "local files only")
 	case "profile":
-		title := "Business details"
+		title := "Profile"
 		rows := m.title(title, fmt.Sprintf("%d/%d optional fields", len(m.state.Progress.Fields), len(m.state.Fields)))
 		blurb := m.state.ProfileBlurb
 		if blurb == "" {
-			blurb = "Full sites that take payments usually require a business profile, terms of service and a privacy policy. Agents use these details to fill them in."
+			blurb = "Give your agent the names and contact details to use on your site, receipts and policies."
 		}
 		if m.height >= 22 {
 			rows = append(rows, m.wrap(blurb)...)
@@ -323,21 +340,21 @@ func (m model) pageHeader() []string {
 		return rows
 	case "providers":
 		rows := m.title("Provider keys", countLabel(m.state.KeyCount, "key")+" saved")
-		if m.height >= 22 {
-			rows = append(rows, m.wrap("Save only the keys your task needs. / searches providers.")...)
-			rows = append(rows, "")
-		}
 		if m.filtering || m.query != "" {
 			rows = append(rows, p.cyan.Render("/ "+clean(m.query)), "")
 		}
 		return rows
 	case "provider_keys":
 		if m.selectedProvider != nil {
-			return m.title(m.selectedProvider.Name, fmt.Sprintf("%d/%d keys saved", m.providerCount(*m.selectedProvider), len(m.selectedProvider.Key)))
+			return m.title(m.selectedProvider.Name, countLabel(m.providerCount(*m.selectedProvider), "field")+" saved")
 		}
 	case "profile_field":
 		f := m.state.Fields[m.fieldAt]
-		rows := m.title(f.Label, "")
+		name := m.state.Context
+		if name == "" {
+			name = scopeName(m.state.Environment)
+		}
+		rows := m.title(f.Label, "Profile · "+clean(name))
 		return append(rows, m.styledWrap(f.Description, p.muted)...)
 	case "key":
 		return m.title(m.key.Title, "")
@@ -404,12 +421,12 @@ func (m model) body() []string {
 			rows = append(rows, m.choice(name, status, i == m.selected, w))
 		}
 		rows = append(rows, "")
-		descriptions := []string{"Animate the intro and selection highlights.", "Check installation and local files. Provider access is not tested.", "Download the latest release. Saved keys and business details stay in place.", "Replay the GODMODE intro.", "Return to the previous screen."}
+		descriptions := []string{"Animate the intro and selection highlights.", "Check installation and local files. Provider access is not tested.", "Download the latest release. Saved keys and profile stay in place.", "Replay the GODMODE intro.", "Return to the previous screen."}
 		rows = append(rows, m.styledWrap(descriptions[min(max(0, m.selected), len(descriptions)-1)], p.muted)...)
 	case "update":
 		rows = append(rows, m.wrap("Download and install the latest Godmode release.")...)
 		rows = append(rows, "")
-		rows = append(rows, m.wrap("Your saved keys and business details stay in place. The updater keeps the previous executable.")...)
+		rows = append(rows, m.wrap("Your saved keys and profile stay in place. The updater keeps the previous executable.")...)
 		rows = append(rows, "", m.choice("Update Godmode", "", m.selected == 0, w), m.choice("Back", "", m.selected == 1, w))
 	case "shortcuts":
 		for _, line := range m.shortcuts() {
@@ -433,13 +450,19 @@ func (m model) body() []string {
 			return m.styledWrap(m.state.ProfileError, p.warn)
 		}
 		for i, f := range m.state.Fields {
+			if f.Group != "" && (i == 0 || f.Group != m.state.Fields[i-1].Group) {
+				rows = append(rows, p.brand.Render(clean(f.Group)))
+			}
 			value := clean(strings.ReplaceAll(m.state.Profile[f.Name], "\n", " ↵ "))
 			if value == "" {
 				value = p.muted.Render("—")
 			}
-			rows = append(rows, m.choice(f.Label, ansi.Truncate(value, max(8, w/2), "…"), i == m.selected, w))
-			if m.height >= 26 {
-				rows = append(rows, "")
+			labelWidth := max(1, min(28, w/2-1))
+			row := pad(ansi.Truncate(clean(f.Label), labelWidth-1, "…"), labelWidth)
+			row += ansi.Truncate(value, max(1, w-labelWidth-2), "…")
+			rows = append(rows, m.menuLine(row, i == m.selected, w))
+			if i == m.selected && m.height >= 20 {
+				rows = append(rows, m.styledWrap("  "+f.Name, p.muted)...)
 			}
 		}
 		rows = append(rows, "", m.choice("Back", "", m.selected == len(m.state.Fields), w))
@@ -458,9 +481,19 @@ func (m model) body() []string {
 					status = p.good.Render("saved")
 				}
 			}
-			rows = append(rows, m.choice(pr.Name, status, j == m.selected, w))
-			if j == m.selected && m.height >= 20 {
-				rows = append(rows, "  "+p.muted.Render(ansi.Truncate(clean(pr.About), max(1, w-2), "…")))
+			if w >= 60 {
+				name := pad(clean(pr.Name), 14)
+				desc := ansi.Truncate(clean(pr.About), w-19-ansi.StringWidth(status), "…")
+				line := name + p.muted.Render(desc)
+				if status != "" {
+					line = pad(line, w-3-ansi.StringWidth(status)) + status
+				}
+				rows = append(rows, m.menuLine(line, j == m.selected, w))
+			} else {
+				rows = append(rows, m.choice(pr.Name, status, j == m.selected, w))
+				if j == m.selected && m.height >= 16 {
+					rows = append(rows, m.styledWrap(pr.About, p.muted)...)
+				}
 			}
 		}
 		matches := len(m.providerMatches())
@@ -472,6 +505,15 @@ func (m model) body() []string {
 		rows = append(rows, m.choice("Custom key", "", m.selected == matches, w), m.choice("Open a GitHub issue", "", m.selected == matches+1, w), m.choice("Back", "", m.selected == matches+2, w))
 	case "provider_keys":
 		if m.selectedProvider != nil {
+			if m.selectedProvider.Benefit != "" {
+				rows = append(rows, m.wrap(m.selectedProvider.Benefit)...)
+				rows = append(rows, "")
+			}
+			guide := "Choose the credential your task needs."
+			if len(m.selectedProvider.Ready) == 0 {
+				guide = "Save each field to use this provider."
+			}
+			rows = append(rows, m.styledWrap(guide, p.muted)...)
 			for i, k := range m.selectedProvider.Key {
 				label := k.Label
 				if label == "" {
@@ -480,57 +522,82 @@ func (m model) body() []string {
 				status := ""
 				if m.state.States[k.Name] == "set" {
 					status = p.good.Render("saved")
+				} else if len(m.selectedProvider.Ready) > 0 {
+					used := slices.ContainsFunc(m.selectedProvider.Ready, func(group []string) bool {
+						return slices.Contains(group, k.Name)
+					})
+					if !used {
+						status = "optional"
+					}
 				}
-				rows = append(rows, m.choice(label, status, i == m.selected, w))
-				if i == m.selected {
-					rows = append(rows, "  "+p.muted.Render(k.Name))
+				const labelWidth = 23
+				if labelWidth+ansi.StringWidth(k.Name)+12 <= w {
+					line := pad(ansi.Truncate(clean(label), labelWidth-1, "…"), labelWidth) + p.muted.Render(clean(k.Name))
+					if status != "" {
+						line = pad(line, w-3-ansi.StringWidth(status)) + status
+					}
+					rows = append(rows, m.menuLine(line, i == m.selected, w))
+				} else {
+					rows = append(rows, m.choice(label, status, i == m.selected, w))
+					if i == m.selected {
+						rows = append(rows, m.styledWrap("  "+k.Name, p.muted)...)
+					}
 				}
 			}
 			rows = append(rows, "", m.choice("Back", "", m.selected == len(m.selectedProvider.Key), w))
 		}
 	case "profile_field":
-		current := m.state.Profile[m.state.Fields[m.fieldAt].Name]
-		if current != "" {
-			rows = append(rows, p.muted.Render("Saved"))
-			rows = append(rows, m.wrap(current)...)
-			rows = append(rows, "")
-		}
 		rows = append(rows, strings.Split(p.cyan.Render("› ")+m.profileInput(), "\n")...)
 	case "key":
 		if m.details {
+			if m.key.Page != "" {
+				rows = append(rows, m.styledWrap(m.key.Page, p.cyan)...)
+				rows = append(rows, "")
+			}
 			if len(m.check.Command) > 0 {
 				rows = append(rows, m.wrap("$ "+strings.Join(m.check.Command, " "))...)
-			}
-			if len(rows) == 0 {
-				if m.key.Page != "" {
-					rows = append(rows, m.styledWrap(m.key.Page, p.cyan)...)
-					rows = append(rows, "")
-				}
+			} else {
 				rows = append(rows, m.wrap("Save destination: "+m.path(m.key.Path))...)
-				rows = append(rows, "", p.muted.Render("Paste a key to review its exact edit."))
+			}
+			if m.key.Guide != "" {
+				rows = append(rows, "")
+				rows = append(rows, m.styledWrap("$ "+m.key.Guide, p.cyan)...)
+			}
+			if m.key.Access != "" {
+				rows = append(rows, "", p.title.Render("Access"))
+				rows = append(rows, m.wrap(m.key.Access)...)
 			}
 		} else {
-			if m.check.Valid {
-				return nil
+			compact := m.height < 22
+			if m.key.Benefit != "" && !compact {
+				rows = append(rows, m.wrap(m.key.Benefit)...)
+				rows = append(rows, "")
 			}
-			if m.key.Visit != "" {
+			if m.key.Visit != "" && m.key.Visit != m.key.Title && (!compact || m.key.Page == "") {
 				rows = append(rows, m.styledWrap(m.key.Visit, p.title)...)
 			}
 			if m.key.Page != "" {
-				rows = append(rows, p.cyan.Render(ansi.Truncate(clean(m.key.Page), w, "…")))
+				link := m.key.Page
+				if ansi.StringWidth(link) > w {
+					if parsed, err := url.Parse(link); err == nil && parsed.Host != "" {
+						link = parsed.Host
+					}
+				}
+				rows = append(rows, p.cyan.Render(ansi.Truncate(clean(link), w, "…")))
 			}
-			if len(m.key.Steps) > 0 {
+			if !compact && len(m.key.Steps) > 0 && len(rows) > 0 {
 				rows = append(rows, "")
 			}
 			for i, step := range m.key.Steps {
-				if i > 0 {
-					rows = append(rows, "")
-				}
-				rows = append(rows, m.markdownBullet(step)...)
+				rows = append(rows, m.numberedStep(i+1, step)...)
 			}
 			if m.key.Note != "" {
 				rows = append(rows, "")
 				rows = append(rows, m.styledWrap(m.key.Note, p.muted)...)
+			}
+			if m.key.Benefit != "" && compact {
+				rows = append(rows, "")
+				rows = append(rows, m.wrap(m.key.Benefit)...)
 			}
 		}
 	case "name":
@@ -557,7 +624,7 @@ func (m model) body() []string {
 		}
 		rows = append(rows, "", m.choice("All detected agents", "", m.selected == len(m.agents.Targets), w), m.choice("Back", "", m.selected == len(m.agents.Targets)+1, w))
 	case "agent_home":
-		rows = append(rows, m.wrap("Your agent uses these instructions to find keys and business details.")...)
+		rows = append(rows, m.wrap("Give your agent instructions to use your keys and profile.")...)
 		rows = append(rows, "", m.choice("Copy for this task", "", m.selected == 0, w))
 		rows = append(rows, m.choice("Add to agent files", countLabel(len(m.agents.Targets), "agent")+" found", m.selected == 1, w))
 		rows = append(rows, m.choice("Back", "", m.selected == 2, w), "")
@@ -583,9 +650,6 @@ func (m model) body() []string {
 	case "faq":
 		for i, e := range m.faq {
 			rows = append(rows, m.choice(e.Title, "", i == m.selected, w))
-			if m.height >= 27 {
-				rows = append(rows, "")
-			}
 		}
 		rows = append(rows, "", m.choice("Back", "", m.selected == len(m.faq), w))
 	case "faq_text":
@@ -604,7 +668,7 @@ func (m model) body() []string {
 	}
 	return rows
 }
-func (m model) markdownBullet(s string) []string {
+func (m model) numberedStep(number int, s string) []string {
 	// Catalog emphasis is static reviewed copy, never user input or executable code.
 	p := m.palette()
 	parts := strings.Split(clean(s), "**")
@@ -613,7 +677,15 @@ func (m model) markdownBullet(s string) []string {
 			parts[i] = p.title.Render(parts[i])
 		}
 	}
-	return strings.Split(ansi.Wrap("• "+strings.Join(parts, ""), m.innerWidth(), ""), "\n")
+	rows := strings.Split(ansi.Wrap(strings.Join(parts, ""), max(1, m.innerWidth()-3), ""), "\n")
+	for i := range rows {
+		if i == 0 {
+			rows[i] = p.cyan.Render(fmt.Sprintf("%d. ", number)) + rows[i]
+		} else {
+			rows[i] = "   " + rows[i]
+		}
+	}
+	return rows
 }
 func (m model) profileInput() string {
 	runes := []rune(m.text)
@@ -628,11 +700,13 @@ func (m model) keyFooter() []string {
 	if m.check.Path != "" {
 		path = m.check.Path
 	}
-	rows = append(rows, m.styledWrap(m.path(path), p.muted)...)
+	if m.text != "" {
+		rows = append(rows, m.styledWrap(m.path(path), p.muted)...)
+	}
 	assignment := m.check.Assignment
 	operation := m.check.Operation
 	if assignment == "" {
-		assignment = m.key.Name + "=sealed(…)"
+		assignment = m.key.Name
 		operation = "Add"
 		if m.key.Saved {
 			operation = "Replace"
@@ -646,7 +720,9 @@ func (m model) keyFooter() []string {
 	for _, note := range m.check.Notes {
 		rows = append(rows, m.styledWrap(note, p.warn)...)
 	}
-	rows = append(rows, "")
+	if m.text != "" || m.height >= 22 {
+		rows = append(rows, "")
+	}
 	masked := m.check.Masked
 	if m.text != "" && masked == "" {
 		masked = strings.Repeat("•", min(24, utf8.RuneCountInString(m.text)))
@@ -666,7 +742,7 @@ func (m model) footer() []string {
 	}
 	rows = append(rows, m.statusLines()...)
 
-	hint := "↑↓ move · Enter open · Esc back · ? keys"
+	hint := "↑↓ move · Enter choose · Esc back · ? keys"
 	switch m.page {
 	case "providers":
 		hint = "↑↓ move · / search · Enter open · Esc back · ? keys"
@@ -679,19 +755,22 @@ func (m model) footer() []string {
 	case "scope_name":
 		hint = "Enter create  ·  Esc back"
 	case "contexts", "environments":
-		hint = "↑↓ move  ·  Enter select  ·  Tab details  ·  Esc back"
+		hint = "↑↓ move · Enter choose · Esc back"
+		if (m.page == "contexts" && m.selected < len(m.contexts)) ||
+			(m.page == "environments" && m.selected < len(m.environments)) {
+			hint = "↑↓ move · Enter select · Tab details · Esc back"
+		}
 	case "scope_details":
 		hint = "↑↓ scroll  ·  Enter select  ·  Esc back"
 	case "profile_field":
-		hint = "Enter save  ·  Ctrl-U clear  ·  /clear remove  ·  Esc back"
+		hint = "Enter save · Ctrl-U erase input · /clear remove saved value · Esc back"
 	case "key":
-		if m.text == "" {
-			hint = "Tab details  ·  Esc back"
-			if m.key.Page != "" {
-				hint = "Enter open link  ·  " + hint
-			}
-		} else {
-			hint = "Enter save  ·  Tab details  ·  Ctrl-U clear  ·  Esc back"
+		hint = "Enter save · Tab details · Ctrl-U clear · Esc back"
+		if m.details {
+			hint = "Enter save · Tab guide · Ctrl-U clear · Esc back"
+		}
+		if m.key.Page != "" {
+			hint = "Ctrl-O open link · " + hint
 		}
 	case "name":
 		hint = "Enter continue  ·  Esc back"
@@ -723,13 +802,6 @@ func (m model) footer() []string {
 			hint = "↑↓ Enter · / search · Esc back"
 		case "profile", "business", "active", "agent_targets", "agent_home", "settings", "update", "faq":
 			hint = "↑↓ Enter · Esc back · ? keys"
-		case "key":
-			hint = "Tab details · Esc back"
-			if m.text != "" {
-				hint = "Enter save · Ctrl-U clear\nTab details · Esc back"
-			} else if m.key.Page != "" {
-				hint = "Enter open link · Tab details\nEsc back"
-			}
 		case "actions":
 			hint = "Type to find · ↑↓ Enter · Esc back"
 		case "agent_copy":
@@ -737,24 +809,8 @@ func (m model) footer() []string {
 		}
 	}
 
-	if m.innerWidth() < 48 {
-		switch m.page {
-		case "contexts", "environments":
-			hint = "↑↓ Enter · Tab details · Esc back"
-		case "scope_details":
-			hint = "↑↓ scroll · Enter select · Esc back"
-		}
-	}
-	if m.innerWidth() < 36 {
-		switch m.page {
-		case "contexts", "environments":
-			hint = "↑↓ Enter · Tab details\nEsc back"
-		case "scope_details":
-			hint = "↑↓ · Enter select\nEsc back"
-		}
-	}
 	if m.page == "providers" && m.query != "" {
-		hint = "↑↓ Enter · / search · Esc clear search"
+		hint = "↑↓ move · Enter open · Esc clear search"
 	}
 
 	if m.page == "active" && len(m.state.RecentSetups) > 0 {
@@ -766,16 +822,23 @@ func (m model) footer() []string {
 	if m.page == "recent_details" {
 		hint = "Enter use · ↑↓ scroll · Esc back"
 	}
+	if len(m.trail) == 0 && m.initialRoute != "home" && m.query == "" && !m.filtering && !m.details {
+		switch m.page {
+		case "providers", "agent_home", "profile", "settings", "faq":
+			hint = strings.Replace(hint, "Esc back", "Esc quit", 1)
+		case "key":
+			if m.keyReturn == "exit" {
+				hint = strings.Replace(hint, "Esc back", "Esc cancel", 1)
+			}
+		}
+	}
 
 	if m.busyValidation {
 		hint = "Checking · edits retained · Esc back"
 	} else if m.busyVisible {
 		hint = "Ctrl-C exit"
 	}
-	if m.height >= 22 {
-		rows = append(rows, "")
-	}
-	rows = append(rows, m.styledWrap(hint, p.muted)...)
+	rows = append(rows, m.keyHints(hint)...)
 	if m.page != "profile_field" && m.page != "scope_name" && m.page != "name" {
 		total := len(m.body())
 		available := max(1, m.height-len(m.header())-len(rows)-2)
@@ -783,7 +846,7 @@ func (m model) footer() []string {
 			room := max(1, available-1)
 			start := m.listScroll(m.body(), room)
 			end := min(total, start+room)
-			position := fmt.Sprintf("%d–%d of %d", start+1, end, total)
+			position := fmt.Sprintf("Lines %d–%d of %d", start+1, end, total)
 			if end < total {
 				position += "  ·  ↓ more"
 			}
@@ -910,7 +973,7 @@ func (m model) screenLines() []string {
 
 	lines := append([]string{}, head...)
 	lines = append(lines, shown...)
-	for len(lines)+len(foot) < m.height-2 {
+	if len(body) > 0 && (m.page == "key" || strings.TrimSpace(ansi.Strip(foot[0])) != "") {
 		lines = append(lines, "")
 	}
 	return append(lines, foot...)

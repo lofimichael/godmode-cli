@@ -4,8 +4,8 @@ Use a named Godmode environment for each Stripe account and sandbox you work on.
 
 | Detail | Where to keep it |
 | --- | --- |
-| Legal name, address, public contact | [Business profile](PROFILE.md) |
-| API keys for the selected setup | [Godmode key environment](CONTEXTS.md) |
+| Legal name, address, public contact | [Profile](PROFILE.md) |
+| API keys for the selected loadout | [Godmode key environment](CONTEXTS.md) |
 | Expected `acct_…`, test or live mode, resource IDs | Project deployment configuration |
 | Webhook signing secret | The endpoint's runtime secret store |
 
@@ -16,7 +16,7 @@ Use a named Godmode environment for each Stripe account and sandbox you work on.
 
    ```sh
    godmode env create acme-test
-   godmode --env acme-test --context - setup stripe
+   godmode --env acme-test --context - loadout stripe
    ```
 
 3. Save the test key you need. For a restricted key, give it the permissions needed for the task. [Stripe API keys](https://docs.stripe.com/keys).

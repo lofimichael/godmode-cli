@@ -114,6 +114,6 @@ def environment_command(home, args):
         details = environment_create(home, args[1], args[3] if len(args) == 4 else None)
         print("Environment " + details["name"] + " created at " + details["path"] + "."
               + (" Its keys are an independent snapshot; later changes do not carry over." if len(args) == 4 else " Its key file is empty.")
-              + " Business profile: " + details["profile_path"] + ".")
+              + " Profile: " + details["profile_path"] + ".")
         return 0
     raise ValueError("Use: godmode env [list [--json] | create NAME [--copy SOURCE] | show NAME].")

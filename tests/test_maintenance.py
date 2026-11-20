@@ -106,7 +106,7 @@ class MaintenanceTests(unittest.TestCase):
         report = doctor_report(Store(self.root / 'missing', environment='acme'), profile,
                                dict(self.api, ACTIVE_ENVIRONMENT='acme'))
         self.assertFalse(report['ok'])
-        self.assertEqual({item['name'] for item in report['checks'] if item['status'] == 'error'}, {'Keys', 'Business'})
+        self.assertEqual({item['name'] for item in report['checks'] if item['status'] == 'error'}, {'Keys', 'Profile'})
 
     def test_doctor_actions_preserve_custom_home_and_shell_literals(self):
         home = self.root / "Client's $(never-execute) home"
@@ -141,7 +141,7 @@ class MaintenanceTests(unittest.TestCase):
         profile.path.chmod(0o644)
         report = doctor_report(store, profile, self.api)
         self.assertFalse(report['ok'])
-        self.assertEqual({item['name'] for item in report['checks'] if item['status'] == 'error'}, {'Keys', 'Business'})
+        self.assertEqual({item['name'] for item in report['checks'] if item['status'] == 'error'}, {'Keys', 'Profile'})
         self.assertNotIn('synthetic-duplicate', json.dumps(report))
 
     def test_doctor_authenticates_shadowed_raw_keys_and_counts_file_not_aliases(self):
@@ -153,7 +153,7 @@ class MaintenanceTests(unittest.TestCase):
         mapped = ContextStore(store, context)
         report = doctor_report(mapped, context.profile(), api)
         self.assertTrue(report['ok'])
-        self.assertTrue(next(c for c in report['checks'] if c['name'] == 'Keys')['detail'].startswith('1 stored;'))
+        self.assertTrue(next(c for c in report['checks'] if c['name'] == 'Keys')['detail'].startswith('1 stored locally.'))
         store.set('LOGICAL', 'synthetic-shadowed')
         raw = store.env_path.read_text()
         rows = raw.splitlines()

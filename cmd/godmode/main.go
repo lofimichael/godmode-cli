@@ -115,7 +115,8 @@ func selectRoute(args []string) route {
 		r.command, r.interactive = "home", len(words) == 1
 	case "intro", "profile", "agents", "faq", "settings":
 		r.interactive = len(words) == 1
-	case "setup":
+	case "loadout", "setup":
+		r.command = "loadout"
 		r.interactive = len(words) <= 2 && !strings.HasPrefix(r.arg, "-")
 	case "set":
 		r.interactive = len(words) == 2 && !strings.HasPrefix(r.arg, "-")

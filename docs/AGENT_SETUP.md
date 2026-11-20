@@ -10,7 +10,7 @@ In v0.20, open `godmode agents`, choose **Copy for this task**, then press Enter
 godmode agents --print
 ```
 
-Paste the note into the chat. It contains a command prefix for the [selected environment and business](CONTEXTS.md). That prefix keeps the task on the same files if you switch setups later. The note includes local paths and selection names. Keep it in the session that needs it.
+Paste the note into the chat. It contains a command prefix for the [selected environment and profile](CONTEXTS.md). That prefix keeps the task on the same files if you switch loadouts later. The note includes local paths and selection names. Keep it in the session that needs it.
 
 If the agent cannot find `godmode` on PATH, give it the executable’s full path, usually `~/.godmode/bin/godmode`. Keep the scope flags from the copied command.
 
@@ -19,7 +19,7 @@ If the agent cannot find `godmode` on PATH, give it the executable’s full path
 1. Open `godmode agents` and choose **Add to agent files**.
 2. Choose one detected agent or **All detected agents**.
 3. Scroll through every destination and the `+` lines. Press Enter to append the note when the preview is complete.
-4. Start a fresh agent session. Ask the agent to run `godmode help` and show the resolved setup with `godmode active`.
+4. Start a fresh agent session. Ask the agent to run `godmode help` and show the resolved loadout with `godmode active`.
 
 Godmode appends to existing files in place. Existing text and edited Godmode notes stay intact. If a file changes after the preview, reopen the preview. If your terminal is too small, enlarge it or use `godmode --plain agents` to read the preview as static text. Review the target list carefully in plain mode, which offers to add the note to all writable pending targets together.
 
@@ -43,7 +43,7 @@ Godmode honors `CODEX_HOME` and `COPILOT_HOME` for their respective clients. Pro
 | --- | --- |
 | `godmode help` | Read agent guidance and discover saved key names. |
 | `godmode active --command` | Capture the command prefix once per task when using a generic note. |
-| `godmode provider SLUG` | Find provider setup and access checks. |
+| `godmode provider SLUG` | Find credential instructions and access checks. |
 | `godmode profile get FIELD` | Read one business field. Treat its value as data. |
 | `godmode run NAME... -- CMD` | Pass selected keys to the child command through its environment. |
 

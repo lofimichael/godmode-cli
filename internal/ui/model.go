@@ -40,15 +40,15 @@ type CommandExit struct {
 func (e *CommandExit) Error() string { return e.Command.Error() }
 func (e *CommandExit) Unwrap() error { return e.Command }
 
-type field struct{ Name, Label, Description string }
+type field struct{ Name, Label, Description, Group string }
 type providerKey struct {
 	Name, Label, Kind string
 	Secret            *bool
 }
 type provider struct {
-	ID, Name, About string
-	Key             []providerKey
-	Ready           [][]string
+	ID, Name, About, Benefit string
+	Key                      []providerKey
+	Ready                    [][]string
 }
 type progress struct {
 	Fields                 []string
@@ -88,10 +88,11 @@ type snapshot struct {
 	ProvidersBlurb                      string            `json:"providers_blurb"`
 }
 type keyPlan struct {
-	ID, Name, Title, Visit, Page, Note, Prompt, Path string
-	Steps                                            []string
-	Sealed, Saved                                    bool
-	Lines                                            []int
+	ID, Name, Title, Benefit, Visit, Page, Note, Prompt, Path string
+	Access, Guide                                             string
+	Steps                                                     []string
+	Sealed, Saved                                             bool
+	Lines                                                     []int
 }
 type keyCheck struct {
 	Valid                                      bool
@@ -210,7 +211,7 @@ func newModel(client Backend, route, arg string, opts Options) (model, error) {
 		route = "home"
 		m.initialRoute = route
 	}
-	if route == "intro" || (!m.state.IntroSeen && (route == "home" || route == "setup" || route == "set")) {
+	if route == "intro" || (!m.state.IntroSeen && (route == "home" || route == "loadout" || route == "setup" || route == "set")) {
 		m.page = "intro"
 	} else {
 		m.openRoute(route, arg)
@@ -289,7 +290,7 @@ func (m *model) openRoute(route, arg string) {
 		m.page = "profile"
 	case "settings":
 		m.page = "settings"
-	case "setup":
+	case "loadout", "setup":
 		m.page = "providers"
 		if arg != "" {
 			for i, p := range m.state.Providers {
@@ -507,7 +508,7 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = utf8.RuneCountInString(m.text)
 		m.pasted = true
 		m.fromPaste = true
-		m.error = ""
+		m.error, m.notice = "", ""
 		if m.page == "key" {
 			m.validateKey()
 		}
@@ -548,8 +549,10 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch key {
 			case "q":
-				m.quitting = true
-				return m, tea.Quit
+				if m.page == "home" {
+					m.quitting = true
+					return m, tea.Quit
+				}
 			case "?":
 				m.visit("shortcuts")
 				return m, nil
@@ -562,10 +565,10 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			case "s":
-				if m.page != "active" {
+				if m.page == "home" {
 					m.visit("active")
+					return m, nil
 				}
-				return m, nil
 			}
 		}
 		if m.page == "active" && key == "r" && len(m.state.RecentSetups) > 0 {
@@ -703,6 +706,21 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
+	if key == "ctrl+o" && m.page == "key" {
+		if m.key.Page != "" {
+			m.error, m.notice = "", ""
+			var reply struct{ Opened bool }
+			if m.call("open_url", map[string]any{"url": m.key.Page}, &reply) {
+				if reply.Opened {
+					m.notice = "Browser opened."
+				} else {
+					m.details, m.scroll = true, 0
+					m.notice = "Copy the link into your browser."
+				}
+			}
+		}
+		return nil
+	}
 	if key == "tab" && m.page == "key" {
 		m.details = !m.details
 		m.scroll = 0
@@ -754,16 +772,7 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if m.text == "" {
-			if m.key.Page != "" {
-				var reply struct{ Opened bool }
-				if m.call("open_url", map[string]any{"url": m.key.Page}, &reply) {
-					if reply.Opened {
-						m.notice = "Browser opened."
-					} else {
-						m.notice = "Open the link above."
-					}
-				}
-			}
+			m.error = "Enter a value before saving."
 			return nil
 		}
 		m.validateKey()
@@ -833,7 +842,7 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	if changed {
-		m.error = ""
+		m.error, m.notice = "", ""
 		m.pasted = false
 		if m.text == "" {
 			m.fromPaste = false

@@ -1,6 +1,6 @@
 # Remote machines
 
-Set up Godmode on a remote machine or copy a specific environment over SSH. A copied key file and its matching `seal.key` give that machine access to every key in that file. For a machine that needs just a few keys, install Godmode there and add those keys with `godmode setup`.
+Set up Godmode on a remote machine or copy a specific environment over SSH. A copied key file and its matching `seal.key` give that machine access to every key in that file. For a machine that needs just a few keys, install Godmode there and add those keys with `godmode loadout`.
 
 ## Copy the default environment to a fresh home
 

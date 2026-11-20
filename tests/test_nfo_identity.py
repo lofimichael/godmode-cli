@@ -62,7 +62,7 @@ class NfoIdentityTests(unittest.TestCase):
                 screen = '\n'.join(Screen(40).feed(terminal.capture).lines())
                 self.assertIn('Environment default', screen)
                 self.assertNotIn('Setup 0%', screen)
-                labels = ('Active setup', 'Providers', 'Agents', 'Business details', 'Doctor', 'Update', 'Help / FAQ', 'Done')
+                labels = ('Provider keys', 'Connect agent', 'Profile', 'Switch loadout', 'Doctor', 'Update', 'Help / FAQ', 'Done')
                 for index, label in enumerate(labels):
                     if index:
                         terminal.send(b'\x1b[B')
@@ -72,6 +72,27 @@ class NfoIdentityTests(unittest.TestCase):
                 terminal.done()
             finally:
                 terminal.close()
+
+    def test_text_loadout_saves_the_pair_only_after_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / '.godmode'
+            cli.environment_create(home, 'preview')
+            cli.context_create(home, 'studio')
+            original = home / 'active.json'
+            with patch.object(cli, 'ACTIVE_ENVIRONMENT', 'default'), patch.object(cli, 'ACTIVE_CONTEXT', None), \
+                    patch.object(cli, 'ACTIVE_SOURCES', {}), patch.object(cli, 'SELECTION_SOURCE', 'default'):
+                for apply in (False, True):
+                    def choose(items, *args, **kwargs):
+                        self.assertFalse(original.exists(), 'Browsing a loadout saved an intermediate pair')
+                        label = next(selections)
+                        return next(index for index, item in enumerate(items) if item and item[0] == label)
+                    selections = iter(['Key environment', 'preview', 'Profile', 'studio',
+                                       'Use this loadout' if apply else 'Back'])
+                    with patch.object(cli, 'read_menu', side_effect=choose):
+                        cli.active_screen(home)
+                    self.assertEqual(original.exists(), apply)
+                selected = cli.selection_resolve(home, environ={})
+                self.assertEqual((selected['environment'], selected['context']), ('preview', 'studio'))
 
     def test_escaping_each_section_preserves_the_selected_section(self):
         with tempfile.TemporaryDirectory(prefix='godmode-nfo-navigation-') as directory:
@@ -87,31 +108,33 @@ class NfoIdentityTests(unittest.TestCase):
                     terminal.wait(lambda: any(row.startswith('❯ ' + name)
                                              for row in Screen(80).feed(terminal.capture).lines()))
                 terminal.expect('Esc quit')
-                selected('Active setup')
+                selected('Provider keys')
+                terminal.send(b'\x1b[B' * 3)
+                selected('Switch loadout')
                 terminal.send(b'\r')
                 selected('Key environment')
                 terminal.send(b'\x1b')
-                selected('Active setup')
-                terminal.send(b'\x1b[B' * 3)
-                selected('Business details')
+                selected('Switch loadout')
+                terminal.send(b'\x1b[A')
+                selected('Profile')
                 terminal.send(b'\r')
                 terminal.expect('Your name')
                 terminal.send(b'\x1b')
-                selected('Business details')
+                selected('Profile')
                 terminal.send(b'\x1b[A' * 2)
-                selected('Providers')
+                selected('Provider keys')
                 terminal.send(b'\r')
                 terminal.expect('Another key')
                 terminal.send(b'\x1b')
-                selected('Providers')
+                selected('Provider keys')
                 terminal.send(b'\x1b[B')
-                selected('Agents')
+                selected('Connect agent')
                 mark = len(terminal.capture)
                 terminal.send(b'\r')
                 terminal.after(mark, 'No agent folders found.')
                 terminal.send(b'\x1b')
-                selected('Agents')
-                terminal.send(b'\x1b[B' * 4)
+                selected('Connect agent')
+                terminal.send(b'\x1b[B' * 5)
                 selected('Help / FAQ')
                 mark = len(terminal.capture)
                 terminal.send(b'\r')

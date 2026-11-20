@@ -1,10 +1,10 @@
-# Businesses and environments
+# Profiles and environments
 
 A key environment selects one complete key file. A business context selects a named [profile](PROFILE.md) you can reuse across environments.
 
-## Select the active setup
+## Select the active loadout
 
-Open **Switch setup** in `godmode`, choose a **Key environment** and **Business profile**, then select **Use this setup**. From the shell, use `godmode use` once the environment and context exist.
+Open **Switch loadout** in `godmode`, choose a **Key environment** and **Profile**, then select **Use this loadout**. From the shell, use `godmode use` once the environment and context exist.
 
 ```sh
 godmode use --env acme-test --context acme
@@ -19,14 +19,14 @@ For a separate account or client, create an empty environment before adding keys
 
 ```sh
 godmode env create acme-test
-godmode --env acme-test --context - setup stripe
+godmode --env acme-test --context - loadout stripe
 ```
 
 To start with the keys from another file, use `godmode env create acme-test --copy default` in place of the first command. A copy takes a snapshot of every key. Key rotations and profile edits stay with the files you change. Godmode refuses an existing destination and keeps missing keys missing in the selected environment.
 
 ## Reuse one business profile
 
-A named context lets test and live setups share one profile.
+A named context lets test and live loadouts share one profile.
 
 ```sh
 godmode context create acme
@@ -51,7 +51,7 @@ The final command requires the Stripe CLI and a saved test key. `godmode active 
 
 Godmode resolves keys and business facts independently.
 
-| Priority | Keys | Business |
+| Priority | Keys | Profile |
 | --- | --- | --- |
 | 1 | `--env NAME` | `--context NAME` |
 | 2 | `GODMODE_ENV` | `GODMODE_CONTEXT` |
@@ -73,7 +73,7 @@ godmode context show acme
 
 | Path under the Godmode home | Contents |
 | --- | --- |
-| `active.json` | Saved environment and business names |
+| `active.json` | Saved environment and profile names |
 | `.env.godmode` / `.env.godmode.NAME` | Default or independent named key file |
 | `seal.key` | Shared seal key for these files |
 | `profile.json` / `environments/NAME/profile.json` | Default or named environment's Automatic profile |

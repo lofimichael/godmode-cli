@@ -547,7 +547,7 @@ class TerminalTests(unittest.TestCase):
                 entry.seen("Input hidden")
                 before = (home / ".env.godmode").read_bytes()
                 entry.paste("SYNTHETIC_TINY_SECRET_587141")
-                entry.send(b"\r")
+                entry.send(b"\t")
                 entry.seen("Add TINY_TOKEN=sealed(")
                 entry.seen("Enter saves")
                 self.assertEqual((home / ".env.godmode").read_bytes(), before)

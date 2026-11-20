@@ -352,7 +352,7 @@ class Store:
             if name.casefold() in saved:
                 return "Did you mean " + saved[name.casefold()] + "?"
         slug = STORE_KEY_PROVIDERS.get(missing[0]) if missing else None
-        return ("Ask the user to run: godmode setup " + slug) if slug else "See: godmode list"
+        return ("Ask the user to run: godmode loadout " + slug) if slug else "See: godmode list"
 
     def names(self):
         """Names of the keys that have a value, sorted. Never values."""

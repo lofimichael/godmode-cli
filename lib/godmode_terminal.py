@@ -16,7 +16,7 @@ TERM_MAX_INPUT = 1024 * 1024
 TERM_STYLE = re.compile(r"\033\[[0-9;]*m")
 TERM_PASTE = (b"\x1b[200~", b"\x1b[201~")
 TERM_KEYS = {3: "cancel", 4: "cancel", 9: "tab", 10: "enter", 13: "enter", 8: "backspace", 127: "backspace",
-             14: "down", 16: "up", 21: "clear"}
+             14: "down", 15: "open_link", 16: "up", 21: "clear"}
 TERM_ARROWS = {"A": "up", "B": "down", "C": "right", "D": "left", "H": "home", "F": "end",
                "1~": "home", "7~": "home", "4~": "end", "8~": "end", "5~": "pageup", "6~": "pagedown"}
 
@@ -143,6 +143,7 @@ class Prompt:
     """What a text prompt draws. The last rendered row is the input line, where the cursor rests."""
     pastes = True  # False for a field shown as typed, so a secret pasted there by mistake never appears.
     pasted = False  # read_secret sets this while the field holds any pasted text.
+    explicit_review = False
     reviewing = False  # Static mode has displayed the value and awaits confirmation.
 
     def __init__(self, label, hidden=True):
@@ -158,6 +159,10 @@ class Prompt:
     def enter(self, value):
         """What Enter does: True submits, False refuses, a list of rows is printed above the prompt."""
         return True
+
+    def open_link(self):
+        """Credential prompts can open their official web page."""
+        return []
 
     def toggle(self):
         """Tab may disclose detail without changing the field or submitting it."""
@@ -443,6 +448,12 @@ def read_secret(prompt):
                     clear()
                 elif kind == "key" and key == "tab":
                     prompt.toggle()
+                elif kind == "key" and key == "open_link":
+                    rows = prompt.open_link()
+                    if rows:
+                        _draw([], drawn)
+                        sys.stdout.write("".join(row + "\r\n" for row in rows))
+                        drawn = []
                 elif key == "esc":
                     raise Back()
                 elif key == "enter":
@@ -489,7 +500,8 @@ def _plain_secret(prompt):
     with _Keyboard() as keyboard:
         try:
             _plain_rows(prompt.render("", plain_columns(), False))
-            _plain_rows(["  Input hidden. Enter reviews."])
+            _plain_rows(["  Input hidden. Tab reviews. Enter saves." if prompt.explicit_review
+                         else "  Input hidden. Enter reviews."])
             while True:
                 kind, key = keyboard.read()
                 if kind == "reject":
@@ -522,7 +534,14 @@ def _plain_secret(prompt):
                     reviewed = False
                 elif kind == "key" and key == "tab":
                     prompt.toggle()
+                    if prompt.explicit_review:
+                        reviewed = bool(value)
                     prompt.reviewing = reviewed
+                    _plain_rows(prompt.render(text(), plain_columns(), False))
+                elif kind == "key" and key == "open_link":
+                    rows = prompt.open_link()
+                    if rows:
+                        _plain_rows(rows)
                     _plain_rows(prompt.render(text(), plain_columns(), False))
                 elif kind == "key" and key == "esc":
                     raise Back()
@@ -532,6 +551,9 @@ def _plain_secret(prompt):
                     except UnicodeDecodeError:
                         raise ValueError("Input is not valid UTF-8; nothing saved.") from None
                     if answer and not reviewed:
+                        if prompt.explicit_review:
+                            _plain_rows(["  Press Tab to review the edit before saving."])
+                            continue
                         prompt.reviewing = True
                         _plain_rows(prompt.render(answer, plain_columns(), False))
                         if not hasattr(prompt, "hint"):

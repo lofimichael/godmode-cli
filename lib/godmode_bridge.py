@@ -41,7 +41,7 @@ def _recent_pair(namespace, pair):
         if pair['context'] and namespace['selection_context'](pair['context']) != pair['context']:
             raise ValueError()
     except (ValueError, TypeError):
-        raise ValueError('ui.json has invalid recent setups. Each setup needs only valid environment '
+        raise ValueError('ui.json has invalid recent loadouts. Each loadout needs only valid environment '
                          'and context names.') from None
     return {'environment': pair['environment'], 'context': pair['context']}
 
@@ -49,10 +49,10 @@ def _recent_pair(namespace, pair):
 def _ui_recent_setups(namespace, data):
     history = data.get('recent_setups', [])
     if not isinstance(history, list) or len(history) > _RECENT_SETUPS_LIMIT:
-        raise ValueError('ui.json recent_setups must be a list of at most five setups.')
+        raise ValueError('ui.json recent_setups must be a list of at most five loadouts.')
     result = [_recent_pair(namespace, pair) for pair in history]
     if len({(pair['environment'], pair['context']) for pair in result}) != len(result):
-        raise ValueError('ui.json recent_setups must not contain duplicate setups.')
+        raise ValueError('ui.json recent_setups must not contain duplicate loadouts.')
     return result
 
 
@@ -133,7 +133,7 @@ class UIBridge:
             record_recent_selection(a, self.home, {'environment': environment, 'context': context}, previous)
         except (ValueError, OSError) as error:
             detail = str(error) if isinstance(error, ValueError) else 'Check access to ui.json.'
-            history_error = 'Active setup saved, but recent setups were not updated. ' + detail
+            history_error = 'Active loadout saved, but recent loadouts were not updated. ' + detail
         state = self._selected_state()
         if history_error:
             state['history_error'] = history_error
@@ -155,7 +155,8 @@ class UIBridge:
             return {'environments': [dict(name=row['name'], path=row['path'], keys=row['key_count']) for row in rows],
                     'selected': a.get('ACTIVE_ENVIRONMENT', 'default')}
         if action == 'context_list':
-            automatic = a['environment_profile'](self.home, a.get('ACTIVE_ENVIRONMENT', 'default'))
+            environment = self._text(request, 'environment') if 'environment' in request else a.get('ACTIVE_ENVIRONMENT', 'default')
+            automatic = a['environment_profile'](self.home, environment)
             selected = a['ACTIVE_CONTEXT'].name if a.get('ACTIVE_CONTEXT') is not None else ''
             return {'contexts': [dict(name='', profile_path=str(automatic.path))]
                                 + a['context_list'](a['profile_home'](self.home), missing_selected=selected),
@@ -212,8 +213,8 @@ class UIBridge:
                       'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
-                      'fields': [dict(name=name, label=label, description=description)
-                                 for name, (label, description) in zip(a['PROFILE_FIELDS'], a['PROFILE_LABELS'])],
+                      'fields': [dict(name=name, label=label, description=description, group=group)
+                                 for name, (label, description, group) in a['PROFILE_FORM'].items()],
                       'intro_seen': a['intro_seen'](self.home), 'store_exists': self.store.exists(),
                       'profile_blurb': a['PROFILE_BLURB'], 'providers_blurb': a['PROVIDERS_BLURB'],
                       'source_url': a['SOURCE_URL'], 'issue_url': a['ISSUE_URL'],
@@ -259,6 +260,7 @@ class UIBridge:
             # One active key field at a time; old candidate snapshots are discarded.
             self.keys = {identifier: {'prompt': prompt, 'digest': self._digest(), 'checked': None}}
             return dict(id=identifier, name=name, title=prompt.title,
+                        benefit=prompt.benefit, access=prompt.access, guide=prompt.guide_command,
                         visit=prompt.key.get('visit', prompt.title), page=prompt.page,
                         steps=prompt.key.get('steps', []), note=prompt.key.get('note', ''),
                         prompt=a['prompt_label'](prompt.key), path=prompt.path,

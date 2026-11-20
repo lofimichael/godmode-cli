@@ -10,7 +10,7 @@ curl -fsSL https://get.godmode.build | bash
 godmode --version
 ```
 
-The public bootstrap installs `godmode` and `godmodeup` under `~/.godmode/bin`, verifies the release against its SHA-256 digest, and adds PATH setup to supported shell startup files. It backs up an existing startup file before adding the source line. Open a new terminal or source the generated `env` file as shown. Then follow the [quickstart](GETTING_STARTED.md).
+The public bootstrap installs `godmode` and `godmodeup` under `~/.godmode/bin`, verifies the release against its SHA-256 digest, and adds PATH configuration to supported shell startup files. It backs up an existing startup file before adding the source line. Open a new terminal or source the generated `env` file as shown. Then follow the [quickstart](GETTING_STARTED.md).
 
 The public bootstrap accepts `--home DIR` and `--version vX.Y.Z` after `bash -s --`. Check the [release manifest](https://godmode.build/releases/latest.json) for the version served to new installations.
 
@@ -27,7 +27,7 @@ sh godmode-install.sh --install-only
 
 | Direct installer option | Effect |
 | --- | --- |
-| `--install-only` | Skip first-run setup. `--no-setup` is an alias. |
+| `--install-only` | Install without opening the terminal menu. |
 | `--path` | Set up PATH in zsh’s `.zshenv`, bash’s `.bashrc` and its login file, or `.profile` for sh, dash, and ksh. |
 | `--home DIR` | Install into `DIR/bin`. Set `GODMODE_HOME` or pass `--home DIR` to select the same data directory for later commands. Source `DIR/env` for PATH. |
 | `--bin-dir DIR` | Choose a directory for the executables only. |
@@ -41,7 +41,7 @@ Run `sh godmode-install.sh --help` for the full syntax.
 godmodeup
 ```
 
-The updater checks its installation receipt and release checksums before replacing the executable. It preserves your keys and profile and keeps the previous executable as `godmode.previous` in the same directory. Use `godmodeup --version vX.Y.Z` for an available specific release or `godmodeup --setup` to open setup afterward.
+The updater checks its installation receipt and release checksums before replacing the executable. It preserves your keys and profile and keeps the previous executable as `godmode.previous` in the same directory. Use `godmodeup --version vX.Y.Z` for an available specific release or `godmodeup --loadout` to open the menu afterward.
 
 In v0.20, you can also choose **Settings → Update Godmode** and review the confirmation, or run `godmode update`. If the updater reports an unrecognized executable, check which copy is on PATH with `command -v godmode`. Use `--force` only to adopt and replace a known unmanaged copy.
 
@@ -60,7 +60,7 @@ Replace `vX.Y.Z` with the release version and use your platform’s suffix.
 | macOS | `aarch64-apple-darwin` | `x86_64-apple-darwin` |
 | Linux | `aarch64-unknown-linux-musl` | `x86_64-unknown-linux-musl` |
 
-Use `--setup` to open setup after a local install.
+Use `--loadout` to open the menu after a local install.
 
 ### Build from source
 
@@ -103,7 +103,7 @@ For a full removal, privately back up any data you want to keep, then delete the
 | Python is missing or too old | Run `python3 --version`. Install Python 3.9 or later and put it first on PATH. |
 | Home is a symlink or isn’t a directory | Use `--home` with the real directory. |
 | Older updater reports a missing archive or checksum | Download the platform archive and checksum from the release files, then run `godmodeup --archive PATH --checksum SHA256SUMS`. |
-| A zsh agent cannot find an older install | Run `godmodeup --path` to enable PATH setup in `.zshenv` for non-interactive shells. |
+| A zsh agent cannot find an older install | Run `godmodeup --path` to enable PATH configuration in `.zshenv` for non-interactive shells. |
 
 For static text and numbered choices use `godmode --plain` or set `GODMODE_PLAIN=1`. Use `--no-motion` or `GODMODE_NO_MOTION=1` to disable animation. Set `NO_COLOR=1` or `CLICOLOR=0` for monochrome output.
 

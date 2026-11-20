@@ -13,7 +13,7 @@ For vulnerability reports, see [SECURITY.md](../SECURITY.md).
 
 ## Entering a key
 
-Interactive setup shows a masked preview of a secret and the destination before a save. Provider-specific rules can normalize a pasted value, such as removing spaces from a Gmail app password. With `godmode set NAME --stdin`, use a pipe or file. The stored format still applies, including JSON validation for names ending in `_JSON`.
+Interactive loadout shows a masked preview of a secret and the destination before a save. Provider-specific rules can normalize a pasted value, such as removing spaces from a Gmail app password. With `godmode set NAME --stdin`, use a pipe or file. The stored format still applies, including JSON validation for names ending in `_JSON`.
 
 The native interface sends new values to the local file engine over a private pipe. The engine returns masks and save status to the UI. Keep secrets out of shell arguments and logs.
 
