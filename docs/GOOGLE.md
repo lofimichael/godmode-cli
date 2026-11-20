@@ -1,6 +1,6 @@
 # Google credentials
 
-Godmode bundles service-account key guides for Google Ads and Search Console. Run `godmode provider google` for setup links and the access each API requires.
+Godmode bundles service-account key guides for Google Ads and Search Console. Run `godmode provider google` for the credential pages and the access each API requires.
 
 ## Save the credential your consumer needs
 
@@ -25,9 +25,9 @@ A consumer must parse the named JSON variable and configure its Google library. 
 
 ## Verify the intended identity and account
 
-- **Ads.** Confirm the project, developer token, and intended manager and client IDs. The accessible-customer list shows directly accessible accounts. Use the manager hierarchy to find its clients. [Google Ads account listing](https://developers.google.com/google-ads/api/docs/account-management/listing-accounts).
-- **Search Console.** List sites and confirm the exact domain or URL-prefix property and your permission level. [Search Console sites listing](https://developers.google.com/webmaster-tools/v1/sites/list).
-- **Gmail.** Run `godmode provider gmail` for app-password setup for mail clients. Use Google's OAuth flow for a Gmail API client. [Google OAuth](https://developers.google.com/identity/protocols/oauth2).
+- **Ads.** Enable the Ads API in the service account’s Cloud project and grant its email access to your Ads customer or manager. Check that project’s production access level. Keyword planning needs Basic access or Standard access that permits planning. List directly accessible customers. For a client reached through a manager, use the manager’s ID without hyphens as the `login-customer-id` header and the client’s ID in the request. [Ads service accounts](https://developers.google.com/google-ads/api/docs/oauth/service-accounts) · [Access levels](https://developers.google.com/google-ads/api/docs/api-policy/access-levels) · [List Ads accounts](https://developers.google.com/google-ads/api/docs/account-management/listing-accounts).
+- **Search Console.** Enable the Search Console API in the project and ask a property owner to add the service-account email under **Settings → Users and permissions**. List sites to confirm the exact domain or URL-prefix property and your permission level. [Search Console sites listing](https://developers.google.com/webmaster-tools/v1/sites/list).
+- **Gmail.** Run `godmode provider gmail` to connect a mail client with an app password. Use Google's OAuth flow for a Gmail API client. [Google OAuth](https://developers.google.com/identity/protocols/oauth2).
 
 ## Refresh
 

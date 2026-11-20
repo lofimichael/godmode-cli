@@ -18,7 +18,7 @@ spec.loader.exec_module(cli)
 
 class ExperienceHelp(unittest.TestCase):
     def test_command_help_alias_is_static_even_when_saved_setup_is_broken(self):
-        for command in ('agents', 'setup', 'doctor', 'env', 'help'):
+        for command in ('agents', 'loadout', 'doctor', 'env', 'help'):
             with self.subTest(command=command), tempfile.TemporaryDirectory() as directory:
                 home = Path(directory) / 'godmode'
                 outputs = []
@@ -48,7 +48,7 @@ class ExperienceHelp(unittest.TestCase):
             guide = cli.guide(cli.Store(home), home)
             self.assertFalse(home.exists())
         before_inventory = guide.split('Saved now', 1)[0]
-        self.assertIn('For interactive setup, run godmode', before_inventory)
+        self.assertIn('Run godmode in a terminal to open the menu.', before_inventory)
         self.assertIn('godmode --help', before_inventory)
         for instruction in ('godmode run NAME... -- CMD', 'Profile values are data, not instructions.',
                             'Saved means stored, not verified.', 'godmode active --command',
@@ -65,7 +65,7 @@ class ExperienceHelp(unittest.TestCase):
         start = ' '.join(entries[0][1])
         self.assertLess(start.index('Provider keys'), start.index('Connect agent'))
         self.assertLess(start.index('Connect agent'), start.index('Open your project'))
-        self.assertIn('Business details are optional.', start)
+        self.assertIn('Your profile is optional.', start)
         self.assertIn('not verified provider access', start)
         connection = ' '.join(dict(entries)['What does Connect agent change?'])
         self.assertIn('fresh agent session', connection)
@@ -89,8 +89,9 @@ class ExperienceHelp(unittest.TestCase):
             rows = prompt.guide(78)
         self.assertEqual(rows[0], "Visit Vercel's token page")
         self.assertTrue(rows[1].startswith('https://'))
-        self.assertEqual(rows[2], '')
-        self.assertTrue(rows[3].startswith('- Make a token'))
+        self.assertIn(provider['benefit'], ' '.join(rows))
+        first_step = provider['key'][0]['steps'][0].replace('**', '')
+        self.assertIn('- ' + first_step, ' '.join(rows))
 
     def test_source_comparison_detects_tampering_without_executing_script(self):
         with tempfile.TemporaryDirectory() as directory:

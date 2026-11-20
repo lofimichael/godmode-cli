@@ -5,7 +5,7 @@
 ╚██████╔╝╚██████╔╝██████╔╝██║ ╚═╝ ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
 
-GODMODE 0.20.0
+GODMODE 0.21.0
 
   GODMODE gives your agents the goddamn keys.
 
@@ -21,7 +21,7 @@ Commands
   godmode               open the terminal interface
   godmode help          read the agent guide and saved key names
   godmode agents        copy or append the agent note
-  godmode active        show the selected business and key environment
+  godmode active        show the selected profile and key environment
   godmode --help        list available commands
   godmodeup             update a managed installation
 

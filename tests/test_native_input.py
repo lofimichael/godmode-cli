@@ -87,7 +87,7 @@ class NativeInput(unittest.TestCase):
 
     def test_menu_paste_is_ignored_and_exit_drops_queued_tail(self):
         terminal = self.tty()
-        terminal.expect('Business: Automatic')
+        terminal.expect('Profile: Automatic')
         terminal.paste('synthetic_PRIVATE_MENU\n\n')
         terminal.settle(.1)
         # End selects Done; Enter exits with the synthetic tail already queued.

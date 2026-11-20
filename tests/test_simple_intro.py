@@ -92,11 +92,11 @@ class ModularIntroTests(unittest.TestCase):
                 home = self.root / (route[0] if route else "default")
                 prefix = ("--home", str(home))
                 session = self.terminal(*prefix, *route)
-                session.expect("Enter accept and set up")
+                session.expect("Enter accept and continue")
                 self.assertFalse(home.exists())
                 session.send(b"\r")
                 session.expect(MENU)
-                self.assertIn('Enter accept and set up', plain(session.capture))
+                self.assertIn('Enter accept and continue', plain(session.capture))
                 self.assert_only_marker(home)
                 self.leave_menu(session)
                 repeated = self.terminal(*prefix, *route)
@@ -133,7 +133,7 @@ class ModularIntroTests(unittest.TestCase):
 
     def test_escape_exits_without_files(self):
         session = self.terminal()
-        session.expect("Enter accept and set up")
+        session.expect("Enter accept and continue")
         mark = len(session.capture)
         session.send(b"\x1b")
         session.done()  # Esc on the first page of setup leaves quietly: exit 0, nothing printed or saved.
@@ -181,7 +181,7 @@ class ModularIntroTests(unittest.TestCase):
                     complete_intro(session)
                 session.expect(MENU)
                 mark = len(session.capture)
-                session.send(b"\x1b[B\r")  # Active setup is first; Providers is the next row.
+                session.send(b"\r")  # Provider keys is the first row.
                 session.after(mark, "GitHub")
                 output = plain(session.capture[mark:])
                 self.assertNotIn("Enter accept", output)
@@ -244,7 +244,7 @@ class ModularIntroTests(unittest.TestCase):
                 session.settle(.1)
                 rows = Screen(80).feed(session.capture).lines()
                 screen = "\n".join(rows)
-                for text in ("Business", "Providers", "Agents", "Done", "Environment default", "~/.godmode", "0 keys saved", "0 notes added"):
+                for text in ("Profile", "Provider keys", "Connect agent", "Done", "Environment default", "~/.godmode", "0 keys saved", "0 notes added"):
                     self.assertIn(text, screen)
                 self.assertTrue(all(len(row.rstrip()) <= 79 for row in rows))
                 self.assertIsNone(re.search(rb"\x1b\[[0-9;]*m", session.capture))
@@ -279,7 +279,7 @@ class ModularIntroTests(unittest.TestCase):
         session = self.terminal(cols=40, rows=12)
         session.expect(MENU)
         screen = "\n".join(Screen(40).feed(session.capture).lines())
-        for text in ("Environment default", "Business", "Providers", "Agents"):
+        for text in ("Environment default", "Profile", "Provider keys", "Connect agent"):
             self.assertIn(text, screen)
         self.assertTrue(all(len(row) <= 39 for row in screen.splitlines()))
         session.send(b"\x1b")

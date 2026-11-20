@@ -73,7 +73,7 @@ printf '  %s\n' "$check Installed ~/.godmode/bin/godmode" \
     "Another godmode is on PATH at $scratch/old-bin/godmode; it was not changed." \
     "Add ~/.godmode/bin to PATH in your shell's startup file." \
     'For this shell, run:  . ~/.godmode/env' \
-    'To set up, run:  ~/.godmode/bin/godmode' | cmp - "$scratch/default-output"
+    'To open your loadout, run:  ~/.godmode/bin/godmode' | cmp - "$scratch/default-output"
 [ -f "$scratch/home/.godmode/env" ]
 [ -x "$scratch/home/.godmode/bin/godmodeup" ]
 
@@ -99,7 +99,7 @@ odd_dir="$scratch/space ' quote "'$(touch SHOULD_NOT_EXIST) `touch ALSO_NOT_EXIS
 HOME="$scratch" sh "$repo/install.sh" --binary "$scratch/artifact/godmode" --sha256 "$digest" \
     --home "$odd_dir" > "$scratch/quoted-output"
 env_line=$(sed -n 's/^  For this shell, run:  //p' "$scratch/quoted-output")
-start_line=$(sed -n 's/^  To set up, run:  //p' "$scratch/quoted-output")
+start_line=$(sed -n 's/^  To open your loadout, run:  //p' "$scratch/quoted-output")
 case "$env_line|$start_line" in
     ". ~/'space "*"|godmode --home ~/'space "*) ;;
     *) echo 'copyable commands are not in the expected ~ form' >&2; exit 1 ;;
@@ -121,7 +121,7 @@ fi
 # PATH notes are omitted when the directory is already a component.
 PATH="$scratch/on-path:$PATH" sh "$repo/install.sh" --binary "$scratch/artifact/godmode" \
     --sha256 "$digest" --bin-dir "$scratch/on-path" > "$scratch/on-path-output"
-printf '  %s\n' "$check Installed $scratch/on-path/godmode" 'To set up, run:  godmode' | cmp - "$scratch/on-path-output"
+printf '  %s\n' "$check Installed $scratch/on-path/godmode" 'To open your loadout, run:  godmode' | cmp - "$scratch/on-path-output"
 
 
 mkdir -p "$scratch/fixtures" "$scratch/mock-bin"

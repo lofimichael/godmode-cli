@@ -22,6 +22,7 @@ type location struct {
 	agentAll                            bool
 	recentPair                          setupPair
 	hasRecentPair                       bool
+	finderScope, finderDraft            *setupPair
 }
 
 func agentPage(page string) bool {
@@ -82,6 +83,30 @@ func (m *model) restore(l location) {
 	m.query, m.filtering = l.query, l.filtering
 	m.providerAt, m.providerKeyAt, m.faqAt = l.providerAt, l.providerKeyAt, l.faqAt
 	m.scopeReturn, m.profileReturn = l.scopeReturn, l.profileReturn
+	if l.finderScope != nil {
+		current := setupPair{scopeName(m.state.Environment), m.state.Context}
+		if l.finderDraft != nil {
+			if current != *l.finderScope {
+				// A loadout applied in the finder supersedes the suspended draft.
+				// Discard its child forms before returning to the pair chooser.
+				for m.page != "active" && len(m.trail) > 0 {
+					m.page = m.trail[len(m.trail)-1].page
+					m.trail = m.trail[:len(m.trail)-1]
+				}
+				m.startActive()
+				return
+			}
+			m.draftOpen = true
+			m.draftEnvironment, m.draftContext = l.finderDraft.Environment, l.finderDraft.Context
+		} else if l.page == "environment_new" && current != *l.finderScope {
+			// A copy must be started against the newly selected environment.
+			if len(m.trail) > 0 && m.trail[len(m.trail)-1].page == "environments" {
+				m.trail = m.trail[:len(m.trail)-1]
+			}
+			m.loadEnvironments()
+			return
+		}
+	}
 	m.selectedProvider = nil
 	for i, p := range m.state.Providers {
 		if p.ID == l.providerID {
@@ -182,7 +207,15 @@ func (m *model) visit(page string) {
 	if m.page == page {
 		return
 	}
-	m.remember(m.location())
+	origin := m.location()
+	if page == "actions" {
+		origin.finderScope = &setupPair{scopeName(m.state.Environment), m.state.Context}
+		if m.draftOpen {
+			origin.finderDraft = &setupPair{m.draftEnvironment, m.draftContext}
+			m.draftOpen = false
+		}
+	}
+	m.remember(origin)
 	m.page, m.selected, m.scroll, m.query, m.filtering = page, 0, 0, "", false
 	m.error, m.notice = "", ""
 	if page == "active" {
@@ -205,18 +238,18 @@ func (m model) actions() []action {
 	items := []action{
 		{"Provider keys", "Add or replace a key", "setup providers accounts credentials tokens", "providers", ""},
 		{"Connect agent", "Copy instructions or add them to an agent", "agents codex claude gemini copilot opencode instructions", "agents", ""},
-		{"Business details", "Name, contact details and address", "business profile terms privacy email address", "profile", ""},
-		{"Switch setup", "Choose a business and key environment", "active context environment profile switch", "active", ""},
+		{"Profile", "Name, contact details and address", "business details profile terms privacy email address", "profile", ""},
+		{"Switch loadout", "Choose a key environment and profile", "active context environment profile switch", "active", ""},
 		{"Key environments", "Switch or create an independent set of keys", "env copy duplicate new create account sandbox", "environments", ""},
-		{"Business profiles", "Switch or create a business", "context new create client", "contexts", ""},
+		{"Profiles", "Switch or create a profile", "business profiles context new create client", "contexts", ""},
 		{"Settings", "Appearance, checks and updates", "preferences motion animation", "settings", ""},
-		{"Check setup", "Check local files and installation", "doctor diagnose repair troubleshoot errors", "doctor", ""},
+		{"Check local files", "Check local files and installation", "doctor diagnose repair troubleshoot errors", "doctor", ""},
 		{"Update Godmode", "Install the latest release", "upgrade version updater", "update", ""},
 		{"Help", "Quickstart and common questions", "faq guide how help sealed sealing source files tokens network privacy", "faq", ""},
 		{"Keyboard shortcuts", "Navigation and editing keys", "keys controls back cancel quit search", "shortcuts", ""},
 	}
 	if len(m.state.RecentSetups) > 0 {
-		items = append(items, action{"Recent setups", "Reuse a business and key environment", "history switch pair", "recent_setups", ""})
+		items = append(items, action{"Recent loadouts", "Reuse a profile and key environment", "history switch pair", "recent_setups", ""})
 	}
 	for _, p := range m.state.Providers {
 		items = append(items, action{p.Name, "Provider · " + p.About, providerSearchText(p) + " setup token key", "provider", p.ID})
@@ -302,8 +335,8 @@ func (m model) homeDescription() string {
 	text := []string{
 		"Give your agent access to the services you use.",
 		"Copy instructions into a task or save them for future sessions.",
-		"Business and contact details for terms, privacy and payments. Optional.",
-		"Choose the business and key environment for new commands.",
+		"Names and contact details for your site, receipts and policies.",
+		"Choose the profile and key environment for new commands.",
 		"Appearance, local checks and updates.",
 		"Quickstart, keyboard controls and common questions.",
 		"Return to your terminal. Saved changes stay saved.",
@@ -316,9 +349,9 @@ func (m model) homeDescription() string {
 
 func (m model) shortcuts() []string {
 	return []string{
-		"Navigation", "↑ / ↓ or j / k    Move through a list", "Enter              Open the selected item", "Esc                Go back; cancel an unsaved edit", "q                  Quit from a menu", "Ctrl-C             Exit from any screen", "",
-		"Find", "/                  Search providers or find an action", "Ctrl-K             Find an action from any menu", "s                  Switch business and key environment", "?                  Show these shortcuts", "",
-		"Editing", "Enter              Save the reviewed value", "Ctrl-U             Clear the input", "Tab                Inspect a key's save details", "Esc                Leave without saving", "",
+		"Navigation", "↑ / ↓ or j / k    Move through a list", "Enter              Choose the selected item", "Esc                Go back or cancel an edit", "q                  Quit from Home", "Ctrl-C             Exit from any screen", "",
+		"Find", "/                  Search providers or find an action", "Ctrl-K             Find an action from a menu", "s                  Switch loadout from Home", "?                  Show these shortcuts", "",
+		"Editing", "Enter              Save the reviewed value", "Ctrl-O             Open the provider link", "Ctrl-U             Clear the input", "Tab                Toggle guide and edit details", "Esc                Leave details or cancel the edit", "",
 		"Reading", "↑ / ↓              Scroll one line", "PgUp / PgDn        Scroll one page", "Home / End         Go to the start or end", "",
 		"godmode --plain uses the text interface.", "godmode --no-motion disables animation.", "NO_COLOR=1 disables color.",
 	}

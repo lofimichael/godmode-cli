@@ -1,5 +1,13 @@
 # Release notes
 
+## v0.21.0
+
+November 20, 2026
+
+- Run `godmode loadout PROVIDER` to add a credential. All 12 provider guides explain what your agent can do, where to get each key and how to check access.
+- Press Ctrl-O to open the provider page. Enter saves the reviewed credential. Recognizable Stripe keys pasted into the wrong mode or field are identified before saving.
+- Open **Switch loadout** to choose a key environment and profile. **Profile** holds the optional names and contact details your agent can reuse.
+
 ## v0.20.0
 
 November 18, 2026

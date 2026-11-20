@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var homeNames = []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Exit"}
-var settingsNames = []string{"Motion", "Check setup", "Update Godmode", "Replay intro", "Back"}
+var homeNames = []string{"Provider keys", "Connect agent", "Profile", "Switch loadout", "Settings", "Help", "Exit"}
+var settingsNames = []string{"Motion", "Check local files", "Update Godmode", "Replay intro", "Back"}
 
 type setupPair struct{ Environment, Context string }
 
@@ -83,17 +83,17 @@ func (m model) command(action ...string) string {
 
 func (m model) scopeLines() []string {
 	p := m.palette()
-	business := p.muted.Render("Business: ") + p.cyan.Render(businessName(m.state.Context))
-	keys := p.muted.Render("Environment: ") + p.title.Render(scopeName(m.state.Environment))
+	profile := p.muted.Render("Profile: ") + p.cyan.Render(businessName(m.state.Context))
+	keys := p.muted.Render("Keys: ") + p.title.Render(scopeName(m.state.Environment))
 	if m.innerWidth() < 52 {
-		business = p.muted.Render("Business ") + p.cyan.Render(businessName(m.state.Context))
-		keys = p.muted.Render("Env ") + p.title.Render(scopeName(m.state.Environment))
+		profile = p.muted.Render("Profile ") + p.cyan.Render(businessName(m.state.Context))
+		keys = p.muted.Render("Keys ") + p.title.Render(scopeName(m.state.Environment))
 	}
 	var rows []string
-	if ansi.StringWidth(business+" · "+keys) <= m.innerWidth() {
-		rows = []string{business + p.muted.Render(" · ") + keys}
+	if ansi.StringWidth(keys+" · "+profile) <= m.innerWidth() {
+		rows = []string{keys + p.muted.Render(" · ") + profile}
 	} else {
-		rows = []string{ansi.Truncate(business, m.innerWidth(), "…"), ansi.Truncate(keys, m.innerWidth(), "…")}
+		rows = []string{ansi.Truncate(keys, m.innerWidth(), "…"), ansi.Truncate(profile, m.innerWidth(), "…")}
 	}
 	if m.state.ShellOverride {
 		rows = append(rows, m.styledWrap("Shell settings override the saved default.", p.warn)...)
@@ -112,7 +112,11 @@ func (m *model) loadContexts() {
 		Contexts []businessContext
 		Selected string
 	}
-	if m.call("context_list", nil, &reply) {
+	args := map[string]any{}
+	if m.draftOpen {
+		args["environment"] = m.draftEnvironment
+	}
+	if m.call("context_list", args, &reply) {
 		m.contexts = reply.Contexts
 		m.page, m.selected, m.scroll = "contexts", 0, 0
 		for i, c := range m.contexts {
@@ -236,7 +240,7 @@ func (m *model) enterManagement() tea.Cmd {
 				return m.back()
 			}
 			if m.selectScope("context_select", name) {
-				m.notice = "Business selected: " + businessName(name)
+				m.notice = "Profile selected: " + businessName(name)
 				return m.back()
 			}
 		} else if m.selected == len(m.contexts) {
@@ -307,7 +311,7 @@ func (m *model) editScope(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			m.notice = "Created and selected " + clean(m.text) + "."
 			if m.draftOpen {
-				m.notice = "Created " + clean(m.text) + ". Use this setup to make it active."
+				m.notice = "Created " + clean(m.text) + ". Use this loadout to make it active."
 			}
 			m.resetInput()
 			if m.scopeKind == "environment" {
@@ -370,9 +374,9 @@ func (m model) managementNames() []string {
 	switch m.page {
 	case "active":
 		if len(m.state.RecentSetups) > 0 {
-			return []string{"Key environment", "Business profile", "Use this setup", "Recent setups", "Back"}
+			return []string{"Key environment", "Profile", "Use this loadout", "Recent loadouts", "Back"}
 		}
-		return []string{"Key environment", "Business profile", "Use this setup", "Back"}
+		return []string{"Key environment", "Profile", "Use this loadout", "Back"}
 	case "recent_setups":
 		names := []string{}
 		for _, pair := range m.state.RecentSetups {
@@ -380,7 +384,7 @@ func (m model) managementNames() []string {
 		}
 		return append(names, "Back")
 	case "business":
-		return []string{"Edit business details", "Switch business", "New business", "Back"}
+		return []string{"Edit profile", "Switch profile", "New profile", "Back"}
 	case "environment_new":
 		return []string{"Empty", "Copy current", "Back"}
 	case "contexts":
@@ -388,7 +392,7 @@ func (m model) managementNames() []string {
 		for _, c := range m.contexts {
 			names = append(names, businessName(c.Name))
 		}
-		return append(names, "New business", "Back")
+		return append(names, "New profile", "Back")
 	case "environments":
 		names := []string{}
 		for _, e := range m.environments {
@@ -404,12 +408,12 @@ func (m model) managementBody() []string {
 	rows := []string{}
 	if m.page == "recent_details" {
 		if m.recentAt >= len(m.state.RecentSetups) {
-			return []string{"This setup is no longer in recent history. Esc goes back."}
+			return []string{"This loadout is no longer in recent history. Esc goes back."}
 		}
 		pair := m.state.RecentSetups[m.recentAt]
 		rows = append(rows, p.muted.Render("Key environment"))
 		rows = append(rows, m.styledWrap(scopeName(pair.Environment), p.title)...)
-		rows = append(rows, "", p.muted.Render("Business profile"))
+		rows = append(rows, "", p.muted.Render("Profile"))
 		rows = append(rows, m.styledWrap(businessName(pair.Context), p.title)...)
 		rows = append(rows, "")
 		rows = append(rows, m.wrap("New commands use this pair. Paste new task instructions to switch a running agent.")...)
@@ -449,7 +453,7 @@ func (m model) managementBody() []string {
 			}
 		} else {
 			rows = append(rows, m.wrap(m.path(filepath.Join(m.state.Home, "contexts", name, "context.json")))...)
-			rows = append(rows, "Business settings. Profile starts empty.")
+			rows = append(rows, "Profile starts empty.")
 		}
 		return rows
 	}
@@ -497,8 +501,11 @@ func (m model) managementBody() []string {
 				status = countLabel(len(m.state.Progress.Fields), "field")
 			}
 		case "environment_new":
-			if i == 1 && !m.state.StoreExists {
-				status = "not saved"
+			if i == 1 {
+				status = scopeName(m.state.Environment)
+				if !m.state.StoreExists {
+					status = "not saved"
+				}
 			}
 		case "contexts":
 			if i < len(m.contexts) {
@@ -521,6 +528,9 @@ func (m model) managementBody() []string {
 			}
 		}
 		rows = append(rows, m.choice(name, status, i == m.selected, w))
+		if m.page == "active" && i == 1 && m.draftContext == "" {
+			rows = append(rows, m.styledWrap("  Uses the profile stored with "+scopeName(m.draftEnvironment)+".", p.muted)...)
+		}
 		if i == m.selected && m.height >= 20 {
 			path := ""
 			if m.page == "business" && i == 0 {

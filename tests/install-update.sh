@@ -128,7 +128,7 @@ HOME="$scratch/fish-account" SHELL=/usr/bin/fish sh "$repo/install.sh" --binary 
 [ "$(ls -A "$scratch/fish-account")" = .godmode ]
 [ -x "$scratch/fish-account/.godmode/bin/godmode" ]
 printf '  %s\n' "$check Installed ~/.godmode/bin/godmode" "Add ~/.godmode/bin to PATH in your shell's startup file." \
-    'To set up, run:  godmode' | cmp - "$scratch/fish-output"
+    'To open your loadout, run:  godmode' | cmp - "$scratch/fish-output"
 # Concurrency lock prevents mutations and is not removed by the losing process.
 mkdir "$custom/bin/.godmode-install-lock"
 if "$custom/bin/godmodeup" --binary "$scratch/artifacts/one" --sha256 "$one" >/dev/null 2>&1; then

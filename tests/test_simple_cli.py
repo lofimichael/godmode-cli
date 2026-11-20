@@ -65,7 +65,7 @@ sys.addaudithook(audit)
 runpy.run_path(script, run_name='__main__')
 """
 USAGE_LINES = ('Usage: godmode [COMMAND]', 'For you', 'For agents', 'Files', 'Options',
-               '  godmode setup [PROVIDER]     add or replace a provider\'s keys',
+               '  godmode loadout [PROVIDER]   add or replace a provider\'s keys',
                '  godmode run NAME... -- CMD   run CMD with those keys in its environment',
                '  godmode edit                 open the key file in nano',
                '  --home DIR                   use another Godmode home (default ~/.godmode)',
@@ -181,10 +181,12 @@ class CLI(unittest.TestCase):
         self.assertIn('Cancelled.',plain(again.capture))
         self.assertNotIn('Previously saved keys were kept',plain(again.capture))
         env,record=self.opener()
-        keep=self.terminal(['set','GH_TOKEN'],env);keep.expect('Enter opens github.com')
+        keep=self.terminal(['set','GH_TOKEN'],env);keep.expect('Ctrl-O opens github.com')
         self.assertIn("Visit GitHub's token page",plain(keep.capture))
         self.assertIn('Resource owner',plain(keep.capture))
-        keep.send(b'\r');keep.expect('Opened github.com')
+        keep.send(b'\r');keep.settle(.1)
+        self.assertFalse(record.exists())
+        keep.send(b'\x0f');keep.expect('Link opened')
         keep.send(b'\x1b');keep.done(130)
         self.assertEqual(record.read_text(),self.providers['github']['console']+'\n')
         self.assertEqual(values(self.file)['GH_TOKEN'],token)
@@ -339,17 +341,17 @@ class CLI(unittest.TestCase):
         terminal.send(b'\r');terminal.expect('Saved ACME_TOKEN');terminal.done()
         self.assertEqual(values(self.file)['ACME_TOKEN'],typed)
 
-    def test_key_screen_redraws_in_place_and_enter_opens_the_page(self):
+    def test_key_screen_redraws_in_place_and_only_ctrl_o_opens_the_page(self):
         self.init()
         env,record=self.opener()
         terminal=self.terminal(['setup','github'],env)
         terminal.expect('Paste your token:')
         steps=[('paste',b'\x1b[200~github_pat_DEMO_ONLY_aaaa111\x1b[201~','git•••••111'),
-               ('clear',b'\x15','Enter opens github.com'),
+               ('clear',b'\x15','Ctrl-O opens github.com'),
                ('paste again',b'\x1b[200~github_pat_DEMO_ONLY_bbbb222\x1b[201~','git•••••222'),
                ('paste replaces',b'\x1b[200~github_pat_DEMO_ONLY_cccc333\x1b[201~','git•••••333'),
-               ('clear',b'\x15','Enter opens github.com'),
-               ('open the page',b'\r','Opened github.com'),
+               ('clear',b'\x15','Ctrl-O opens github.com'),
+               ('open the page',b'\x0f','Link opened'),
                ('type',b'a','Paste your token: •'),
                ('type',b'b','Paste your token: ••'),
                ('delete',b'\x7f','Paste your token: •')]
@@ -411,10 +413,10 @@ class CLI(unittest.TestCase):
         for step in self.providers['github']['key'][0]['steps']:
             self.assertIn(step.replace('**',''),shown)
         self.assertNotIn(github[:40],shown)  # Too long for a row, so it is not on the screen yet.
-        # Enter opens the page. An address with no room on screen is printed once, to copy if needed.
+        # Ctrl-O opens the page. An address with no room on screen is printed once, to copy if needed.
         for _ in range(2):
             mark=len(terminal.capture)
-            terminal.send(b'\r');terminal.after(mark,'Opened github.com');terminal.settle(.2)
+            terminal.send(b'\x0f');terminal.after(mark,'Link opened');terminal.settle(.2)
         self.assertEqual(record.read_text(),(github+'\n')*2)
         joined=''.join(Screen(100).feed(terminal.capture).lines())
         self.assertEqual(joined.count(github),1)
@@ -424,7 +426,7 @@ class CLI(unittest.TestCase):
         self.assertTrue(self.pointed(terminal).startswith('GitHub'))  # Nothing saved: the pointer stays.
         terminal.send(b'\x1b');terminal.expect(SUMMARY);terminal.done()
         self.assertIn('Profile 0 optional fields · 0 keys saved · 0 agents added',plain(terminal.capture))
-        self.assertIn('godmode setup',plain(terminal.capture))
+        self.assertIn('godmode loadout',plain(terminal.capture))
         self.assertNotIn('GH_TOKEN',values(self.file))
         failing,_=self.opener('exit 1\n')
         empty=self.root/'no-opener';empty.mkdir()
@@ -434,7 +436,7 @@ class CLI(unittest.TestCase):
                 session.expect('Paste your token:')
                 for _ in range(2):
                     mark=len(session.capture)
-                    session.send(b'\r');session.after(mark,'No browser here: open the link above');session.settle(.2)
+                    session.send(b'\x0f');session.after(mark,'Browser unavailable.');session.settle(.2)
                 screen=Screen(100).feed(session.capture)
                 self.assertEqual(''.join(screen.lines()).count(github),1,'the address is printed once and stays')
                 self.assertEqual((screen.count('Keys for your agents'),screen.count(TITLE)),(0,1))  # No banner.
@@ -445,9 +447,34 @@ class CLI(unittest.TestCase):
                 shown=self.terminal(['setup','cloudflare'],path_env)
                 shown.expect('Paste your token:')
                 mark=len(shown.capture)
-                shown.send(b'\r');shown.after(mark,'No browser here: open the link above');shown.settle(.2)
+                shown.send(b'\x0f');shown.after(mark,'Browser unavailable.');shown.settle(.2)
                 self.assertEqual(Screen(100).feed(shown.capture).count(self.providers['cloudflare']['console']),1)
                 shown.send(b'\x03');shown.done(130)
+
+    def test_stripe_recognized_keys_only_save_in_their_mode_and_role(self):
+        self.init()
+        secret = 'sk_live_synthetic_DO_NOT_PRINT'
+        wrong = self.terminal(['loadout', 'stripe'])
+        wrong.expect('Test secret key')
+        wrong.send(b'\r')
+        wrong.expect('Paste your key:')
+        wrong.paste(secret)
+        wrong.expect('belongs in STRIPE_LIVE_SECRET_KEY')
+        wrong.send(b'\r')
+        wrong.settle(.1)
+        self.assertNotIn('STRIPE_TEST_SECRET_KEY', values(self.file))
+        self.assertNotIn(secret.encode(), wrong.capture)
+        wrong.send(b'\x03')
+        wrong.done(130)
+        for name, value, expected in (
+            ('STRIPE_TEST_SECRET_KEY', 'rk_live_synthetic', 2),
+            ('STRIPE_LIVE_SECRET_KEY', 'pk_live_synthetic', 2),
+            ('STRIPE_TEST_PUBLISHABLE_KEY', 'pk_test_synthetic', 0),
+            ('STRIPE_LIVE_SECRET_KEY', 'rk_live_synthetic', 0),
+        ):
+            result = self.godmode('set', name, '--stdin', input=value)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            self.assertNotIn(value, result.stdout + result.stderr)
 
     def test_key_menu_for_a_multi_key_provider_and_each_key_has_its_own_page(self):
         self.init()
@@ -469,7 +496,7 @@ class CLI(unittest.TestCase):
         mark=len(terminal.capture)
         terminal.send(b'l\r');terminal.after(mark,'Visit Stripe’s live keys')
         mark=len(terminal.capture)
-        terminal.send(b'\r');terminal.after(mark,'Opened dashboard.stripe.com')
+        terminal.send(b'\x0f');terminal.after(mark,'Link opened')
         self.assertEqual(record.read_text().splitlines(),['https://dashboard.stripe.com/apikeys'])
         mark=len(terminal.capture)
         terminal.send(b'\x1b');terminal.after(mark,'Esc back')           # Back to Stripe's keys...
@@ -557,9 +584,11 @@ class CLI(unittest.TestCase):
         self.file.write_text('GH_TOKEN=\n');self.file.chmod(0o600)  # A plain file: no header, no seal.key.
         env,record=self.opener()
         blank=self.terminal(['set','GH_TOKEN'],env);blank.expect('Paste your token:')
-        self.assertIn('Enter opens github.com',plain(blank.capture))
+        self.assertIn('Ctrl-O opens github.com',plain(blank.capture))
         blank.paste('\n');blank.settle(.2)
-        blank.send(b'\r');blank.expect('Opened github.com')
+        blank.send(b'\r');blank.settle(.1)
+        self.assertFalse(record.exists())
+        blank.send(b'\x0f');blank.expect('Link opened')
         blank.send(b'\x1b');blank.done(130)
         self.assertEqual(self.file.read_text(),'GH_TOKEN=\n')
         self.file.write_text('GH_TOKEN=two words\n')
@@ -605,22 +634,20 @@ class CLI(unittest.TestCase):
         env,record=self.opener()
         unchanged=self.file.read_bytes()
         # Esc in that first prompt, or an empty Enter, drops to Gmail's own list of keys and saves nothing.
-        for label, data, receipt in (('Esc',b'\x1b',None),('empty Enter',b'\r','  Skipped GMAIL_USER.')):
+        for label, data in (('Esc', b'\x1b'), ('empty Enter then Esc', b'\r\x1b')):
             with self.subTest(leave=label):
                 left=self.terminal(['setup','gmail'],env);left.expect('Type the address:')
-                self.assertIn('Enter skips · Tab details · Esc back',plain(left.capture))
+                self.assertIn('Tab details · Enter saves · Esc back',plain(left.capture))
                 mark=len(left.capture)
                 left.send(data);left.after(mark,'Esc done')
                 self.assertEqual(self.pointed(left),'Mailbox address')
-                if receipt:
-                    self.assertIn(receipt,Screen(100).feed(left.capture).lines())
                 left.send(b'\x1b');left.done()
                 self.assertNotIn(SUMMARY,plain(left.capture))
                 self.assertEqual(self.file.read_bytes(),unchanged)
         self.assertFalse(record.exists())
         # An address is not a secret, so it is shown as it is typed. It has no page to open.
         gmail=self.terminal(['setup','gmail'],env);gmail.expect('Type the address:')
-        self.assertNotIn('Enter opens',plain(gmail.capture))
+        self.assertNotIn('Ctrl-O opens',plain(gmail.capture))
         # A secret pasted here by mistake stays masked, whatever is typed or deleted around it.
         wrong='abcd efgh ijkl mnop SYNTHETIC'
         for before, after in ((b'',b''),(b'',b'\x7f'),(b'',b'x'),(b'x',b'')):
@@ -659,7 +686,7 @@ class CLI(unittest.TestCase):
         both.paste(pair);both.after(mark,'HIGGSFIELD_API_KEY_ID=sealed(111•••••555)')
         both.send(b'\r');both.after(mark,'Saved HIGGSFIELD_API_KEY_ID=sealed(111•••••555)')
         both.after(mark,'Paste the same key again:')  # The secret's prompt follows directly.
-        self.assertNotIn('Enter opens',plain(both.capture[mark:]))  # The secret has no page of its own.
+        self.assertNotIn('Ctrl-O opens',plain(both.capture[mark:]).split('✓ Saved HIGGSFIELD_API_KEY_ID')[-1])  # The second field uses the same pair.
         # Esc there drops to Higgsfield's keys, pointing at the one still missing.
         mark=len(both.capture)
         both.send(b'\x1b');both.after(mark,'Esc done')
@@ -1054,7 +1081,7 @@ class CLI(unittest.TestCase):
         self.assertNotIn('GODMODE',plain(terminal.capture))
         terminal.paste('github_pat_DEMO_ONLY_ascii_0042')
         terminal.expect("Add GH_TOKEN=sealed(git*****042)")
-        self.assertIn('Enter saves | Tab details | Esc cancels',plain(terminal.capture))
+        self.assertIn('Tab details | Enter saves | Esc cancels',plain(terminal.capture))
         terminal.send(b'\r');terminal.expect('Saved GH_TOKEN');terminal.done()
         self.assertIn('  + Saved GH_TOKEN=sealed(git*****042)',Screen(100).feed(terminal.capture).lines())
         self.assertTrue(terminal.capture.isascii(),'non-ASCII output on an ASCII terminal')
@@ -1169,11 +1196,11 @@ class CLI(unittest.TestCase):
 
     def test_summary_reports_saved_facts_without_a_completion_score(self):
         trio = ['GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'HIGGSFIELD_API_KEY_ID']
-        cases = (('new', (), 0, False, 'godmode setup'),
-                 ('optional profile only', (), 1, False, 'godmode setup'),
+        cases = (('new', (), 0, False, 'godmode loadout'),
+                 ('optional profile only', (), 1, False, 'godmode loadout'),
                  ('Cloudflare only', ['CLOUDFLARE_API_TOKEN'], 0, False, 'godmode agents'),
                  ('Cloudflare and an agent', ['CLOUDFLARE_API_TOKEN'], 0, True, None),
-                 ('a partial pair', trio, 4, False, 'godmode setup higgsfield'),
+                 ('a partial pair', trio, 4, False, 'godmode loadout higgsfield'),
                  ('pair finished', trio + ['HIGGSFIELD_API_KEY_SECRET'], 4, True, None),
                  ('Stripe live secret only', ['STRIPE_LIVE_SECRET_KEY'], 0, False, 'godmode agents'),
                  ('one custom key', ['ACME_TOKEN'], 0, False, 'godmode agents'))
@@ -1225,10 +1252,10 @@ class CLI(unittest.TestCase):
                                  env=self.env, capture_output=True, text=True)
         self.assertEqual(renamed.returncode, 0, renamed.stderr)
         for args, message in ((['run', 'STRIPE_LIVE_SECRET_KEY', '--', 'true'],
-                               'STRIPE_LIVE_SECRET_KEY is not saved. Ask the user to run: godmode setup stripe'),
+                               'STRIPE_LIVE_SECRET_KEY is not saved. Ask the user to run: godmode loadout stripe'),
                               (['run', 'gh_token', '--', 'true'], 'gh_token is not saved. Did you mean GH_TOKEN?'),
                               (['run', 'bad-name=GH_TOKEN', '--', 'true'], 'Use a key name containing letters, numbers and underscores.'),
-                              (['stup'], 'unknown command. Did you mean godmode setup?')):
+                              (['lodout'], 'unknown command. Did you mean godmode loadout?')):
             with self.subTest(args=args):
                 result = subprocess.run(self.command + args, env=self.env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 2)
@@ -1252,7 +1279,7 @@ class CLI(unittest.TestCase):
         run = subprocess.run(self.command + ['run', '--help'], env=self.env, capture_output=True, text=True)
         self.assertEqual(run.returncode, 0)
         self.assertIn('godmode run VAR=NAME... -- CMD', run.stdout)
-        for name in ('setup', 'set', 'list', 'profile', 'agents', 'provider', 'intro', 'path', 'edit', 'migrate'):
+        for name in ('loadout', 'set', 'list', 'profile', 'agents', 'provider', 'intro', 'path', 'edit', 'migrate'):
             result = self.godmode(name, '--help')
             self.assertEqual(result.returncode, 0)
             self.assertTrue(result.stdout.startswith('Usage: godmode ' + name))
@@ -1291,7 +1318,8 @@ class CLI(unittest.TestCase):
         session.paste(secret)
         session.settle(.1)
         self.assertEqual(self.file.read_bytes(), before)
-        session.send(b'\r'); session.expect('Enter saves')
+        session.send(b'\r'); session.expect('Press Tab to review')
+        session.send(b'\t'); session.expect('sealed(')
         self.assertEqual(self.file.read_bytes(), before)
         session.send(b'\r'); session.done()
         self.assertEqual(values(self.file)['ACME_TOKEN'], secret)

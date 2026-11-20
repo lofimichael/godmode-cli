@@ -9,18 +9,18 @@ usage() {
     cat <<'USAGE'
 Usage:
   sh install.sh [--version vX.Y.Z] [--home DIR | --bin-dir DIR] [--path] [--install-only]
-  godmodeup [--version vX.Y.Z] [--setup] [--path]
-  sh install.sh --archive PATH --checksum SHA256SUMS [--home DIR | --bin-dir DIR] [--setup]
-  sh install.sh --binary PATH --sha256 HEX [--home DIR | --bin-dir DIR] [--setup]
+  godmodeup [--version vX.Y.Z] [--loadout] [--path]
+  sh install.sh --archive PATH --checksum SHA256SUMS [--home DIR | --bin-dir DIR] [--loadout]
+  sh install.sh --binary PATH --sha256 HEX [--home DIR | --bin-dir DIR] [--loadout]
 
 With no artifact flags, download the newest compatible release from godmode.build,
-verify its checksum, install it and start interactive masked setup. Python 3.9+
+verify its checksum, install it and open the terminal menu. Python 3.9+
 is required; no Python packages, account or activation are needed.
 Default destination: ~/.godmode/bin/godmode (or $GODMODE_HOME/bin/godmode).
 --home DIR selects a home; --bin-dir DIR changes only the executable directory.
---install-only (also --no-setup) installs only; --setup opens setup after install.
+--install-only installs the CLI. --loadout opens the terminal menu afterward.
 godmodeup updates only files matching its install receipt and downloads nothing
-when the installed version is current; setup is opt-in.
+when the installed version is current; opening the menu is opt-in.
 Unknown existing files require --force. Symlinks are always refused.
 --path adds one source line for the generated env file to ~/.zshenv (zsh),
 ~/.bashrc and the bash login file, or ~/.profile (sh, dash, ksh). Other shells
@@ -378,7 +378,7 @@ while [ "$#" -gt 0 ]; do
         --version) need_value "$@"; version=$2; shift 2 ;;
         --home) need_value "$@"; godmode_home=$2; home_option=yes; shift 2 ;;
         --bin-dir) need_value "$@"; bin_dir=$2; bin_option=yes; shift 2 ;;
-        --setup) setup=yes; shift ;;
+        --loadout|--setup) setup=yes; shift ;;
         --install-only|--no-setup) setup=no; shift ;;
         --force) force=yes; shift ;;
         --update) update=yes; shift ;;
@@ -436,7 +436,7 @@ if [ -e "$destination" ]; then
     if [ "$force" != yes ] && { [ "$update" != yes ] || ! managed_file "$destination" godmode; }; then
         if managed_file "$destination" godmode; then
             say '31' "godmode install: $(show_path "$destination") already exists; nothing replaced." >&2
-            printf 'Run %s to set up, or godmodeup to update.\n' "$(godmode_command)" >&2
+            printf 'Run %s to open your loadout, or godmodeup to update.\n' "$(godmode_command)" >&2
         else
             say '31' "godmode install: $(show_path "$destination") was changed or installed another way; nothing replaced." >&2
             printf '%s\n' 'Use --force to replace it.' >&2
@@ -711,9 +711,9 @@ if [ "$update" != yes ] || [ "$path_setup" = yes ]; then
 fi
 if [ -z "$setup_tty" ]; then
     if [ "$setup" = yes ]; then
-        printf '  To set up, run this in a terminal:  %s\n' "$(godmode_command)"
+        printf '  To open your loadout, run this in a terminal:  %s\n' "$(godmode_command)"
     elif [ "$update" != yes ]; then
-        printf '  To set up, run:  %s\n' "$(godmode_command)"
+        printf '  To open your loadout, run:  %s\n' "$(godmode_command)"
     fi
 fi
 }

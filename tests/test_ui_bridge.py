@@ -221,6 +221,14 @@ class BridgeTests(unittest.TestCase):
         self.assertNotEqual(state['states'].get('STRIPE_SECRET_KEY'), 'set')
         self.assertEqual(self.call('context_list')['contexts'][0]['name'], '')
 
+    def test_profile_picker_previews_the_draft_environment_without_switching(self):
+        self.call('environment_create', name='preview', select=False)
+        automatic = self.call('context_list', environment='preview')['contexts'][0]
+        self.assertEqual(automatic['profile_path'], str(self.home / 'environments/preview/profile.json'))
+        self.assertEqual(self.call('state')['environment'], 'default')
+        with self.assertRaises(ValueError):
+            self.call('context_list', environment='../invalid')
+
     def test_agent_copy_is_scoped_but_global_append_stays_generic(self):
         target = self.root / '.codex' / 'AGENTS.md'
         target.parent.mkdir()
@@ -411,7 +419,7 @@ class BridgeTests(unittest.TestCase):
                 self.assertIn('ui.json', state['history_error'])
                 state = self.call('selection_save', environment='other', context='')
                 self.assertEqual((state['environment'], state['context']), ('other', ''))
-                self.assertIn('Active setup saved', state['history_error'])
+                self.assertIn('Active loadout saved', state['history_error'])
                 self.assertEqual(json.loads((self.home / 'active.json').read_text())['environment'], 'other')
                 self.assertEqual(path.read_text(), raw)
                 with self.assertRaisesRegex(ValueError, 'ui.json'):
@@ -431,7 +439,7 @@ class BridgeTests(unittest.TestCase):
         with patch.object(cli.Profile, 'write', fail_ui_only):
             state = self.call('selection_save', environment='other', context='')
         self.assertEqual(state['environment'], 'other')
-        self.assertIn('Active setup saved', state['history_error'])
+        self.assertIn('Active loadout saved', state['history_error'])
         self.assertEqual(path.read_bytes(), original)
         self.assertEqual(json.loads((self.home / 'active.json').read_text())['environment'], 'other')
 
@@ -452,7 +460,7 @@ class BridgeTests(unittest.TestCase):
         path.symlink_to(outside)
         state = self.call('selection_save', environment='default', context='')
         self.assertEqual(state['environment'], 'default')
-        self.assertIn('Active setup saved', state['history_error'])
+        self.assertIn('Active loadout saved', state['history_error'])
         self.assertTrue(path.is_symlink())
         self.assertEqual(outside.read_text(), '{"motion":true}')
 

@@ -17,8 +17,8 @@ func typeText(m model, text string) model {
 }
 
 func TestNavigationOrderKeepsTaskActionsBeforeSettings(t *testing.T) {
-	wantHome := []string{"Provider keys", "Connect agent", "Business details", "Switch setup", "Settings", "Help", "Exit"}
-	wantSettings := []string{"Motion", "Check setup", "Update Godmode", "Replay intro", "Back"}
+	wantHome := []string{"Provider keys", "Connect agent", "Profile", "Switch loadout", "Settings", "Help", "Exit"}
+	wantSettings := []string{"Motion", "Check local files", "Update Godmode", "Replay intro", "Back"}
 	if !reflect.DeepEqual(homeNames, wantHome) || !reflect.DeepEqual(settingsNames, wantSettings) {
 		t.Fatal("home or Settings task order changed")
 	}
@@ -41,14 +41,14 @@ func TestEverySwitchEntryStagesUntilOneAtomicApply(t *testing.T) {
 			m := create(t, f, "home", "")
 			switch route {
 			case "home":
-				m = openHomeItem(t, m, "Switch setup")
+				m = openHomeItem(t, m, "Switch loadout")
 			case "shortcut":
 				m = send(m, key('s', "s"))
 			case "finder":
-				m = findAction(t, m, "switch setup")
+				m = findAction(t, m, "switch loadout")
 			}
 			if m.page != "active" || !m.draftOpen || m.draftEnvironment != "default" || m.draftContext != "" {
-				t.Fatal("Switch setup did not start with a complete draft of the active pair")
+				t.Fatal("Switch loadout did not start with a complete draft of the active pair")
 			}
 			m = enter(m)
 			m.selected = 1
@@ -74,7 +74,7 @@ func TestEverySwitchEntryStagesUntilOneAtomicApply(t *testing.T) {
 			m.selected = 2
 			m = enter(m)
 			if m.state.Environment != "acme-test" || m.state.Context != "acme" || m.draftOpen || count(f.calls, "selection_save") != 1 {
-				t.Fatal("Use this setup did not apply the complete pair exactly once")
+				t.Fatal("Use this loadout did not apply the complete pair exactly once")
 			}
 			for i, action := range f.calls {
 				if action == "selection_save" && (f.requests[i]["environment"] != "acme-test" || f.requests[i]["context"] != "acme") {
@@ -90,7 +90,7 @@ func TestCancelStagedSetupLeavesSavedSelectionAndDirectSelectionWorking(t *testi
 		t.Run(cancel, func(t *testing.T) {
 			f := fake()
 			m := create(t, f, "home", "")
-			m = openHomeItem(t, m, "Switch setup")
+			m = openHomeItem(t, m, "Switch loadout")
 			m = enter(m)
 			m.selected = 1
 			m = enter(m)
@@ -101,14 +101,14 @@ func TestCancelStagedSetupLeavesSavedSelectionAndDirectSelectionWorking(t *testi
 				m.selected = 3
 				m = enter(m)
 			case "quit":
-				m = send(m, key('q', "q"))
+				m = send(m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
 			}
 			if f.state["environment"] != "default" || f.state["context"] != "" || count(f.calls, "selection_save") != 0 || count(f.calls, "environment_select") != 0 {
 				t.Fatal("cancelled setup saved a staged value")
 			}
 			if cancel == "quit" {
 				if !m.quitting {
-					t.Fatal("q did not quit from Switch setup")
+					t.Fatal("Ctrl-C did not quit from Switch loadout")
 				}
 				return
 			}
@@ -128,14 +128,14 @@ func TestCancelStagedSetupLeavesSavedSelectionAndDirectSelectionWorking(t *testi
 func TestNewEnvironmentWithinSwitchDoesNotSelectBeforeApply(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	m.selected = len(m.environments)
 	m = enter(m)
 	m = enter(m) // New empty environment.
-	m = typeText(m, "isolated-test")
+	m = typeText(m, "quest-test")
 	m = enter(m)
-	if count(f.calls, "environment_create") != 1 || m.page != "environments" || m.draftEnvironment != "isolated-test" {
+	if count(f.calls, "environment_create") != 1 || m.page != "environments" || m.draftEnvironment != "quest-test" {
 		t.Fatal("new environment did not return to its staged list")
 	}
 	for i, action := range f.calls {
@@ -148,11 +148,47 @@ func TestNewEnvironmentWithinSwitchDoesNotSelectBeforeApply(t *testing.T) {
 	}
 	m = escape(m)
 	if m.page != "active" {
-		t.Fatal("new environment lost Switch setup as its parent")
+		t.Fatal("new environment lost Switch loadout as its parent")
 	}
 	m = escape(m)
 	if count(f.calls, "selection_save") != 0 || count(f.calls, "key_save") != 0 {
 		t.Fatal("cancel wrote setup or keys")
+	}
+}
+
+func TestFinderLoadoutDoesNotReopenAStaleCreationForm(t *testing.T) {
+	f := fake()
+	m := openHomeItem(t, create(t, f, "home", ""), "Switch loadout")
+	m = enter(m)
+	m.selected = len(m.environments)
+	m = enter(m)
+	for _, letter := range "sq" {
+		m = send(m, key(letter, string(letter)))
+	}
+	if m.quitting || m.page != "environment_new" {
+		t.Fatal("a Home shortcut interrupted environment creation")
+	}
+	m = findAction(t, m, "switch loadout")
+	m = enter(m)
+	m.selected = 1
+	m = enter(m)
+	m.selected = 1
+	m = enter(m)
+	last := len(f.calls) - 1
+	if f.calls[last] != "context_list" || f.requests[last]["environment"] != "acme-test" {
+		t.Fatal("profile picker requested Automatic for the active environment instead of the draft")
+	}
+	m.selected = 2
+	m = enter(m)
+	m.selected = 2
+	m = enter(m)
+	m = escape(m) // Return from the finder after applying a different loadout.
+	if m.page != "active" || !m.draftOpen || m.draftEnvironment != "acme-test" || m.draftContext != "acme" {
+		t.Fatal("finder restored a creation form from the superseded loadout")
+	}
+	m = escape(m)
+	if m.page != "home" || m.draftOpen || count(f.calls, "selection_save") != 1 {
+		t.Fatal("a stale form survived the completed switch")
 	}
 }
 
@@ -191,7 +227,7 @@ func TestFinderRoundTripRestoresQuerySelectionAndActualParent(t *testing.T) {
 func TestScopeDetailsBackPreservesInspectedList(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	m.selected = 1
 	m = send(m, key(tea.KeyTab, ""))
@@ -223,7 +259,7 @@ func TestTextShortcutsStayTextInSearchAndInput(t *testing.T) {
 			case "key":
 				m = create(t, f, "set", "EXAMPLE_TOKEN")
 			case "profile_field":
-				m = openHomeItem(t, m, "Business details")
+				m = openHomeItem(t, m, "Profile")
 				m = enter(m)
 			case "name":
 				m = openHomeItem(t, m, "Provider keys")
@@ -343,6 +379,11 @@ func TestShortcutHelpAndFinderPreserveTheirActualParent(t *testing.T) {
 	if m.page != "settings" || m.selected != 3 {
 		t.Fatal("finder lost its Settings origin")
 	}
+	m = send(m, key('q', "q"))
+	if m.quitting || m.page != "settings" {
+		t.Fatal("q quit a nested menu")
+	}
+	m = escape(m)
 	m = send(m, key('q', "q"))
 	if !m.quitting || count(f.calls, "accept_intro") != 0 || count(f.calls, "key_save") != 0 {
 		t.Fatal("q did not quit the menu without executing its focused action")
@@ -538,10 +579,10 @@ func TestRecentDetailBackKeepsReviewedPairAcrossDetoursAndReordering(t *testing.
 	second := setupPair{"acme-test", "acme"}
 	f.state["recent_setups"] = []setupPair{first, second}
 	m := create(t, f, "home", "")
-	m = findAction(t, m, "recent setups")
+	m = findAction(t, m, "recent loadouts")
 	m.selected = 0
 	m = enter(m)
-	m = findAction(t, m, "recent setups")
+	m = findAction(t, m, "recent loadouts")
 	m.selected = 1
 	m = enter(m)
 	m = escape(escape(m))
@@ -587,7 +628,7 @@ func TestAgentReturnReloadsScopeAndRetainsOnlyTheChosenTarget(t *testing.T) {
 				}
 			}
 			oldID := m.agents.ID
-			m = send(m, key('s', "s"))
+			m = findAction(t, m, "switch loadout")
 			if change != "same-pair" {
 				m = enter(m)
 				m.selected = 1
@@ -599,6 +640,7 @@ func TestAgentReturnReloadsScopeAndRetainsOnlyTheChosenTarget(t *testing.T) {
 			b.failPlan = change == "read-failure"
 			m.selected = 2
 			m = enter(m)
+			m = escape(m) // Leave the finder and restore the original agent route.
 			if change != "same-pair" && (m.state.Environment != "acme-test" || f.state["environment"] != "acme-test") {
 				t.Fatal("agent readback changed or rolled back the applied setup")
 			}

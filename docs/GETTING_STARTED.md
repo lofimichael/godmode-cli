@@ -16,15 +16,15 @@ Sourcing the generated `env` file puts Godmode on the current shell’s PATH. Se
 
 ## 2. Save a provider key
 
-This example uses GitHub and assumes `gh`, the GitHub CLI, is installed. Read the provider guide, then open masked setup:
+This example uses GitHub and assumes `gh`, the GitHub CLI, is installed. Read the provider guide, then open the credential editor:
 
 ```sh
 godmode provider github
-godmode setup github
+godmode loadout github
 godmode list
 ```
 
-Follow the guide to create a token with only the access your task needs. Paste it into the masked prompt, review the edit, and confirm the save. Expect `GH_TOKEN` in the list. A saved name confirms local storage.
+Follow the guide to create a token with only the access your task needs. Press Ctrl-O in the credential field to open GitHub. Paste the token, review the masked edit, and press Enter to save. In `--plain` mode, press Tab to review first. Expect `GH_TOKEN` in the list. A saved name confirms local storage.
 
 For another provider, run `godmode provider` to find its slug or see [Provider keys](PROVIDERS.md).
 
@@ -34,7 +34,7 @@ For another provider, run `godmode provider` to find its slug or see [Provider k
 godmode agents --print
 ```
 
-Paste the printed note into your current agent chat. It pins the selected environment and business. Ask the agent to follow the note and make a read-only check:
+Paste the printed note into your current agent chat. It pins the selected environment and profile. Ask the agent to follow the note and make a read-only check:
 
 > Read the Godmode provider guide for GitHub. Use the saved token to tell me which GitHub account it belongs to. Do not print the token.
 
@@ -49,6 +49,6 @@ Expect a GitHub login. Check that it matches the intended account. Confirm acces
 ## Next steps
 
 - [Connect an agent](AGENT_SETUP.md) to load instructions in future sessions.
-- [Add business details](PROFILE.md) for tasks that need a name, URL, or contact email.
-- [Choose an environment and business](CONTEXTS.md) before working with multiple accounts or sets of keys.
-- Run `godmode doctor` to check local setup. Run `godmode help` for agent guidance.
+- [Add profile details](PROFILE.md) for tasks that need a name, URL, or contact email.
+- [Choose an environment and profile](CONTEXTS.md) before working with multiple accounts or sets of keys.
+- Run `godmode doctor` to check local files. Run `godmode help` for agent guidance.

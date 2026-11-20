@@ -66,9 +66,9 @@ func TestRecentSetupReviewWaitsForExplicitApply(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			m, b, pairs := recentFixture(t)
 			if route == "finder" {
-				m = findAction(t, m, "recent setups")
+				m = findAction(t, m, "recent loadouts")
 			} else {
-				m = openHomeItem(t, m, "Switch setup")
+				m = openHomeItem(t, m, "Switch loadout")
 				if route == "shortcut" {
 					m = send(m, key('r', "r"))
 				} else {
@@ -85,7 +85,7 @@ func TestRecentSetupReviewWaitsForExplicitApply(t *testing.T) {
 			}
 			assertRecentApply(t, b, pairs[1], 0)
 			view := ansi.Strip(m.View().Content)
-			for _, text := range []string{"Key environment", "Business profile", "south-business", "south", "Enter use"} {
+			for _, text := range []string{"Key environment", "Profile", "south-business", "south", "Enter use"} {
 				if !strings.Contains(view, text) {
 					t.Fatalf("review omitted %q: %s", text, view)
 				}
@@ -109,7 +109,7 @@ func TestRecentSetupCancelPreservesActivePairHistoryAndUnappliedDraft(t *testing
 	for _, leaveList := range []string{"escape", "back"} {
 		t.Run(leaveList, func(t *testing.T) {
 			m, b, pairs := recentFixture(t)
-			m = openHomeItem(t, m, "Switch setup")
+			m = openHomeItem(t, m, "Switch loadout")
 			m = enter(m)
 			m.selected = 1
 			m = enter(m)
@@ -129,11 +129,11 @@ func TestRecentSetupCancelPreservesActivePairHistoryAndUnappliedDraft(t *testing
 				m = escape(m)
 			}
 			if m.page != "active" || !m.draftOpen || m.draftEnvironment != "acme-test" || m.draftContext != "north-business" {
-				t.Fatal("canceling recent setups changed the existing manual draft")
+				t.Fatal("canceling recent loadouts changed the existing manual draft")
 			}
 			m = escape(m)
 			if m.page != "home" || m.draftOpen {
-				t.Fatal("leaving Switch setup retained a stale draft")
+				t.Fatal("leaving Switch loadout retained a stale draft")
 			}
 			assertRecentApply(t, b, pairs[0], 0)
 			if b.base.state["environment"] != "north" || b.base.state["context"] != "north-business" || !reflect.DeepEqual(b.base.state["recent_setups"], pairs) {
@@ -145,7 +145,7 @@ func TestRecentSetupCancelPreservesActivePairHistoryAndUnappliedDraft(t *testing
 
 func TestRecentMRUReorderDoesNotApplyOldIndexOrStaleManualDraft(t *testing.T) {
 	m, b, pairs := recentFixture(t)
-	m = openHomeItem(t, m, "Switch setup")
+	m = openHomeItem(t, m, "Switch loadout")
 	m = enter(m)
 	m.selected = 1
 	m = enter(m)
@@ -162,18 +162,18 @@ func TestRecentMRUReorderDoesNotApplyOldIndexOrStaleManualDraft(t *testing.T) {
 	assertRecentApply(t, b, pairs[1], 2)
 	m = escape(m)
 	if m.page != "active" || m.draftEnvironment != "south" || m.draftContext != "south-business" {
-		t.Fatal("returning to Switch setup restored a stale manual draft")
+		t.Fatal("returning to Switch loadout restored a stale manual draft")
 	}
 	m = escape(m)
 	if m.draftOpen {
-		t.Fatal("finished Switch setup retained a draft")
+		t.Fatal("finished Switch loadout retained a draft")
 	}
 }
 
 func TestRecentApplyFailureKeepsReviewedPairAndPreviousSelection(t *testing.T) {
 	m, b, pairs := recentFixture(t)
 	b.applyError = errors.New("Selected environment is no longer saved.")
-	m = findAction(t, m, "recent setups")
+	m = findAction(t, m, "recent loadouts")
 	m = enter(enter(m))
 	assertRecentApply(t, b, pairs[1], 1)
 	if m.page != "recent_details" || m.state.Environment != pairs[0].Environment || m.state.Context != pairs[0].Context || m.error == "" {
@@ -195,7 +195,7 @@ func TestRecentApplyDistinguishesAutomaticFromBusinessNamedDefault(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			m = findAction(t, m, "recent setups")
+			m = findAction(t, m, "recent loadouts")
 			m = enter(m)
 			view := ansi.Strip(m.View().Content)
 			if strings.Contains(view, "Automatic") != (context == "") {
@@ -213,14 +213,14 @@ func TestRecentApplyDistinguishesAutomaticFromBusinessNamedDefault(t *testing.T)
 func TestRecentHistoryWriteWarningDoesNotHideSuccessfulApply(t *testing.T) {
 	m, b, pairs := recentFixture(t)
 	b.afterApply = pairs // History write failed; active save still succeeded.
-	b.historyError = "Active setup saved, but recent setups were not updated. Check ui.json."
-	m = findAction(t, m, "recent setups")
+	b.historyError = "Active loadout saved, but recent loadouts were not updated. Check ui.json."
+	m = findAction(t, m, "recent loadouts")
 	m = enter(enter(m))
 	assertRecentApply(t, b, pairs[1], 1)
 	if m.state.Environment != "south" || m.state.Context != "south-business" || m.page != "recent_setups" || m.selected != 1 {
 		t.Fatal("history warning hid the applied pair or focused a different row")
 	}
-	if !strings.Contains(m.notice, "Using south") || !strings.Contains(ansi.Strip(m.View().Content), "recent setups were not updated") {
+	if !strings.Contains(m.notice, "Using south") || !strings.Contains(ansi.Strip(m.View().Content), "recent loadouts were not updated") {
 		t.Fatal("success and separate history warning are not both visible")
 	}
 }
