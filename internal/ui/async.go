@@ -52,11 +52,20 @@ func (m model) workLabel(message tea.Msg) string {
 			return "Opening Godmode"
 		}
 	case "home":
-		if m.selected == 1 {
-			return "Reading agent instructions"
-		}
-		if m.selected == 5 {
-			return "Opening help"
+		item, ok := m.homeSelection()
+		if ok {
+			switch item.kind {
+			case "agents":
+				return "Reading agent instructions"
+			case "faq":
+				return "Opening help"
+			case "custom":
+				return "Opening key"
+			case "provider":
+				if len(m.state.Providers[item.index].Key) == 1 {
+					return "Opening provider"
+				}
+			}
 		}
 	case "recent_details":
 		return "Saving active loadout"

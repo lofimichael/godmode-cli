@@ -213,8 +213,8 @@ class UIBridge:
                       'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
-                      'fields': [dict(name=name, label=label, description=description, group=group)
-                                 for name, (label, description, group) in a['PROFILE_FORM'].items()],
+                      'fields': [dict(name=name, label=label, description=description, group=group, example=example)
+                                 for name, (label, description, group, example) in a['PROFILE_FORM'].items()],
                       'intro_seen': a['intro_seen'](self.home), 'store_exists': self.store.exists(),
                       'profile_blurb': a['PROFILE_BLURB'], 'providers_blurb': a['PROVIDERS_BLURB'],
                       'source_url': a['SOURCE_URL'], 'issue_url': a['ISSUE_URL'],
@@ -263,7 +263,7 @@ class UIBridge:
                         benefit=prompt.benefit, access=prompt.access, guide=prompt.guide_command,
                         visit=prompt.key.get('visit', prompt.title), page=prompt.page,
                         steps=prompt.key.get('steps', []), note=prompt.key.get('note', ''),
-                        prompt=a['prompt_label'](prompt.key), path=prompt.path,
+                        prompt=a['prompt_label'](prompt.key), example=prompt.key['example'], path=prompt.path,
                         sealed=prompt.sealed, saved=prompt.saved, lines=prompt.plan['lines'])
         if action in ('key_check', 'key_save'):
             record = self.keys.get(self._text(request, 'id'))

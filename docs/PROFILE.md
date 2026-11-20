@@ -1,6 +1,6 @@
 # Profile
 
-Your profile holds names and contact details your agent can reuse on a website, an invoice or a signed email. Open **Profile** or run `godmode profile`. Check the selected key environment and profile before editing details for a client.
+Your profile holds names and contact details your agent can reuse on a website, an invoice or a signed email. Select a field under **Profile** on the dashboard or run `godmode profile`. Check the selected key environment and profile before editing details for a client.
 
 | Group | Field | What your agent can use it for |
 | --- | --- | --- |

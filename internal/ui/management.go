@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var homeNames = []string{"Provider keys", "Connect agent", "Profile", "Switch loadout", "Settings", "Help", "Exit"}
 var settingsNames = []string{"Motion", "Check local files", "Update Godmode", "Replay intro", "Back"}
 
 type setupPair struct{ Environment, Context string }
@@ -81,12 +80,36 @@ func (m model) command(action ...string) string {
 	return clean(strings.Join(words, " "))
 }
 
+// An unnamed profile follows its environment. The editor shows the resolved
+// identity, while the switcher retains "Automatic" as an explicit choice.
+func (m model) profileScope() string {
+	if m.state.Context != "" {
+		return clean(m.state.Context)
+	}
+	return scopeName(m.state.Environment)
+}
+
+func (m model) profileBrand() string {
+	return clean(strings.Join(strings.Fields(m.state.Profile["business_name"]), " "))
+}
+
+func (m model) profileIdentity() string {
+	brand, scope := m.profileBrand(), m.profileScope()
+	if brand == "" || brand == scope {
+		return scope
+	}
+	if m.state.Context == "" {
+		return brand
+	}
+	return scope + " · " + brand
+}
+
 func (m model) scopeLines() []string {
 	p := m.palette()
-	profile := p.muted.Render("Profile: ") + p.cyan.Render(businessName(m.state.Context))
+	profile := p.muted.Render("Profile: ") + p.cyan.Render(m.profileIdentity())
 	keys := p.muted.Render("Keys: ") + p.title.Render(scopeName(m.state.Environment))
 	if m.innerWidth() < 52 {
-		profile = p.muted.Render("Profile ") + p.cyan.Render(businessName(m.state.Context))
+		profile = p.muted.Render("Profile ") + p.cyan.Render(m.profileIdentity())
 		keys = p.muted.Render("Keys ") + p.title.Render(scopeName(m.state.Environment))
 	}
 	var rows []string

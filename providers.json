@@ -8,6 +8,7 @@
     "key": [
       {
         "name": "GH_TOKEN",
+        "example": "github_pat_<token>",
         "label": "Access token",
         "goal": "Create a GitHub token",
         "steps": [
@@ -51,6 +52,7 @@
     "key": [
       {
         "name": "CLOUDFLARE_API_TOKEN",
+        "example": "cfut_<token>",
         "label": "API token",
         "goal": "Create a Cloudflare API token",
         "steps": [
@@ -109,6 +111,7 @@
     "key": [
       {
         "name": "VERCEL_TOKEN",
+        "example": "vcp_<token>",
         "label": "Access token",
         "goal": "Create a Vercel token",
         "steps": [
@@ -146,6 +149,7 @@
     "key": [
       {
         "name": "SUPABASE_ACCESS_TOKEN",
+        "example": "sbp_fc<token>",
         "label": "Access token",
         "goal": "Create a Supabase access token",
         "steps": [
@@ -188,6 +192,7 @@
     "key": [
       {
         "name": "STRIPE_TEST_SECRET_KEY",
+        "example": "sk_test_<key>",
         "label": "Test secret key",
         "goal": "Copy your Stripe test secret key",
         "note": "Use the account picker to select the sandbox you want to test.",
@@ -200,6 +205,7 @@
       },
       {
         "name": "STRIPE_TEST_PUBLISHABLE_KEY",
+        "example": "pk_test_<key>",
         "label": "Test publishable key",
         "goal": "Copy your Stripe test publishable key",
         "steps": [
@@ -210,6 +216,7 @@
       },
       {
         "name": "STRIPE_LIVE_SECRET_KEY",
+        "example": "sk_live_<key>",
         "label": "Live secret key",
         "goal": "Create a Stripe live secret key",
         "console": "https://dashboard.stripe.com/apikeys",
@@ -223,6 +230,7 @@
       },
       {
         "name": "STRIPE_LIVE_PUBLISHABLE_KEY",
+        "example": "pk_live_<key>",
         "label": "Live publishable key",
         "goal": "Copy your Stripe live publishable key",
         "console": "https://dashboard.stripe.com/apikeys",
@@ -273,6 +281,7 @@
     "key": [
       {
         "name": "POSTHOG_PERSONAL_API_KEY",
+        "example": "phx_<key>",
         "label": "Personal API key",
         "goal": "Create a PostHog API key",
         "steps": [
@@ -323,6 +332,7 @@
     "key": [
       {
         "name": "NOTION_API_KEY",
+        "example": "ntn_<token>",
         "label": "Access token",
         "goal": "Create a Notion access token",
         "prompt": "Paste your token",
@@ -370,6 +380,7 @@
     "key": [
       {
         "name": "GMAIL_USER",
+        "example": "studio@harbor.example",
         "label": "Mailbox address",
         "goal": "Type the Gmail address agents will use",
         "console": null,
@@ -382,6 +393,7 @@
       },
       {
         "name": "GMAIL_APP_PASSWORD",
+        "example": "abcd efgh ijkl mnop",
         "label": "App password",
         "goal": "Create a Gmail app password",
         "drop": "  ",
@@ -420,6 +432,7 @@
     "key": [
       {
         "name": "GOOGLE_ADS_SERVICE_ACCOUNT_JSON",
+        "example": "~/Downloads/<ads-key>.json",
         "label": "Ads service account",
         "goal": "Save a Google Ads service account key",
         "prompt": "Drag or paste the key file",
@@ -436,6 +449,7 @@
       },
       {
         "name": "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
+        "example": "~/Downloads/<search-key>.json",
         "label": "Search Console account",
         "goal": "Save a Search Console service account key",
         "prompt": "Drag or paste the key file",
@@ -520,6 +534,7 @@
     "key": [
       {
         "name": "HIGGSFIELD_API_KEY_ID",
+        "example": "<key-id>:<key-secret>",
         "label": "API key ID",
         "goal": "Create a Higgsfield API key",
         "split": [
@@ -536,6 +551,7 @@
       },
       {
         "name": "HIGGSFIELD_API_KEY_SECRET",
+        "example": "<key-id>:<key-secret>",
         "label": "API key secret",
         "goal": "Paste the same Higgsfield API key again",
         "console": null,
@@ -586,6 +602,7 @@
     "key": [
       {
         "name": "ZERNIO_API_KEY",
+        "example": "sk_<key>",
         "label": "API key",
         "goal": "Create a Zernio API key",
         "steps": [
@@ -628,6 +645,7 @@
     "key": [
       {
         "name": "PRODIGI_SANDBOX_API_KEY",
+        "example": "<sandbox-dashboard-key>",
         "label": "Sandbox API key",
         "goal": "Copy your Prodigi sandbox API key",
         "console": "https://sandbox-beta-dashboard.pwinty.com/settings/api",
@@ -641,6 +659,7 @@
       },
       {
         "name": "PRODIGI_API_KEY",
+        "example": "<live-dashboard-key>",
         "label": "Live API key",
         "goal": "Copy your Prodigi live API key",
         "note": "Submitted live orders can be printed, shipped and billed.",

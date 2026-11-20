@@ -17,20 +17,13 @@ func typeText(m model, text string) model {
 }
 
 func TestNavigationOrderKeepsTaskActionsBeforeSettings(t *testing.T) {
-	wantHome := []string{"Provider keys", "Connect agent", "Profile", "Switch loadout", "Settings", "Help", "Exit"}
 	wantSettings := []string{"Motion", "Check local files", "Update Godmode", "Replay intro", "Back"}
-	if !reflect.DeepEqual(homeNames, wantHome) || !reflect.DeepEqual(settingsNames, wantSettings) {
-		t.Fatal("home or Settings task order changed")
-	}
 	m := create(t, fake(), "home", "")
-	if m.selected != 0 {
-		t.Fatal("empty setup does not start at provider keys")
+	if !reflect.DeepEqual(settingsNames, wantSettings) || m.choiceNames()[0] != "Example" {
+		t.Fatal("Home must start with the provider inventory")
 	}
-	f := fake()
-	f.state["key_count"] = 1
-	m = create(t, f, "home", "")
-	if m.selected != 1 {
-		t.Fatal("saved key does not guide the next step to Connect agent")
+	if homeItemIndex(t, m, "Agent instructions") > homeItemIndex(t, m, "Settings") {
+		t.Fatal("Agent instructions should precede settings")
 	}
 }
 
@@ -112,7 +105,7 @@ func TestCancelStagedSetupLeavesSavedSelectionAndDirectSelectionWorking(t *testi
 				}
 				return
 			}
-			if m.page != "home" || m.selected != 3 || m.draftOpen {
+			if m.page != "home" || m.selected != homeItemIndex(t, m, "Switch loadout") || m.draftOpen {
 				t.Fatal("cancel lost the actual parent or retained a live draft")
 			}
 			m = findAction(t, m, "key environments")
@@ -252,17 +245,16 @@ func TestTextShortcutsStayTextInSearchAndInput(t *testing.T) {
 			m := create(t, f, "home", "")
 			switch page {
 			case "providers":
-				m = openHomeItem(t, m, "Provider keys")
+				m = create(t, f, "loadout", "")
 				m = send(m, key('/', "/"))
 			case "actions":
 				m = send(m, tea.KeyPressMsg(tea.Key{Code: 'k', Mod: tea.ModCtrl}))
 			case "key":
 				m = create(t, f, "set", "EXAMPLE_TOKEN")
 			case "profile_field":
-				m = openHomeItem(t, m, "Profile")
-				m = enter(m)
+				m = openHomeItem(t, m, "Name")
 			case "name":
-				m = openHomeItem(t, m, "Provider keys")
+				m = create(t, f, "loadout", "")
 				m.selected = len(m.providerMatches())
 				m = enter(m)
 			case "scope_name":
@@ -396,7 +388,7 @@ func TestCopyingTaskNoteDoesNotUnlockAgentAppend(t *testing.T) {
 	m := create(t, f, "agents", "")
 	m = enter(m)
 	if m.page != "agent_copy" {
-		t.Fatal("first Connect agent choice did not open the copy note")
+		t.Fatal("first Agent instructions choice did not open the copy note")
 	}
 	m = send(m, key(tea.KeyEnd, ""))
 	m = enter(m)
@@ -415,7 +407,7 @@ func TestCopyingTaskNoteDoesNotUnlockAgentAppend(t *testing.T) {
 	}
 	m = escape(m)
 	if m.page != "agent_home" || m.selected != 1 {
-		t.Fatal("agent chooser lost the Connect agent choice")
+		t.Fatal("agent chooser lost the Agent instructions choice")
 	}
 }
 
@@ -649,7 +641,7 @@ func TestAgentReturnReloadsScopeAndRetainsOnlyTheChosenTarget(t *testing.T) {
 			}
 			if change == "target-removed" || change == "all" || change == "read-failure" {
 				if m.page != "agent_home" || m.agentOnly != "" {
-					t.Fatal("invalid old review did not fall back to Connect agent")
+					t.Fatal("invalid old review did not fall back to Agent instructions")
 				}
 				if change == "read-failure" && (m.agents.ID != "" || !strings.Contains(m.error, "synthetic plan read failed")) {
 					t.Fatal("failed read retained stale agent instructions or hid the failure")
@@ -747,7 +739,7 @@ func TestNestedAgentFinderRestoresExactTargetAndChooserFocus(t *testing.T) {
 			if origin == "agents" {
 				m = enter(m)
 			}
-			m = findAction(t, m, "connect agent")
+			m = findAction(t, m, "agent instructions")
 			m = openAgentDiff(t, m)
 			if m.agentOnly != "~/.first/AGENTS.md" {
 				t.Fatal("detour did not choose a different target")
@@ -765,7 +757,7 @@ func TestNestedAgentFinderRestoresExactTargetAndChooserFocus(t *testing.T) {
 				m = enter(m)
 			}
 			if m.agentOnly != "~/.second/AGENTS.md" || len(m.reviewTargets()) != 1 || m.reviewTargets()[0].Path != "~/.second/AGENTS.md" {
-				t.Fatal("nested Connect agent changed or broadened the original target")
+				t.Fatal("nested Agent instructions changed or broadened the original target")
 			}
 		})
 	}

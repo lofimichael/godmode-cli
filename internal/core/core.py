@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Godmode 0.21.0: readable source, no bundled interpreter or dependencies.
+# Godmode 0.22.0: readable source, no bundled interpreter or dependencies.
 import sys
 if sys.version_info < (3, 9):
     sys.exit("Godmode needs Python 3.9 or newer. No files changed.")
@@ -1110,8 +1110,8 @@ def environment_show(home, name="default"):
             "profile_count": len(fields)}
 
 
-def environment_list(home):
-    """List complete files in this home; default is shown even before first setup."""
+def environment_names(home):
+    """List key files without needing to open every environment or profile."""
     base = Store(home).config_dir
     _store_directories(base)
     names = ["default"]
@@ -1126,7 +1126,11 @@ def environment_list(home):
                 continue
             if name != "default":
                 names.append(name)
-    return [environment_show(home, name) for name in names]
+    return names
+
+
+def environment_list(home):
+    return [environment_show(home, name) for name in environment_names(home)]
 
 
 def environment_create(home, name, copy_from=None):
@@ -2153,7 +2157,8 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
               searchable=False, header_required=False, row_spacing=0):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 
-    items are (name, status, about) rows; None leaves a gap that cannot be chosen.
+    items are (name, status, about) rows. A string is a section heading and
+    None leaves a gap. Neither takes focus or a number.
     A status is text or (text, role) and shows on every row in one column. The
     description shows on the row the pointer is on, or faintly on every row with
     abouts. Typing letters jumps to the first name that starts with them, and the same
@@ -2163,11 +2168,11 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
     until it fits; optional headers may collapse. Plain mode prints every row and
     accepts a number. Visual menus erase their own region when they end.
     """
-    choices = [index for index, item in enumerate(items) if item]
+    choices = [index for index, item in enumerate(items) if item and not isinstance(item, str)]
     if not choices:
         raise ValueError("This menu has no choices.")
     if plain_enabled():
-        return _plain_menu(items, start, title, header)
+        return _plain_menu(items, start, title, header, hint)
     at = start if start in choices else choices[0]
     typed, drawn = "", []
     filtering, query, blocked, details, detail_offset = False, "", False, False, 0
@@ -2250,6 +2255,8 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
                 rows.append(more)  # The list is taller than the window and continues.
             elif not items[index]:
                 rows.append("")
+            elif isinstance(items[index], str):
+                rows.append("  " + style(short(items[index], available), "accent"))
             else:
                 name, about = items[index][0], items[index][2]
                 mark, role = status(items[index])
@@ -2350,21 +2357,32 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
             _draw([], drawn)
 
 
-def _plain_menu(items, start, title, header):
-    choices = [i for i, item in enumerate(items) if item]
+def _plain_menu(items, start, title, header, hint):
     rows = list(header(plain_columns())) if header else []
     if title:
         rows += [title]
-    for number, index in enumerate(choices, 1):
-        name, mark, about = items[index]
+    choices = []
+    sectioned = any(isinstance(item, str) for item in items)
+    for index, item in enumerate(items):
+        if isinstance(item, str):
+            rows.append(item)
+            continue
+        if not item:
+            continue
+        choices.append(index)
+        name, mark, about = item
         mark = mark if isinstance(mark, str) else mark[0]
-        rows.append("%d. %s%s" % (number, name, ": " + TERM_STYLE.sub("", mark) if mark else ""))
+        rows.append("%d. %s%s" % (len(choices), name, ": " + TERM_STYLE.sub("", mark) if mark else ""))
         if about:
-            rows.append("   " + about)
+            if sectioned:
+                rows[-1] += " | " + about
+            else:
+                rows.append("   " + about)
     default = choices.index(start) + 1 if start in choices else 1
+    escape = hint.partition("Esc ")[2] or "back"
     with _Keyboard() as keyboard:
         _plain_rows(rows)
-        answer = _plain_choice("Number, then Enter (%d). Esc back." % default,
+        answer = _plain_choice("Number, then Enter (%d). Esc %s." % (default, escape),
                                [""] + [str(i) for i in range(1, len(choices) + 1)], keyboard)
     return choices[int(answer or default) - 1]
 
@@ -2645,8 +2663,8 @@ class UIBridge:
                       'shell_override': 'GODMODE_ENV' in os.environ or 'GODMODE_CONTEXT' in os.environ,
                       'profile_path': str(self.profile.path),
                       'env_path': str(self.store.env_path), 'providers': a['catalog'](),
-                      'fields': [dict(name=name, label=label, description=description, group=group)
-                                 for name, (label, description, group) in a['PROFILE_FORM'].items()],
+                      'fields': [dict(name=name, label=label, description=description, group=group, example=example)
+                                 for name, (label, description, group, example) in a['PROFILE_FORM'].items()],
                       'intro_seen': a['intro_seen'](self.home), 'store_exists': self.store.exists(),
                       'profile_blurb': a['PROFILE_BLURB'], 'providers_blurb': a['PROVIDERS_BLURB'],
                       'source_url': a['SOURCE_URL'], 'issue_url': a['ISSUE_URL'],
@@ -2695,7 +2713,7 @@ class UIBridge:
                         benefit=prompt.benefit, access=prompt.access, guide=prompt.guide_command,
                         visit=prompt.key.get('visit', prompt.title), page=prompt.page,
                         steps=prompt.key.get('steps', []), note=prompt.key.get('note', ''),
-                        prompt=a['prompt_label'](prompt.key), path=prompt.path,
+                        prompt=a['prompt_label'](prompt.key), example=prompt.key['example'], path=prompt.path,
                         sealed=prompt.sealed, saved=prompt.saved, lines=prompt.plan['lines'])
         if action in ('key_check', 'key_save'):
             record = self.keys.get(self._text(request, 'id'))
@@ -2865,7 +2883,7 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 
-VERSION = '0.21.0'
+VERSION = '0.22.0'
 ACTIVE_CONTEXT = None
 ACTIVE_ENVIRONMENT = 'default'
 ACTIVE_SOURCES = {'environment': 'default', 'context': 'default'}
@@ -2880,6 +2898,7 @@ PROVIDERS = [{'id': 'github',
              'Actions on the repositories you select.',
   'console': 'https://github.com/settings/personal-access-tokens/new?name=godmode&expires_in=366&administration=write&contents=write&workflows=write&actions=write&secrets=write&actions_variables=write&environments=write&issues=write&pull_requests=write',
   'key': [{'name': 'GH_TOKEN',
+           'example': 'github_pat_<token>',
            'label': 'Access token',
            'goal': 'Create a GitHub token',
            'steps': ['Choose the **Resource owner** and repositories.',
@@ -2910,6 +2929,7 @@ PROVIDERS = [{'id': 'github',
              'Worker in your account or update DNS for a domain you select.',
   'console': 'https://dash.cloudflare.com/profile/api-tokens',
   'key': [{'name': 'CLOUDFLARE_API_TOKEN',
+           'example': 'cfut_<token>',
            'label': 'API token',
            'goal': 'Create a Cloudflare API token',
            'steps': ['Select **Create Token**. Choose **Edit Zone DNS** or **Edit Cloudflare '
@@ -2952,6 +2972,7 @@ PROVIDERS = [{'id': 'github',
              'domain to your project.',
   'console': 'https://vercel.com/account/settings/tokens',
   'key': [{'name': 'VERCEL_TOKEN',
+           'example': 'vcp_<token>',
            'label': 'Access token',
            'goal': 'Create a Vercel token',
            'steps': ['Make a token for your project, team or **Full Account**.',
@@ -2978,6 +2999,7 @@ PROVIDERS = [{'id': 'github',
              'settings or deploy Edge Functions with the permissions you grant.',
   'console': 'https://supabase.com/dashboard/account/tokens',
   'key': [{'name': 'SUPABASE_ACCESS_TOKEN',
+           'example': 'sbp_fc<token>',
            'label': 'Access token',
            'goal': 'Create a Supabase access token',
            'steps': ['Select **Generate new token** and name it.',
@@ -3006,6 +3028,7 @@ PROVIDERS = [{'id': 'github',
              'flow in a sandbox or work with real payments in live mode.',
   'console': 'https://dashboard.stripe.com/test/apikeys',
   'key': [{'name': 'STRIPE_TEST_SECRET_KEY',
+           'example': 'sk_test_<key>',
            'label': 'Test secret key',
            'goal': 'Copy your Stripe test secret key',
            'note': 'Use the account picker to select the sandbox you want to test.',
@@ -3014,12 +3037,14 @@ PROVIDERS = [{'id': 'github',
            'kind': 'static-key',
            'visit': 'Visit Stripe’s test keys'},
           {'name': 'STRIPE_TEST_PUBLISHABLE_KEY',
+           'example': 'pk_test_<key>',
            'label': 'Test publishable key',
            'goal': 'Copy your Stripe test publishable key',
            'steps': ['In the same sandbox, copy the **Publishable key** starting with pk_test_.'],
            'kind': 'public-key',
            'visit': 'Visit Stripe’s test keys'},
           {'name': 'STRIPE_LIVE_SECRET_KEY',
+           'example': 'sk_live_<key>',
            'label': 'Live secret key',
            'goal': 'Create a Stripe live secret key',
            'console': 'https://dashboard.stripe.com/apikeys',
@@ -3029,6 +3054,7 @@ PROVIDERS = [{'id': 'github',
            'visit': 'Visit Stripe’s live keys',
            'note': 'Requests with this secret can move real money.'},
           {'name': 'STRIPE_LIVE_PUBLISHABLE_KEY',
+           'example': 'pk_live_<key>',
            'label': 'Live publishable key',
            'goal': 'Copy your Stripe live publishable key',
            'console': 'https://dashboard.stripe.com/apikeys',
@@ -3060,6 +3086,7 @@ PROVIDERS = [{'id': 'github',
              'manage feature flags within its scopes.',
   'console': 'https://app.posthog.com/settings/user-api-keys?preset=mcp_server',
   'key': [{'name': 'POSTHOG_PERSONAL_API_KEY',
+           'example': 'phx_<key>',
            'label': 'Personal API key',
            'goal': 'Create a PostHog API key',
            'steps': ['Sign in to your project’s region and open **Personal API keys**.',
@@ -3089,6 +3116,7 @@ PROVIDERS = [{'id': 'github',
              'entries in a workspace you choose.',
   'console': 'https://app.notion.com/developers/tokens',
   'key': [{'name': 'NOTION_API_KEY',
+           'example': 'ntn_<token>',
            'label': 'Access token',
            'goal': 'Create a Notion access token',
            'prompt': 'Paste your token',
@@ -3121,6 +3149,7 @@ PROVIDERS = [{'id': 'github',
              'send mail over SMTP.',
   'console': 'https://myaccount.google.com/apppasswords',
   'key': [{'name': 'GMAIL_USER',
+           'example': 'studio@harbor.example',
            'label': 'Mailbox address',
            'goal': 'Type the Gmail address agents will use',
            'console': None,
@@ -3129,6 +3158,7 @@ PROVIDERS = [{'id': 'github',
            'steps': ['Enter the full address of the mailbox your agent will use.'],
            'kind': 'address'},
           {'name': 'GMAIL_APP_PASSWORD',
+           'example': 'abcd efgh ijkl mnop',
            'label': 'App password',
            'goal': 'Create a Gmail app password',
            'drop': ' \xa0',
@@ -3156,6 +3186,7 @@ PROVIDERS = [{'id': 'github',
              'searches bring visitors to a Search Console property.',
   'console': 'https://console.cloud.google.com/projectselector/iam-admin/serviceaccounts',
   'key': [{'name': 'GOOGLE_ADS_SERVICE_ACCOUNT_JSON',
+           'example': '~/Downloads/<ads-key>.json',
            'label': 'Ads service account',
            'goal': 'Save a Google Ads service account key',
            'prompt': 'Drag or paste the key file',
@@ -3169,6 +3200,7 @@ PROVIDERS = [{'id': 'github',
            'kind': 'service-account-json',
            'visit': "Visit Google's service accounts"},
           {'name': 'GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON',
+           'example': '~/Downloads/<search-key>.json',
            'label': 'Search Console account',
            'goal': 'Save a Search Console service account key',
            'prompt': 'Drag or paste the key file',
@@ -3227,6 +3259,7 @@ PROVIDERS = [{'id': 'github',
              'available to your account.',
   'console': 'https://open.higgsfield.ai/api-keys',
   'key': [{'name': 'HIGGSFIELD_API_KEY_ID',
+           'example': '<key-id>:<key-secret>',
            'label': 'API key ID',
            'goal': 'Create a Higgsfield API key',
            'split': [':', 0],
@@ -3236,6 +3269,7 @@ PROVIDERS = [{'id': 'github',
            'kind': 'static-key',
            'visit': "Visit Higgsfield's API keys"},
           {'name': 'HIGGSFIELD_API_KEY_SECRET',
+           'example': '<key-id>:<key-secret>',
            'label': 'API key secret',
            'goal': 'Paste the same Higgsfield API key again',
            'console': None,
@@ -3267,6 +3301,7 @@ PROVIDERS = [{'id': 'github',
              'accounts you connect.',
   'console': 'https://zernio.com/dashboard/api-keys',
   'key': [{'name': 'ZERNIO_API_KEY',
+           'example': 'sk_<key>',
            'label': 'API key',
            'goal': 'Create a Zernio API key',
            'steps': ['Select **Create API key** and name it.',
@@ -3293,6 +3328,7 @@ PROVIDERS = [{'id': 'github',
              'live orders for printing and shipping.',
   'console': 'https://dashboard.prodigi.com/settings/api',
   'key': [{'name': 'PRODIGI_SANDBOX_API_KEY',
+           'example': '<sandbox-dashboard-key>',
            'label': 'Sandbox API key',
            'goal': 'Copy your Prodigi sandbox API key',
            'console': 'https://sandbox-beta-dashboard.pwinty.com/settings/api',
@@ -3303,6 +3339,7 @@ PROVIDERS = [{'id': 'github',
            'kind': 'static-key',
            'visit': "Visit Prodigi's API settings"},
           {'name': 'PRODIGI_API_KEY',
+           'example': '<live-dashboard-key>',
            'label': 'Live API key',
            'goal': 'Copy your Prodigi live API key',
            'note': 'Submitted live orders can be printed, shipped and billed.',
@@ -3618,6 +3655,8 @@ class KeyPrompt(Prompt):
 
     def check(self, value):
         """Return (the value as it would be saved, or None; why it cannot be saved yet)."""
+        if self.key.get('example') and value.strip() == self.key['example']:
+            return None, 'use your own value in place of the example.'
         entered, value = value.rstrip('\r\n'), self.tidy(value)
         if not value.rstrip('\r\n'):
             # Nothing, or only a pasted line break; or text that this key's paste rule emptied.
@@ -3802,7 +3841,9 @@ class KeyPrompt(Prompt):
                     preview += fit_words(self.access, width)
         preview += [bar + style(row, role) for text, role in self.notes(clean, problem, reveal)
                     for row in fit_words(text, width - 2)]
-        preview += [''] + [style(row, 'dim') for row in fit_words(self.hint(value, problem), width)]
+        example = self.key.get('example') if not value else None
+        preview += [style(row, 'dim') for row in fit_words('Example: ' + example, width)] if example else ['']
+        preview += [style(row, 'dim') for row in fit_words(self.hint(value, problem), width)]
         heading = [style(row, 'title') for row in fit_words(self.title, width)] + ['']
         guide = self.guide(width) if clean is None or self.details else heading
         # Keep the pending edit and any refusal visible before saving.
@@ -3858,7 +3899,9 @@ def named(name):
                 return dict(key, console=key_page(provider, key), provider_name=provider['name'],
                             benefit=provider.get('benefit', ''), access=provider.get('access', ''),
                             provider_id=provider['id'])
-    return dict(name=name, file=True, prompt='Drag or paste the JSON file') if name.endswith('_JSON') else {'name': name}
+    if name.endswith('_JSON'):
+        return dict(name=name, file=True, prompt='Drag or paste the JSON file', example='~/Downloads/<key-file>.json')
+    return dict(name=name, example='<value from your provider>')
 
 
 def populate(store, key, provider=None, back=False):
@@ -3909,13 +3952,13 @@ def provider_mark(provider, states):
     return style('%d/%d keys' % (saved, total), 'warning') if saved else style(glyph('—', '-'), 'dim')
 
 
-def provider_setup(store, provider, back=True):
+def provider_setup(store, provider, back=True, guided=True):
     """One provider: its only key, or its keys. True when this visit made it ready."""
     keys = provider['key']
     if len(keys) == 1:
         return populate(store, keys[0], provider, back)
     saved = False
-    if not provider.get('ready') and provider_state(provider, store.states())[0] != 'ready':
+    if guided and not provider.get('ready') and provider_state(provider, store.states())[0] != 'ready':
         # Keys that only work together, like an address and its app password, come one after another.
         for key in keys:
             if store.states().get(key['name']) == 'set':
@@ -3965,12 +4008,13 @@ def plural(count, word):
 
 # Display order is independent of the field names used in profile.json.
 PROFILE_FORM = {
-    'business_name': ('Brand name', 'The name customers see on your site and in messages.', 'Public'),
-    'website': ('Website', 'The public URL your agent can link to.', 'Public'),
-    'public_email': ('Public email', 'The contact address customers can use.', 'Public'),
-    'legal_name': ('Legal name', 'Registered company name, or your name as a sole trader.', 'Legal'),
-    'business_mailing_address': ('Mailing address', 'Postal address for invoices and footers. Paste to keep line breaks.', 'Legal'),
-    'operator_name': ('Your name', 'The name your agent can use in a signature.', 'Sign-off'),
+    'business_name': ('Brand name', 'The name customers see on your site and in messages.', 'Public', 'Harbor Studio'),
+    'website': ('Website', 'The public URL your agent can link to.', 'Public', 'https://harbor.example'),
+    'public_email': ('Public email', 'The contact address customers can use.', 'Public', 'hello@harbor.example'),
+    'legal_name': ('Legal name', 'Registered company name, or your name as a sole trader.', 'Legal', 'Harbor Studio LLC'),
+    'business_mailing_address': ('Mailing address', 'Postal address for invoices and footers. Paste to keep line breaks.',
+                                 'Legal', '14 Example Lane, Harbor City'),
+    'operator_name': ('Your name', 'The name your agent can use in a signature.', 'Sign-off', 'Alex Rivera'),
 }
 
 
@@ -3985,9 +4029,9 @@ def business_profile(home=None):
             else environment_profile(home, ACTIVE_ENVIRONMENT))
 
 
-def effective_store(home=None):
+def effective_store(home=None, require_existing=True):
     store = Store(home, environment=ACTIVE_ENVIRONMENT)
-    if ACTIVE_ENVIRONMENT != 'default' and not store.exists():
+    if require_existing and ACTIVE_ENVIRONMENT != 'default' and not store.exists():
         raise ValueError('Environment is not saved. Create it with godmode env create ' + ACTIVE_ENVIRONMENT + '.')
     return ContextStore(store, ACTIVE_CONTEXT) if ACTIVE_CONTEXT is not None else store
 
@@ -4098,6 +4142,8 @@ class ProfilePrompt(Prompt):
         current = fit_words('Saved: ' + one_line(self.current), inner) if self.current else []
         if not plain_mode():
             current = current[:3]
+        if not self.current and not value:
+            current = [style(row, 'dim') for row in fit_words('Example: ' + PROFILE_FORM[self.field][3], inner)]
         hint = (self.hint(value) + ' · Esc back').replace(' · ', glyph(' · ', ' | '))
         footer = [''] + [style(row, 'dim') for row in fit_words(hint, inner)]
         entry = glyph('› ', '> ')
@@ -4145,7 +4191,7 @@ def edit_profile(profile, back=False):
             scope = ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else ACTIVE_ENVIRONMENT
             title = 'Profile' + glyph(' · ', ' | ') + scope + glyph(' · ', ' | ') + '%d/%d fields' % (count, len(fields))
             items = [(label, one_line(data[field]) if data.get(field) else glyph('—', '-'), group)
-                     for field, (label, _, group) in PROFILE_FORM.items()]
+                     for field, (label, _, group, _) in PROFILE_FORM.items()]
             items += [None, ('Back' if back else 'Done', '', '')]
             try:
                 at = read_menu(items, at, menu_hint('back' if back else 'done', 'edit'), title, bool(gap()),
@@ -4292,16 +4338,22 @@ def _agent_present(data):
     return any(marker in data for marker in (AGENT_START.encode(), AGENT_END.encode(), b'godmode help'))
 
 
-def has_agent_text(path):
+def has_agent_text(path, strict=False):
     """Whether an instruction file already mentions Godmode; never change existing notes."""
     try:
         _, data = _agent_contents(Path(os.path.realpath(path)))
         return _agent_present(data)
+    except FileNotFoundError:
+        if strict and Path(path).is_symlink():
+            raise
+        return False
     except (OSError, ValueError):
+        if strict:
+            raise
         return False
 
 
-def agent_targets():
+def agent_targets(strict=False):
     """Agents whose folder exists here, and the file each one reads. Detection only reads."""
     home = Path.home()
     codex = Path(os.environ.get('CODEX_HOME') or home / '.codex')
@@ -4317,7 +4369,7 @@ def agent_targets():
              ('Copilot CLI', copilot, copilot / 'copilot-instructions.md', None),
              ('OpenCode', home / '.config' / 'opencode', home / '.config' / 'opencode' / 'AGENTS.md', None))
     return [{'name': name, 'path': path,
-             'added': has_agent_text(path) or bool(also and has_agent_text(also))}
+             'added': has_agent_text(path, strict) or bool(also and has_agent_text(also, strict))}
             for name, folder, path, also in known if folder.is_dir()]
 
 
@@ -4429,8 +4481,8 @@ def agents_screen(home=None, back=True):
         items = []
         if pending:
             names = joined([target['name'] for target in pending]) if len(pending) <= 2 else '%d agents' % len(pending)
-            items.append(('Add to ' + names, '', ''))
-        items.append(('Copy task instructions' if copier else 'Print task instructions', '', ''))
+            items.append(('Add to agent files', names, ''))
+        items.append(('Copy instructions for chat' if copier else 'Print instructions for chat', '', ''))
         if not targets and not marker_seen(home, AGENT_MARKER):
             items.append(('I added it', '', ''))
         items += [None, ('Back' if back else 'Done', '', '')]
@@ -4438,7 +4490,7 @@ def agents_screen(home=None, back=True):
         spaced = bool(gap()) and screen_rows() > 24
 
         def header(width, targets=targets, pending=pending, items=items, spaced=spaced):
-            rows = [style('Agents', 'title')]
+            rows = [style('Agent instructions', 'title')]
             if pending:
                 count = sum(target['plan']['addition'].count(b'\n') for target in pending)
                 rows[0] += '  ' + style('+%d' % count, 'success') + ' ' + style('-0', 'error')
@@ -4475,7 +4527,7 @@ def agents_screen(home=None, back=True):
         choice = items[at][0]
         if choice in ('Back', 'Done'):
             return
-        if choice.startswith('Add to '):
+        if choice == 'Add to agent files':
             added = []
             for target in pending:
                 try:
@@ -4487,7 +4539,7 @@ def agents_screen(home=None, back=True):
             if added:
                 say('New agent sessions read the note.')
             return
-        if choice == 'Copy task instructions':
+        if choice == 'Copy instructions for chat':
             try:
                 subprocess.run(copier, input=copy_block.encode(), timeout=5, check=True,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -4495,7 +4547,7 @@ def agents_screen(home=None, back=True):
                 continue
             except (OSError, subprocess.SubprocessError):
                 say('Clipboard unavailable.', 'warning')
-        if choice in ('Copy task instructions', 'Print task instructions'):
+        if choice in ('Copy instructions for chat', 'Print instructions for chat'):
             line()
             for row in copy_block.splitlines():
                 line(row)
@@ -4683,34 +4735,39 @@ def intro(home=None, setup_next=False):
 METER_POINTS = 18  # Profile fields, one provider and one agent each fill one third.
 
 
-def progress(store, home=None):
+def progress(store, home=None, overview=False):
     """Local facts. Legacy numeric fields remain for protocol compatibility, never readiness proof."""
     state = {'errors': set()}
     try:
-        states = store.states() if store.exists() else {}
-        raw_store = store.store if isinstance(store, ContextStore) else store
-        raw_states = raw_store.states() if raw_store.exists() else {}
+        if store.environment != 'default' and not store.exists():
+            raise ValueError('Selected environment is no longer saved.')
+        states = store.states()
+        raw_states = store.store.states() if isinstance(store, ContextStore) else states
         state['key_count'] = sum(value == 'set' for value in raw_states.values())
-    except ValueError:
+    except (OSError, ValueError):
         states = {}
         state['key_count'] = 0
         state['errors'].add('providers')
     try:
         data = business_profile(home).read()
-    except ValueError:
+    except (OSError, ValueError):
         data = {}
         state['errors'].add('profile')
     known = set(known_names())
     kinds = {provider['id']: provider_state(provider, states)[0] for provider in catalog()}
     state['fields'] = [field for field in PROFILE_FIELDS if data.get(field)]
+    if overview:
+        state['profile'] = {field: data[field] for field in state['fields']}
+        state['states'] = states
     state['ready'] = [provider for provider in catalog() if kinds[provider['id']] == 'ready']
     state['started'] = [provider for provider in catalog() if kinds[provider['id']] == 'started']
     state['custom'] = sorted(name for name, kind in states.items() if kind == 'set' and name not in known)
     try:
-        state['agents'] = [target['name'] for target in agent_targets() if target['added']]
+        state['agents'] = [target['name'] for target in agent_targets(strict=True) if target['added']]
         state['by_hand'] = marker_seen(home, AGENT_MARKER)
     except (OSError, ValueError):
         state['agents'], state['by_hand'] = [], False
+        state['errors'].add('agents')
     state['providers'] = len(state['ready']) + len(state['custom'])
     state['agent'] = 1 if state['agents'] or state['by_hand'] else 0
     state['points'] = len(state['fields']) + 6 * min(state['providers'], 1) + 6 * state['agent']
@@ -4720,6 +4777,8 @@ def progress(store, home=None):
 
 def next_step(state):
     """A useful optional action; missing profile fields never imply incomplete setup."""
+    if state['errors']:
+        return 'godmode doctor'
     if state['started']:
         return 'godmode loadout ' + state['started'][0]['id']
     if not state['providers']:
@@ -4729,11 +4788,13 @@ def next_step(state):
 
 def summary(state):
     """Saved local facts, without a completion score or a claim of provider access."""
-    agents = len(state['agents']) or (1 if state['by_hand'] else 0)
-    text = ('Profile %d optional fields' + glyph(' · ', ' | ')
-            + '%s saved' + glyph(' · ', ' | ') + '%s added') % (
-                len(state['fields']),
-                plural(state['key_count'], 'key'), plural(agents, 'agent'))
+    notes = agent_file_status(state)
+    if 'agents' in state['errors'] or (state['by_hand'] and not state['agents']):
+        notes = 'Agent instructions ' + notes.lower()
+    text = glyph(' · ', ' | ').join([
+        'Profile unreadable' if 'profile' in state['errors'] else 'Profile %d optional fields' % len(state['fields']),
+        'Keys unreadable' if 'providers' in state['errors'] else plural(state['key_count'], 'key') + ' saved',
+        notes])
     for index, row in enumerate(textwrap.wrap(text, max(20, min(76, columns() - 4)))):
         say(row)
     step = next_step(state)
@@ -4741,62 +4802,105 @@ def summary(state):
         say(style(step, 'accent'))
 
 
-HOME_ROWS = (('Profile', 'godmode profile'),
-             ('Provider keys', 'godmode loadout'),
-             ('Connect agent', 'godmode agents'))
-HOME_DOCTOR, HOME_UPDATE, HOME_HELP, HOME_DONE = 5, 6, 7, 8
+def agent_file_status(state):
+    if 'agents' in state['errors']:
+        return 'Unreadable'
+    if state['agents']:
+        return plural(len(state['agents']), 'agent file')
+    return 'Marked by hand' if state['by_hand'] else '0 agent files'
 
 
 def home_items(state):
-    fields = len(state['fields'])
-    if 'profile' in state['errors']:
-        profile = style("can't read", 'warning')
-    else:
-        profile = '%d fields' % fields
-    started = len(state['started'])
-    if 'providers' in state['errors']:
-        providers = style("can't read", 'warning')
-    else:
-        providers = '%d keys saved' % state['key_count']
-    agent_count = len(state['agents']) or int(state['by_hand'])
-    agents = '%d notes added' % agent_count
-    abouts = [HOME_ROWS[0][1], ('%d partial; ' % started if started else '') + HOME_ROWS[1][1],
-              ', '.join(state['agents']) or ('added by hand' if state['by_hand'] else HOME_ROWS[2][1])]
-    return [(name, status, about if columns() >= 60 or plain_mode() else '')
-            for (name, _), status, about in zip(HOME_ROWS, (profile, providers, agents), abouts)]
-
-
-def home_start(state):
-    """A stable first row; returning from a section keeps the user's chosen row."""
-    return 0
-
-
-def home_header(state, home=None):
-    def rows(width):
-        title = style('Godmode', 'title')
-        scope = 'Environment ' + ACTIVE_ENVIRONMENT + glyph(' · ', ' | ') + 'Profile ' + (ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else 'automatic')
-        if width < 24 and not plain_mode():
-            return []
-        if plain_mode() or screen_rows() < 20 or width < 40:
-            return ['  ' + title] + ['  ' + row for row in fit_words(scope, max(8, width - 4))]
-        where = clipped(visible_fact(home_path(effective_store(home).env_path)), max(8, width - 4))
-        art = nfo_wordmark(max(1, width - 4), large=False) if glyph('art', '') else [style('Godmode', 'nfo')]
-        return ['  ' + row for row in art] + [''] + ['  ' + row for row in fit_words(scope, max(8, width - 4))] + ['  ' + style(where, 'dim')]
+    """Stable route IDs retain focus when adding a key changes the display order."""
+    states, errors = state['states'], state['errors']
+    providers = catalog()
+    dot = glyph(' · ', ' | ')
+    rows = {}
+    if not any((states, state['profile'], state['agents'], state['by_hand'], errors)):
+        rows['first-step'] = 'Save a key, then copy the chat note.'
+    rows['provider-heading'] = 'Providers' + dot + ('Unreadable' if 'providers' in errors else
+            '%d of %d saved locally' % (len(state['ready']), len(providers)))
+    ready_ids = {p['id'] for p in state['ready']}
+    started_ids = {p['id'] for p in state['started']}
+    for provider in sorted(providers, key=lambda p: (p['id'] not in ready_ids, p['id'] not in started_ids)):
+        slug = provider['id']
+        marks = [states.get(key['name']) for key in provider['key']]
+        if 'providers' in errors:
+            status = ('Unreadable', 'warning')
+        elif 'duplicate' in marks or 'malformed' in marks:
+            status = ('Needs repair', 'warning')
+        elif slug in ready_ids:
+            saved = 'Saved'
+            if slug == 'stripe':
+                modes = [mode for mode in ('test', 'live')
+                         if states.get('STRIPE_' + mode.upper() + '_SECRET_KEY') == 'set']
+                saved += ' (' + ' + '.join(modes) + ')'
+            status = (saved, 'success')
+        elif slug in started_ids:
+            status = ('%d/%d keys' % (marks.count('set'), len(marks)), 'warning')
+        else:
+            status = ('Add key', 'dim')
+        rows['provider:' + slug] = (provider['name'], status, provider['about'])
+    known = {key['name'] for provider in providers for key in provider['key']}
+    custom = sorted(name for name in states if name not in known)
+    if custom:
+        rows['custom-heading'] = 'Custom keys'
+    for name in custom:
+        mark = states[name]
+        if mark in ('duplicate', 'malformed'):
+            status = ('Needs repair', 'warning')
+        else:
+            status = ('Saved', 'success') if mark == 'set' else ('Add key', 'dim')
+        rows['custom:' + name] = (name, status, '')
+    rows['new-key'] = ('Add custom key', '', '')
+    unreadable = 'profile' in errors
+    rows['profile-heading'] = 'Profile' + dot + ('Unreadable' if unreadable else 'Optional details')
+    for field, (label, _, _, example) in PROFILE_FORM.items():
+        value = state['profile'].get(field)
+        status = clipped(one_line(value), 52) if value else ('Add detail', 'dim')
+        if unreadable:
+            status = ('Unreadable', 'warning')
+        about = 'Example: ' + one_line(example) if not value and not unreadable else ''
+        rows['profile:' + field] = (label, status, about)
+    rows['tools-heading'] = 'Actions'
+    rows['agents'] = ('Agent instructions', agent_file_status(state), ', '.join(state['agents']))
+    rows['switch'] = ('Switch loadout', '', '')
+    rows['request'] = ('Request a provider', '', '')
+    rows['doctor'] = ('Doctor', '', 'Local checks')
+    rows['update'] = ('Update', '', '')
+    rows['help'] = ('Help / FAQ', '', '')
+    rows['done'] = ('Done', '', '')
     return rows
 
 
+def home_title(state):
+    profile = ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else ACTIVE_ENVIRONMENT
+    scope = 'Keys ' + ACTIVE_ENVIRONMENT + glyph(' · ', ' | ') + 'Profile ' + profile
+    brand = one_line(state['profile'].get('business_name', ''))
+    if brand:
+        scope += glyph(' · ', ' | ') + clipped(brand[:72], 48)
+    return 'Godmode Loadout' + glyph(' · ', ' | ') + scope
+
+
 def environments_screen(home, selected):
-    rows = environment_list(home)
-    items = [(row['name'], plural(row['key_count'], 'saved key'), '') for row in rows]
+    names = environment_names(home)
+    items = []
+    for name in names:
+        try:
+            states = Store(home, environment=name).states()
+            count = plural(sum(value == 'set' for value in states.values()), 'saved key')
+        except (OSError, ValueError):
+            count = 'Unreadable'
+        items.append((name, count, ''))
     items += [None, ('Create or copy a file', '', ''), ('Back', '', '')]
     try:
-        at = read_menu(items, next((i for i, row in enumerate(rows) if row['name'] == selected), 0),
+        at = read_menu(items, names.index(selected) if selected in names else 0,
                        menu_hint('back', 'select'), 'Key environment')
     except Back:
         return selected
-    if at < len(rows):
-        return rows[at]['name']
-    if at == len(rows) + 1:
+    if at < len(names):
+        return names[at]
+    if at == len(names) + 1:
         prefix = 'godmode' + (' --home ' + shlex.quote(str(profile_home(home))) if home else '')
         read_document('Create or copy an environment', [
             prefix + ' env create client-staging',
@@ -4806,7 +4910,7 @@ def environments_screen(home, selected):
 
 
 def contexts_screen(home, environment, selected):
-    contexts = context_list(profile_home(home))
+    contexts = context_list(profile_home(home), missing_selected=selected)
     automatic = environment_profile(home, environment)
     items = [('Automatic', '', str(automatic.path))] + [(row['name'], '', row['profile_path']) for row in contexts]
     items += [None, ('Create a named profile', '', ''), ('Back', '', '')]
@@ -4861,47 +4965,60 @@ def onboard(home=None):
                 intro(home, setup_next=True)
             except Back:
                 return  # Esc on the first page: leave quietly; nothing was saved.
-        at = None
+        selected = ''
         while True:
-            state = progress(effective_store(home), home)
-            at = home_start(state) if at is None else at
-            detailed = columns() >= 60 or plain_mode()
-            status = home_items(state)
-            items = [status[1], status[2], status[0],
-                     ('Switch loadout', ACTIVE_ENVIRONMENT, (ACTIVE_CONTEXT.name if ACTIVE_CONTEXT else 'Automatic') if detailed else ''), None,
-                     ('Doctor', '', 'local checks' if detailed else ''), ('Update', '', ''),
-                     ('Help / FAQ', '', 'godmode faq' if detailed else ''), ('Done', '', '')]
+            store = effective_store(home, require_existing=False)
+            state = progress(store, home, overview=True)
+            rows = home_items(state)
+            routes = list(rows)
+            at = routes.index(selected) if selected in rows else 0
             try:
-                at = read_menu(items, at, menu_hint('quit'), gap=bool(gap()) and screen_rows() > 14,
-                               header=home_header(state, home), row_spacing=0)
+                at = read_menu(list(rows.values()), at, menu_hint('quit'), home_title(state),
+                               abouts=True, searchable=True)
+                selected = routes[at]
             except Back:
-                at = HOME_DONE
-            if at == HOME_DONE:
-                summary(progress(effective_store(home), home))
+                selected = 'done'
+            if selected == 'done':
+                summary(state)
                 return
+            section, _, name = selected.partition(':')
             try:
-                if at == 0:
-                    setup(effective_store(home), explicit=explicit, accepted=True, home=home, back=True)
-                elif at == 1:
+                if section in ('provider', 'profile', 'new-key', 'custom'):
+                    if ACTIVE_CONTEXT is not None:
+                        Context(profile_home(home), ACTIVE_CONTEXT.name)
+                    store = effective_store(home)
+                if section == 'provider':
+                    setup(store, name, explicit=explicit, accepted=True, home=home, back=True)
+                elif section == 'profile':
+                    profile_command(business_profile(home), 'set', name)
+                elif section in ('new-key', 'custom'):
+                    if section == 'new-key':
+                        name = read_secret(NamePrompt())
+                    store = offer_seal(store, explicit)
+                    prepare(store, accepted=True, home=home)
+                    key = named(name)
+                    if populate(store, key, back=True):
+                        selected = 'provider:' + key['provider_id'] if key.get('provider_id') else 'custom:' + name
+                elif selected == 'agents':
                     agents_screen(home, back=True)
-                elif at == 2:
-                    edit_profile(business_profile(home), back=True)
-                elif at == 3:
+                elif selected == 'switch':
                     active_screen(home)
-                elif at == HOME_DOCTOR:
-                    report = doctor_report(effective_store(home), business_profile(home), globals(), home=home)
+                elif selected == 'request':
+                    request_provider()
+                elif selected == 'doctor':
+                    report = doctor_report(store, lambda: business_profile(home), globals(), home=home)
                     read_document('Doctor', [check['status'].upper() + '  ' + check['name'] + ': ' + check['detail']
                                             + (' Next: ' + check['action'] if check.get('action') else '') for check in report['checks']])
-                elif at == HOME_UPDATE:
+                elif selected == 'update':
                     updating = True
                     break
-                elif at == HOME_HELP:
+                elif selected == 'help':
                     faq(home)
             except Back:
                 pass
-            except ValueError as error:
-                say(str(error), 'warning')
-            # Returning from a section retains focus; there is no completion ladder.
+            except (OSError, ValueError) as error:
+                message = str(error) if isinstance(error, ValueError) else 'Check local file access with godmode doctor.'
+                read_document('Loadout needs attention', [visible_fact(message)])
     if updating:
         return update_command([])  # Restore the terminal before handing it to the updater.
 
@@ -4965,7 +5082,7 @@ def setup(store, provider_id=None, explicit=False, accepted=False, home=None, ba
         store = offer_seal(store, explicit)
         prepare(store, accepted=accepted, home=home)
         if selected:
-            provider_setup(store, selected, back=False)
+            provider_setup(store, selected, back=back, guided=not back)
             return
         provider_list(store, providers, back)
         if not back:
@@ -5029,13 +5146,13 @@ def faq_entries(home=None):
     where = home_path(effective_store(home).env_path)
     return [
         ('How do I start?', [
-            '1. Open Provider keys and save the keys needed for your task. You do not need every provider.',
-            '2. Open Connect agent. Review the listed instruction files and add the note, or copy it '
-            'into your existing agent task.',
+            '1. Select a provider on your loadout and save the keys your task needs.',
+            '2. Open Agent instructions. Copy the note for a chat, or review the files where you can add it. '
+            'Paste copied instructions into your existing chat.',
             '3. Open your project in that agent and ask for the result you want.',
             'Your profile is optional. Godmode stores keys and adds instructions; your existing agent '
             'does the work. Saved means stored locally, not verified provider access.']),
-        ('What does Connect agent change?', [
+        ('What do agent instructions change?', [
             'It appends a Godmode note to the listed agent instruction files. Your existing text and '
             'any existing Godmode note stay unchanged. The preview shows each file and the lines to add.',
             'Start a fresh agent session so it can load the saved instructions. For a task already '
@@ -5271,8 +5388,8 @@ Godmode stores provider keys and optional business details locally for your
 existing coding agent.
 
 Start
-  1. Run godmode. Open Provider keys and add only what your task needs.
-  2. Open Connect agent. Add the note to its instructions or copy it into a task.
+  1. Run godmode. Select a provider in your loadout to add or edit its key.
+  2. Open Agent instructions. Copy a note for this chat or add it to agent files.
   3. Open your project in that agent and ask for the result you want.
   Saved keys have not been verified with the provider.
   Your profile is optional.
@@ -5345,7 +5462,7 @@ COMMAND_HELP = {
     'settings': 'Usage: godmode settings [--json | motion on | motion off]\n\nInspect Motion or save the preference for the interactive interface.\n--json includes the current preference and its local ui.json path.\n\n  godmode settings motion off',
     'context': 'Usage: godmode context [list | create NAME | show NAME | map NAME VARIABLE SAVED_KEY | unmap NAME VARIABLE]\n\nA context keeps its own business profile and maps selected key names to saved keys.\nUnmapped keys use the selected environment. Select with godmode --context NAME run ...\nor godmode --context NAME profile. Use godmode use to save an active pair.',
     'run': 'Usage: godmode run NAME... -- CMD\n       godmode run VAR=NAME... -- CMD\n\nRuns CMD with the named keys in its environment. VAR=NAME supplies the key saved\nas NAME under the variable VAR. Saved names: godmode list.',
-    'faq': 'Usage: godmode faq\n\nHow to start, connect your agent, switch loadout and check local files.\nAlso covers provider access, network use, sealing and source.',
+    'faq': 'Usage: godmode faq\n\nHow to start, copy agent instructions, switch loadouts and check local files.\nAlso covers provider access, network use, sealing and source.',
     'help': 'Usage: godmode help [COMMAND]\n\nWithout a command, print the agent guide and saved key names.\nUse godmode for the terminal menu or godmode --help for the command reference.\n\n  godmode help agents\n  godmode help loadout',
     'loadout': "Usage: godmode loadout [PROVIDER]\n\nChoose a provider or press / to search. On a credential field, Ctrl-O opens\nthe official link and Enter saves the reviewed value. Tab shows details.\nIn --plain mode, press Tab to review before saving. Esc returns.\n\n  godmode loadout cloudflare\n  godmode --plain loadout",
     'set': "Usage: godmode set NAME [--stdin]\n\nSave or replace one key. Interactive input stays masked. --stdin reads a\nvalue from a pipe or file.\n\n  godmode set GH_TOKEN\n  godmode set ACME_AUTH_JSON --stdin < credential.json",
@@ -5494,8 +5611,8 @@ def main():
         selected_store = Store(home, environment=ACTIVE_ENVIRONMENT)
         selected_store = ContextStore(selected_store, ACTIVE_CONTEXT) if ACTIVE_CONTEXT else selected_store
         return doctor_command(selected_store, lambda: business_profile(home), globals(), argv[1:], home=home)
-    if ACTIVE_ENVIRONMENT != 'default':
-        effective_store(home)._read()  # Refuse missing/unsafe selected files even for profile-only commands.
+    if ACTIVE_ENVIRONMENT != 'default' and argv not in ([], ['onboard'], ['init']):
+        effective_store(home)._read()  # Home can inspect a broken selection and switch away from it.
     STORE_KEY_PROVIDERS.update({key['name']: p['id'] for p in catalog() for key in p['key']})
     if argv[:1] == ['agents'] and '--print' in argv:
         if argv != ['agents', '--print']:

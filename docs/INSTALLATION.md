@@ -91,7 +91,7 @@ rm -f "$HOME/.godmode/bin/godmode" "$HOME/.godmode/bin/godmodeup" \
   "$HOME/.godmode/env"
 ```
 
-Remove the `# Godmode` comment and its source line from the startup file or files the installer changed. See [Connect an agent](AGENT_SETUP.md#check-or-remove-it) to remove its note.
+Remove the `# Godmode` comment and its source line from the startup file or files the installer changed. See [Agent instructions](AGENT_SETUP.md#check-or-remove-it) to remove its note.
 
 For a full removal, privately back up any data you want to keep, then delete the Godmode home. That deletes its keys, profiles, and selection. [Remote machines](REMOTE.md) lists the files needed to restore sealed keys. Revoke keys at the provider to invalidate them.
 

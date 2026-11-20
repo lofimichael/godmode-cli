@@ -141,14 +141,19 @@ func openHomeItem(t *testing.T, m model, name string) model {
 	if m.page != "home" {
 		t.Fatalf("cannot open home item %q from %s", name, m.page)
 	}
-	for at, label := range homeNames {
-		if label == name {
-			m.selected = at
-			return enter(m)
+	m.selected = homeItemIndex(t, m, name)
+	return enter(m)
+}
+
+func homeItemIndex(t *testing.T, m model, name string) int {
+	t.Helper()
+	for i, item := range m.homeItems() {
+		if item.name == name {
+			return i
 		}
 	}
-	t.Fatalf("missing home item %q", name)
-	return m
+	t.Fatalf("missing Home item %q", name)
+	return -1
 }
 
 func findAction(t *testing.T, m model, query string) model {
@@ -186,16 +191,16 @@ func openAgentDiff(t *testing.T, m model) model {
 func TestSectionExitFocusAndMenuState(t *testing.T) {
 	m := create(t, fake(), "home", "")
 	for _, test := range []struct {
-		at   int
-		page string
-	}{{0, "providers"}, {1, "agent_home"}, {2, "profile"}, {3, "active"}, {4, "settings"}, {5, "faq"}} {
-		m.selected = test.at
+		name, page string
+	}{{"Example", "key"}, {"Agent instructions", "agent_home"}, {"Name", "profile_field"}, {"Switch loadout", "active"}, {"Settings", "settings"}, {"Help", "faq"}} {
+		at := homeItemIndex(t, m, test.name)
+		m.selected = at
 		m = enter(m)
 		if m.page != test.page {
 			t.Fatalf("Enter opened %s, want %s", m.page, test.page)
 		}
 		m = escape(m)
-		if m.page != "home" || m.selected != test.at {
+		if m.page != "home" || m.selected != at {
 			t.Fatal("section did not preserve home selection")
 		}
 	}
@@ -220,6 +225,36 @@ func TestPasteNeverSubmitsAndNeverAppearsUnmasked(t *testing.T) {
 	}
 	if !m.quitting {
 		t.Fatal("direct set should finish")
+	}
+}
+
+func TestEditorExampleRemainsSeparateFromInput(t *testing.T) {
+	f := fake()
+	m := create(t, f, "set", "EXAMPLE_TOKEN")
+	m.key.Example = "fake_<token>"
+	if !strings.Contains(ansi.Strip(m.View().Content), "Example: fake_<token>") {
+		t.Fatal("missing key example")
+	}
+	m = enter(m)
+	if m.text != "" || count(f.calls, "key_save") != 0 {
+		t.Fatal("the empty credential editor submitted its example")
+	}
+	m = send(m, key('a', "a"))
+	if strings.Contains(m.View().Content, m.key.Example) {
+		t.Fatal("the credential example remained while typing")
+	}
+
+	m = create(t, f, "profile", "")
+	m.state.Fields[0].Example = "Harbor Studio"
+	m = enter(m)
+	if m.text != "" || !strings.Contains(ansi.Strip(m.View().Content), "Example: Harbor Studio") {
+		t.Fatal("the profile example must accompany an empty field")
+	}
+	m = enter(m)
+	for i, action := range f.calls {
+		if action == "profile_save" && f.requests[i]["value"] != "" {
+			t.Fatal("the empty profile editor submitted its example")
+		}
 	}
 }
 func TestPastesDoNotEnterSearchNamesOrMenus(t *testing.T) {
@@ -330,7 +365,7 @@ func TestNoColorKeepsReadableWords(t *testing.T) {
 	if strings.Contains(v, "\x1b[") {
 		t.Fatal("NO_COLOR view contains ANSI styles")
 	}
-	for _, word := range homeNames {
+	for _, word := range m.choiceNames() {
 		if !strings.Contains(v, word) {
 			t.Fatal("missing " + word)
 		}
@@ -340,7 +375,7 @@ func TestHomeExitReturnsToTerminalWithoutAnExternalAction(t *testing.T) {
 	f := fake()
 	m := create(t, f, "home", "")
 	m = send(m, key(tea.KeyEnd, ""))
-	if homeNames[m.selected] != "Exit" || !strings.Contains(m.homeDescription(), "Return to your terminal") {
+	if item, _ := m.homeSelection(); item.name != "Exit" || !strings.Contains(item.help, "Return to your terminal") {
 		t.Fatal("last home choice does not describe Exit")
 	}
 	calls := len(f.calls)

@@ -14,7 +14,11 @@ godmode --version
 
 Sourcing the generated `env` file puts Godmode on the current shell’s PATH. See [Installation](INSTALLATION.md) to add it to future shells or review the script before running it.
 
-## 2. Save a provider key
+## 2. Open your loadout
+
+Run `godmode` to see providers and profile details together. Select a provider to add or replace a key, or select a profile field to edit it. Profile fields are optional. The examples in the editors show the format to use.
+
+### Save a provider key
 
 This example uses GitHub and assumes `gh`, the GitHub CLI, is installed. Read the provider guide, then open the credential editor:
 
@@ -48,7 +52,7 @@ Expect a GitHub login. Check that it matches the intended account. Confirm acces
 
 ## Next steps
 
-- [Connect an agent](AGENT_SETUP.md) to load instructions in future sessions.
+- [Save agent instructions](AGENT_SETUP.md) for future sessions.
 - [Add profile details](PROFILE.md) for tasks that need a name, URL, or contact email.
 - [Choose an environment and profile](CONTEXTS.md) before working with multiple accounts or sets of keys.
 - Run `godmode doctor` to check local files. Run `godmode help` for agent guidance.

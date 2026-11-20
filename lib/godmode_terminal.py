@@ -692,7 +692,8 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
               searchable=False, header_required=False, row_spacing=0):
     """Choose a row with the arrow keys and return its index; Escape raises Back.
 
-    items are (name, status, about) rows; None leaves a gap that cannot be chosen.
+    items are (name, status, about) rows. A string is a section heading and
+    None leaves a gap. Neither takes focus or a number.
     A status is text or (text, role) and shows on every row in one column. The
     description shows on the row the pointer is on, or faintly on every row with
     abouts. Typing letters jumps to the first name that starts with them, and the same
@@ -702,11 +703,11 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
     until it fits; optional headers may collapse. Plain mode prints every row and
     accepts a number. Visual menus erase their own region when they end.
     """
-    choices = [index for index, item in enumerate(items) if item]
+    choices = [index for index, item in enumerate(items) if item and not isinstance(item, str)]
     if not choices:
         raise ValueError("This menu has no choices.")
     if plain_enabled():
-        return _plain_menu(items, start, title, header)
+        return _plain_menu(items, start, title, header, hint)
     at = start if start in choices else choices[0]
     typed, drawn = "", []
     filtering, query, blocked, details, detail_offset = False, "", False, False, 0
@@ -789,6 +790,8 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
                 rows.append(more)  # The list is taller than the window and continues.
             elif not items[index]:
                 rows.append("")
+            elif isinstance(items[index], str):
+                rows.append("  " + style(short(items[index], available), "accent"))
             else:
                 name, about = items[index][0], items[index][2]
                 mark, role = status(items[index])
@@ -889,21 +892,32 @@ def read_menu(items, start=0, hint="", title="", gap=False, header=None, status_
             _draw([], drawn)
 
 
-def _plain_menu(items, start, title, header):
-    choices = [i for i, item in enumerate(items) if item]
+def _plain_menu(items, start, title, header, hint):
     rows = list(header(plain_columns())) if header else []
     if title:
         rows += [title]
-    for number, index in enumerate(choices, 1):
-        name, mark, about = items[index]
+    choices = []
+    sectioned = any(isinstance(item, str) for item in items)
+    for index, item in enumerate(items):
+        if isinstance(item, str):
+            rows.append(item)
+            continue
+        if not item:
+            continue
+        choices.append(index)
+        name, mark, about = item
         mark = mark if isinstance(mark, str) else mark[0]
-        rows.append("%d. %s%s" % (number, name, ": " + TERM_STYLE.sub("", mark) if mark else ""))
+        rows.append("%d. %s%s" % (len(choices), name, ": " + TERM_STYLE.sub("", mark) if mark else ""))
         if about:
-            rows.append("   " + about)
+            if sectioned:
+                rows[-1] += " | " + about
+            else:
+                rows.append("   " + about)
     default = choices.index(start) + 1 if start in choices else 1
+    escape = hint.partition("Esc ")[2] or "back"
     with _Keyboard() as keyboard:
         _plain_rows(rows)
-        answer = _plain_choice("Number, then Enter (%d). Esc back." % default,
+        answer = _plain_choice("Number, then Enter (%d). Esc %s." % (default, escape),
                                [""] + [str(i) for i in range(1, len(choices) + 1)], keyboard)
     return choices[int(answer or default) - 1]
 

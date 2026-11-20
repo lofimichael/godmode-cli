@@ -83,7 +83,7 @@ class NativeCLI(unittest.TestCase):
                               text=True, capture_output=True)
 
     def open_agent_files(self, terminal, selection=0):
-        terminal.expect('Copy for this task')
+        terminal.expect('Copy instructions for chat')
         terminal.send(b'\x1b[B\r')
         terminal.expect_screen('All detected agents')
         terminal.send(b'\x1b[B' * selection + b'\r')
@@ -181,9 +181,33 @@ class NativeCLI(unittest.TestCase):
         terminal.done(130)
         self.assertNotIn(b'RESIZE_PRIVATE', terminal.capture)
 
+    def test_returning_loadout_edits_a_profile_field_from_home(self):
+        for name in ('GH_TOKEN', 'STRIPE_TEST_SECRET_KEY', 'STUDIO_API_KEY'):
+            result = self.command('set', name, '--stdin', data='dashboard_FIXTURE_PRIVATE_value')
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.command('profile', 'set', 'business_name', '--stdin',
+                                      data='Harbor Studio').returncode, 0)
+
+        terminal = self.tty()
+        for text in ('Harbor Studio', 'GitHub', 'Stripe', 'test', 'STUDIO_API_KEY',
+                     'Agent instructions', 'Brand name'):
+            terminal.expect_screen(text)
+        self.assertNotIn(b'FIXTURE_PRIVATE', terminal.capture)
+        terminal.send(b'\t\r')
+        terminal.expect_screen('Ctrl-U')
+        terminal.send(b'\x15')
+        terminal.paste('Example Press')
+        terminal.send(b'\r')
+        terminal.expect_screen('Providers')
+        terminal.expect_screen('Example Press')
+        self.assertEqual(self.command('profile', 'get', 'business_name').stdout.strip(), 'Example Press')
+        self.assertNotIn(b'FIXTURE_PRIVATE', terminal.capture)
+        terminal.send(b'q')
+        terminal.done()
+
     def test_menu_pastes_never_open_a_section(self):
         terminal = self.tty()
-        terminal.expect('Profile: Automatic')
+        terminal.expect_screen('Loadout')
         terminal.paste('synthetic_PASTED_MENU_SECRET\n\n')
         terminal.settle(.15)
         self.assertNotIn(b'PASTED_MENU_SECRET', terminal.capture)
@@ -266,7 +290,7 @@ class NativeCLI(unittest.TestCase):
         original = '<!-- godmode:start -->\nSynthetic existing note.\n<!-- godmode:end -->\n'
         target.write_text(original)
         terminal = self.tty('--env', 'acme-test', '--context', 'acme', 'agents')
-        terminal.expect('Copy for this task')
+        terminal.expect('Copy instructions for chat')
         terminal.send(b'\r')
         terminal.expect('--env acme-test')
         terminal.expect('c copy')
@@ -324,7 +348,7 @@ class NativeCLI(unittest.TestCase):
         self.assertNotIn(b'COMPACT_PRIVATE', terminal.capture)
         terminal.send(b'\r')
         terminal.wait(lambda: (self.home / '.env.godmode').exists())
-        terminal.expect_screen('Key saved. Next: Connect agent.')
+        terminal.expect_screen('Saved GH_TOKEN.')
         terminal.send(b'\x03')
         terminal.done(130)
         supplied = self.command('run', 'GH_TOKEN', '--', sys.executable, '-c',
@@ -406,7 +430,7 @@ class NativeCLI(unittest.TestCase):
         self.assertEqual((self.active()['environment'], self.active()['context']), ('default', ''))
         terminal.send(b'\x1b[B\r')
         terminal.expect_screen('Esc quit')
-        self.assertIn('Provider keys', terminal.screen_text())
+        self.assertIn('Providers', terminal.screen_text())
         self.assertNotIn('Starts empty.', terminal.screen_text())
         self.assertEqual((self.active()['environment'], self.active()['context']), ('quest-test', 'quest-studio'))
         terminal.send(b'q')

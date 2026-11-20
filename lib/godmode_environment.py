@@ -40,8 +40,8 @@ def environment_show(home, name="default"):
             "profile_count": len(fields)}
 
 
-def environment_list(home):
-    """List complete files in this home; default is shown even before first setup."""
+def environment_names(home):
+    """List key files without needing to open every environment or profile."""
     base = Store(home).config_dir
     _store_directories(base)
     names = ["default"]
@@ -56,7 +56,11 @@ def environment_list(home):
                 continue
             if name != "default":
                 names.append(name)
-    return [environment_show(home, name) for name in names]
+    return names
+
+
+def environment_list(home):
+    return [environment_show(home, name) for name in environment_names(home)]
 
 
 def environment_create(home, name, copy_from=None):

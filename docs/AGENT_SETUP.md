@@ -1,10 +1,10 @@
-# Connect an agent
+# Agent instructions
 
 Use the task note for a chat you already have open. Save the generic note to an agent’s instruction file if you want new sessions to find Godmode.
 
 ## Copy instructions into a chat
 
-In v0.20, open `godmode agents`, choose **Copy for this task**, then press Enter to copy. You can also print the note in your shell:
+Open **Agent instructions** on the dashboard or run `godmode agents`. Choose **Copy instructions for chat**, then press Enter to copy. You can also print the note in your shell:
 
 ```sh
 godmode agents --print

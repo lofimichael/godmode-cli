@@ -40,7 +40,7 @@ type CommandExit struct {
 func (e *CommandExit) Error() string { return e.Command.Error() }
 func (e *CommandExit) Unwrap() error { return e.Command }
 
-type field struct{ Name, Label, Description, Group string }
+type field struct{ Name, Label, Description, Group, Example string }
 type providerKey struct {
 	Name, Label, Kind string
 	Secret            *bool
@@ -89,7 +89,7 @@ type snapshot struct {
 }
 type keyPlan struct {
 	ID, Name, Title, Benefit, Visit, Page, Note, Prompt, Path string
-	Access, Guide                                             string
+	Access, Guide, Example                                    string
 	Steps                                                     []string
 	Sealed, Saved                                             bool
 	Lines                                                     []int
@@ -279,9 +279,6 @@ func (m *model) openRoute(route, arg string) {
 	case "home":
 		m.page = "home"
 		m.homeAt = 0
-		if m.state.KeyCount > 0 && m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
-			m.homeAt = 1
-		}
 		m.selected = m.homeAt
 	case "intro":
 		m.page = "intro"
@@ -678,6 +675,9 @@ func (m model) updateNow(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.page == "home" && m.moveHomeSection(key) {
+			return m, nil
+		}
 		count := m.choiceCount()
 
 		switch key {
@@ -766,8 +766,9 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 					m.error = clean(e.Error())
 				}
 				m.back()
-				m.page = "profile"
-				m.selected = min(m.fieldAt+1, len(m.state.Fields))
+				if m.page == "profile" {
+					m.selected = min(m.fieldAt+1, len(m.state.Fields))
+				}
 			}
 			return nil
 		}
@@ -796,11 +797,8 @@ func (m *model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 				return tea.Quit
 			}
 			m.back()
-			if m.page == "providers" {
+			if m.page == "home" || m.page == "providers" {
 				m.notice = "Saved " + m.key.Name + "."
-				if m.state.Progress.Agent == 0 && len(m.state.Progress.Agents) == 0 {
-					m.notice = "Key saved. Next: Connect agent."
-				}
 			}
 
 		}
@@ -859,25 +857,7 @@ func (m *model) enterAction() tea.Cmd {
 	m.scroll = 0
 	switch m.page {
 	case "home":
-		m.homeAt = m.selected
-		switch m.selected {
-		case 0:
-			m.page, m.selected = "providers", 0
-		case 1:
-			m.loadAgents()
-		case 2:
-			m.profileReturn = ""
-			m.page, m.selected = "profile", 0
-		case 3:
-			m.startActive()
-		case 4:
-			m.page, m.selected = "settings", 0
-		case 5:
-			m.loadFAQ()
-		case 6:
-			m.quitting = true
-			return tea.Quit
-		}
+		return m.enterHome()
 	case "settings":
 		switch m.selected {
 		case 0:
@@ -941,11 +921,7 @@ func (m *model) enterAction() tea.Cmd {
 		if m.selected >= len(m.state.Fields) {
 			return m.back()
 		}
-		m.fieldAt = m.selected
-		m.page = "profile_field"
-		m.resetInput()
-		m.text = m.state.Profile[m.state.Fields[m.fieldAt].Name]
-		m.cursor = utf8.RuneCountInString(m.text)
+		m.editProfileField(m.selected)
 	case "providers":
 		matches := m.providerMatches()
 		if m.selected < 0 {
@@ -1019,7 +995,7 @@ func (m *model) agentKey(key string) tea.Cmd {
 			args["targets"] = []string{m.agentOnly}
 		}
 		if m.call("agents_apply", args, &reply) {
-			m.notice = "Added to " + countLabel(len(reply.Added), "file") + ". Start a new agent session, or copy for this task."
+			m.notice = "Added to " + countLabel(len(reply.Added), "file") + ". Start a new agent session, or copy a task note."
 			_ = m.refresh()
 			for len(m.trail) > 0 && m.trail[len(m.trail)-1].page != "agent_home" {
 				m.trail = m.trail[:len(m.trail)-1]
@@ -1074,7 +1050,7 @@ func (m model) providerCount(p provider) int {
 func (m model) choiceCount() int {
 	switch m.page {
 	case "home":
-		return len(homeNames)
+		return len(m.homeItems())
 	case "agent_targets":
 		if len(m.agents.Targets) == 0 {
 			return 1
@@ -1126,7 +1102,12 @@ func (m *model) jump(text string) {
 func (m model) choiceNames() []string {
 	switch m.page {
 	case "home":
-		return homeNames
+		items := m.homeItems()
+		names := make([]string, len(items))
+		for i, item := range items {
+			names[i] = item.name
+		}
+		return names
 	case "agent_targets":
 		names := []string{}
 		for _, t := range m.agents.Targets {
@@ -1134,7 +1115,7 @@ func (m model) choiceNames() []string {
 		}
 		return append(names, "All detected agents", "Back")
 	case "agent_home":
-		return []string{"Copy for this task", "Add to agent files", "Back"}
+		return []string{"Copy instructions for chat", "Add to agent files", "Back"}
 	case "settings":
 		return settingsNames
 	case "update":

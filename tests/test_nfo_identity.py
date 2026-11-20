@@ -42,10 +42,34 @@ class NfoIdentityTests(unittest.TestCase):
             self.assertIn(cli.LOGO[0], '\n'.join(narrow))
             self.assertNotIn(cli.NFO_LOGO[0].strip(), '\n'.join(narrow))
 
-    def test_plain_home_counts_do_not_need_graphics(self):
-        state = dict(fields=[], errors=set(), providers=0, key_count=0, started=[], agents=[], by_hand=False, agent=0)
-        with patch.object(cli, 'plain_mode', return_value=True):
-            self.assertEqual([row[1] for row in cli.home_items(state)], ['0 fields', '0 keys saved', '0 notes added'])
+    def test_plain_home_shows_local_status_full_inventory_and_optional_examples(self):
+        states = {'STRIPE_TEST_SECRET_KEY': 'set', 'GMAIL_USER': 'set', 'GH_TOKEN': 'duplicate',
+                  'EXTRA_TOKEN': 'set', 'EXTRA_BROKEN': 'malformed'}
+        state = dict(states=states, profile={'business_name': 'Studio'}, errors=set(),
+                     agents=[], by_hand=False, ready=[{'id': 'stripe'}], started=[{'id': 'gmail'}])
+        rows = cli.home_items(state)
+        self.assertEqual([key for key in rows if key.startswith('provider:')][:2],
+                         ['provider:stripe', 'provider:gmail'])
+        self.assertEqual({key for key in rows if key.startswith('provider:')},
+                         {'provider:' + p['id'] for p in cli.catalog()})
+        self.assertEqual(rows['provider:stripe'][1][0], 'Saved (test)')
+        self.assertEqual(rows['provider:gmail'][1][0], '1/2 keys')
+        self.assertEqual(rows['provider:github'][1][0], 'Needs repair')
+        self.assertEqual(rows['custom:EXTRA_TOKEN'][1][0], 'Saved')
+        self.assertEqual(rows['custom:EXTRA_BROKEN'][1][0], 'Needs repair')
+        self.assertEqual(rows['profile:business_name'][1], 'Studio')
+        self.assertEqual(rows['profile:website'][2], 'Example: ' + cli.PROFILE_FORM['website'][3])
+        self.assertIn('Studio', cli.home_title(state))
+        self.assertEqual(rows['agents'][1], '0 agent files')
+        state['by_hand'] = True
+        self.assertEqual(cli.home_items(state)['agents'][1], 'Marked by hand')
+        state['agents'] = ['Codex']
+        self.assertEqual(cli.home_items(state)['agents'][1:], ('1 agent file', 'Codex'))
+        state['errors'] = {'providers', 'profile'}
+        rows = cli.home_items(state)
+        self.assertEqual(rows['profile:website'][1], ('Unreadable', 'warning'))
+        self.assertEqual(rows['profile:website'][2], '')
+        self.assertEqual(rows['provider:github'][1], ('Unreadable', 'warning'))
 
     def test_short_home_keeps_every_choice_reachable(self):
         with tempfile.TemporaryDirectory(prefix='godmode-nfo-short-') as directory:
@@ -60,9 +84,11 @@ class NfoIdentityTests(unittest.TestCase):
                 terminal.expect('Esc quit')
                 terminal.settle(.05)
                 screen = '\n'.join(Screen(40).feed(terminal.capture).lines())
-                self.assertIn('Environment default', screen)
+                self.assertIn('Keys default', screen)
                 self.assertNotIn('Setup 0%', screen)
-                labels = ('Provider keys', 'Connect agent', 'Profile', 'Switch loadout', 'Doctor', 'Update', 'Help / FAQ', 'Done')
+                labels = [p['name'] for p in cli.catalog()] + ['Add custom key']
+                labels += [row[0] for row in cli.PROFILE_FORM.values()]
+                labels += ['Agent instructions', 'Switch loadout', 'Request a provider', 'Doctor', 'Update', 'Help / FAQ', 'Done']
                 for index, label in enumerate(labels):
                     if index:
                         terminal.send(b'\x1b[B')
@@ -108,33 +134,39 @@ class NfoIdentityTests(unittest.TestCase):
                     terminal.wait(lambda: any(row.startswith('❯ ' + name)
                                              for row in Screen(80).feed(terminal.capture).lines()))
                 terminal.expect('Esc quit')
-                selected('Provider keys')
-                terminal.send(b'\x1b[B' * 3)
+                selected('GitHub')
+                terminal.send(b'switch')
                 selected('Switch loadout')
                 terminal.send(b'\r')
                 selected('Key environment')
                 terminal.send(b'\x1b')
                 selected('Switch loadout')
-                terminal.send(b'\x1b[A')
-                selected('Profile')
+                terminal.send(b'brand')
+                selected('Brand name')
                 terminal.send(b'\r')
-                terminal.expect('Your name')
+                terminal.expect('Enter skips')
                 terminal.send(b'\x1b')
-                selected('Profile')
-                terminal.send(b'\x1b[A' * 2)
-                selected('Provider keys')
+                selected('Brand name')
+                terminal.send(b'github')
+                selected('GitHub')
                 terminal.send(b'\r')
-                terminal.expect('Another key')
+                terminal.expect('GH_TOKEN')
                 terminal.send(b'\x1b')
-                selected('Provider keys')
-                terminal.send(b'\x1b[B')
-                selected('Connect agent')
+                selected('GitHub')
+                terminal.send(b'gmail')
+                selected('Gmail')
+                terminal.send(b'\r')
+                terminal.expect('App password')
+                terminal.send(b'\x1b')
+                selected('Gmail')
+                terminal.send(b'agent')
+                selected('Agent instructions')
                 mark = len(terminal.capture)
                 terminal.send(b'\r')
                 terminal.after(mark, 'No agent folders found.')
                 terminal.send(b'\x1b')
-                selected('Connect agent')
-                terminal.send(b'\x1b[B' * 5)
+                selected('Agent instructions')
+                terminal.send(b'help')
                 selected('Help / FAQ')
                 mark = len(terminal.capture)
                 terminal.send(b'\r')

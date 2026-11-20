@@ -1,5 +1,13 @@
 # Release notes
 
+## v0.22.0
+
+November 20, 2026
+
+- Home opens your active loadout. See saved providers and profile details together, then select an item to edit it. Custom key names and Stripe modes appear alongside the provider inventory.
+- Profile and credential editors show fictional examples to illustrate the expected value.
+- **Agent instructions** lets you copy a note into a chat or review additions to an agent’s instruction files.
+
 ## v0.21.0
 
 November 20, 2026
