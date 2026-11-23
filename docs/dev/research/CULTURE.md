@@ -10,7 +10,7 @@ Version 0.12 added an explicitly requested first-run introduction. Its
 Claude/Executor design references are in [INTRO-NOTES.md](INTRO-NOTES.md). The
 quiet treatment still applies to routine commands.
 
-The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html) that Michael supplied. Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
+The central reference is the [Usenet post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html). Godmode should sound as if somebody wrote it because they wanted the program to exist and had opinions about how it should work.
 
 ## What the supplied reference actually is
 
@@ -107,7 +107,7 @@ Accessed **2026-11-04**. Dates below describe the artifact or stated revision, n
 
 | ID | Source and date | What was inspected; limits |
 | --- | --- | --- |
-| R01 | [Brozefsky post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html), **1999-06-27** in headers | Full preserved Usenet reply, including quoted context, technical digressions and troll postscript. Central founder-supplied reference; predates the target decade. Retrieved with curl after browser-fetch timeout. |
+| R01 | [Brozefsky post preserved by ratpoison](https://www.nongnu.org/ratpoison/inspiration.html), **1999-06-27** in headers | Full preserved Usenet reply, including quoted context, technical digressions and troll postscript. This central reference predates the target decade. Retrieved with curl after browser-fetch timeout. |
 | R02 | [Ratpoison project page](https://www.nongnu.org/ratpoison/), **maintained page; includes news through 2021** | Explicitly links R01 as name inspiration; explains keyboard use and screenshots with dry humor. Current body cannot all be dated to 2000 from the copyright line. |
 | R03 | [Irssi, startup HOWTO updated](https://irssi.org/2001/03/04/startup-howto-updated/), **2001-03-04** | Creator-posted maintenance note by cras; conversational prose and a specific CVS/documentation caveat. Modern surrounding navigation is irrelevant to its original appearance. |
 | R04 | [mIRC older news](https://www.mirc.com/newsold.html), particularly **2000-09-05 and 2000-11-09** entries | Project's preserved announcements combine enthusiasm, emoticons, self-correction and concrete bug descriptions. A release announcement has a different purpose from an error message. |

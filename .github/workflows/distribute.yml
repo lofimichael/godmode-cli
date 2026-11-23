@@ -33,7 +33,7 @@ concurrency:
 jobs:
   prepare:
     if: >-
-      github.repository == 'lofimichael/godmode-cli' &&
+      github.repository_id == '1444986310' &&
       github.ref == 'refs/heads/main' &&
       (!github.event.repository.private || vars.GODMODE_CI_ENABLED == 'true')
     environment:
@@ -73,13 +73,13 @@ jobs:
         with:
           client-id: ${{ vars.GODMODE_DISTRIBUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.GODMODE_DISTRIBUTION_APP_KEY }}
-          owner: lofimichael
+          owner: ${{ github.repository_owner }}
           repositories: godmode-build
           permission-contents: write
           permission-pull-requests: write
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: lofimichael/godmode-build
+          repository: ${{ github.repository_owner }}/godmode-build
           ref: refs/heads/main
           token: ${{ steps.website.outputs.token }}
           path: distribution-site

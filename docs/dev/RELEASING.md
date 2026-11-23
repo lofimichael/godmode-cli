@@ -90,12 +90,12 @@ deploys the checked `main` commit and verifies the live updater manifest.
 If the release already exists and only the website handoff needs retrying, run
 **Prepare CLI website distribution** on `main`. Supply the published
 `version` and matching `source_sha`. It reuses an existing matching PR.
-See the [website release cycle](https://github.com/lofimichael/godmode-build/blob/main/docs/release-cycle.md)
-for editorial changes and manual recovery.
+For editorial changes and manual recovery, see `docs/release-cycle.md` in
+the `godmode-build` repository.
 
 ### Configure the website handoff
 
-1. Create a dedicated private GitHub App owned by `lofimichael`. Turn off
+1. Create a dedicated private GitHub App under the account that owns both repositories. Turn off
    webhooks. Give it repository **Contents** and **Pull requests** read/write
    permissions and install it on `godmode-build` only.
 2. In the CLI repository, create the Actions environment `cli-distribution`

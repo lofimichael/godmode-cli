@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -14,7 +15,8 @@ SPEC.loader.exec_module(DISTRIBUTE)
 VERSION = 'v1.2.3'
 SOURCE_SHA = '1234567890abcdef' * 2 + '12345678'
 BRANCH = 'automation/cli-' + VERSION
-PR_URL = 'https://github.com/lofimichael/godmode-build/pull/42'
+OWNER = 'example-org'
+PR_URL = f'https://github.com/{OWNER}/godmode-build/pull/42'
 PREPARE = '''
 import argparse
 import json
@@ -40,6 +42,16 @@ if latest.read_text() != args.version:
 
 
 class DownloadTests(unittest.TestCase):
+    def test_owner_comes_from_workflow_or_canonical_repository(self):
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY_OWNER': OWNER}), patch.object(DISTRIBUTE, 'command') as gh:
+            self.assertEqual(DISTRIBUTE.repository_owner('promote'), OWNER)
+            gh.assert_not_called()
+        with patch.dict(os.environ, {}, clear=True), patch.object(DISTRIBUTE, 'command', return_value=OWNER + '\n') as gh:
+            for action in ('download', 'promote'):
+                self.assertEqual(DISTRIBUTE.repository_owner(action), OWNER)
+                gh.assert_called_with('gh', 'api', 'repositories/' + DISTRIBUTE.REPOSITORY_IDS[action],
+                                      '--jq', '.owner.login')
+
     def test_rejects_malformed_inputs(self):
         for version, sha in (('v1.2.03', SOURCE_SHA), ('main', SOURCE_SHA),
                              (VERSION, '0' * 40), (VERSION, 'a1b2')):
@@ -51,14 +63,14 @@ class DownloadTests(unittest.TestCase):
         release = {'isDraft': False, 'isPrerelease': False, 'tagName': VERSION, 'assets': assets}
         with patch.object(DISTRIBUTE, 'command', return_value='a' * 40) as command:
             with self.assertRaisesRegex(DISTRIBUTE.PromotionError, 'Git tag'):
-                DISTRIBUTE.download(VERSION, SOURCE_SHA, Path('unused'))
+                DISTRIBUTE.download(VERSION, SOURCE_SHA, Path('unused'), OWNER)
             command.assert_called_once()
         for error in ({'isDraft': True}, {'isPrerelease': True}, {'assets': assets[1:]},
                       {'assets': assets + assets[:1]}):
             with self.subTest(error=error), patch.object(DISTRIBUTE, 'command', side_effect=[
                     SOURCE_SHA, '', json.dumps({**release, **error})]) as command:
                 with self.assertRaisesRegex(DISTRIBUTE.PromotionError, 'stable release'):
-                    DISTRIBUTE.download(VERSION, SOURCE_SHA, Path('unused'))
+                    DISTRIBUTE.download(VERSION, SOURCE_SHA, Path('unused'), OWNER)
                 self.assertEqual(command.call_count, 3)
 
 
@@ -113,7 +125,7 @@ class PromotionTests(unittest.TestCase):
         # Git transfers and branch creation exercise a real bare remote. Only GitHub identity/PR
         # operations are simulated, so retries cannot accidentally post externally.
         if args[-3:] == ('remote', 'get-url', 'origin'):
-            return 'https://github.com/lofimichael/godmode-build\n'
+            return f'https://github.com/{OWNER}/godmode-build\n'
         if args[:3] == ('gh', 'pr', 'list'):
             if not self.pr_state:
                 return '[]'
@@ -122,7 +134,7 @@ class PromotionTests(unittest.TestCase):
         if args[:3] == ('gh', 'pr', 'create'):
             self.opens += 1
             self.assertIn(BRANCH, args)
-            self.assertIn(DISTRIBUTE.SITE_REPO, args)
+            self.assertIn(f'{OWNER}/godmode-build', args)
             self.assertIn(SOURCE_SHA, args[-1])
             if self.fail_open:
                 raise subprocess.CalledProcessError(1, args)
@@ -131,7 +143,7 @@ class PromotionTests(unittest.TestCase):
         return self.command(*args)
 
     def promote(self, clone):
-        DISTRIBUTE.promote(VERSION, SOURCE_SHA, clone, self.assets)
+        DISTRIBUTE.promote(VERSION, SOURCE_SHA, clone, self.assets, OWNER)
 
     def edit_branch(self, relative, text):
         editor = self.root / ('editor-' + relative.name)

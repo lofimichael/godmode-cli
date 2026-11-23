@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/term"
-	"github.com/lofimichael/godmode-cli/internal/license"
-	"github.com/lofimichael/godmode-cli/internal/ui"
+	"godmode.build/cli/internal/license"
+	"godmode.build/cli/internal/ui"
 )
 
 const licenseHelp = `Usage: godmode license activate [--stdin]

@@ -1,6 +1,6 @@
 # Command reference
 
-These commands cover Godmode v0.22.0. Run `godmode --help` for the installed command list or `godmode help COMMAND` for most commands. In the examples below, replace uppercase placeholders with your own names or command.
+These commands cover Godmode v0.22.1. Run `godmode --help` for the installed command list or `godmode help COMMAND` for most commands. In the examples below, replace uppercase placeholders with your own names or command.
 
 ## Open and inspect
 

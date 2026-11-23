@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lofimichael/godmode-cli/internal/license"
+	"godmode.build/cli/internal/license"
 )
 
 func TestLicenseKeyArgumentsAreNotAccepted(t *testing.T) {

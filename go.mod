@@ -1,4 +1,4 @@
-module github.com/lofimichael/godmode-cli
+module godmode.build/cli
 
 go 1.26.7
 

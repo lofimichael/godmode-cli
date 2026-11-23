@@ -1,5 +1,11 @@
 # Release notes
 
+## v0.22.1
+
+November 23, 2026
+
+- Removed maintainer names and account handles from the CLI, prebuilt binaries, and bundled source and documentation.
+
 ## v0.22.0
 
 November 20, 2026

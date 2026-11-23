@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/term"
-	"github.com/lofimichael/godmode-cli/internal/core"
-	"github.com/lofimichael/godmode-cli/internal/ui"
+	"godmode.build/cli/internal/core"
+	"godmode.build/cli/internal/ui"
 )
 
 var version = "dev"

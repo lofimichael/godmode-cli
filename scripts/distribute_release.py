@@ -3,13 +3,14 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-CLI_REPO = 'lofimichael/godmode-cli'
-SITE_REPO = 'lofimichael/godmode-build'
+# Standalone runs resolve the owner using the repository their token can access.
+REPOSITORY_IDS = {'download': '1444986310', 'promote': '1459160871'}
 TAG = re.compile(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)')
 SHA = re.compile(r'[a-f0-9]{40}')
 TARGETS = (
@@ -30,6 +31,11 @@ def command(*args):
     return subprocess.run(args, check=True, stdout=subprocess.PIPE, text=True).stdout
 
 
+def repository_owner(action):
+    return os.environ.get('GITHUB_REPOSITORY_OWNER') or command(
+        'gh', 'api', 'repositories/' + REPOSITORY_IDS[action], '--jq', '.owner.login').strip()
+
+
 def validate(version, source_sha):
     if (len(version) > 40 or not TAG.fullmatch(version) or not SHA.fullmatch(source_sha)
             or source_sha == '0' * 40):
@@ -40,12 +46,13 @@ def artifact_names(version):
     return {'install.sh', 'SHA256SUMS', *(f'godmode-{version}-{target}.tar.gz' for target in TARGETS)}
 
 
-def download(version, source_sha, directory):
+def download(version, source_sha, directory, owner):
+    cli_repo = f'{owner}/godmode-cli'
     validate(version, source_sha)
     if command('git', 'rev-parse', f'refs/tags/{version}^{{commit}}').strip() != source_sha:
         raise PromotionError('The Git tag does not point to the expected source commit.')
     command('git', 'merge-base', '--is-ancestor', source_sha, 'HEAD')
-    release = json.loads(command('gh', 'release', 'view', version, '--repo', CLI_REPO,
+    release = json.loads(command('gh', 'release', 'view', version, '--repo', cli_repo,
                                  '--json', 'isDraft,isPrerelease,tagName,assets'))
     expected = artifact_names(version)
     names = [entry['name'] for entry in release['assets']]
@@ -54,7 +61,7 @@ def download(version, source_sha, directory):
         raise PromotionError('The stable release does not contain the exact expected asset set.')
     # A fresh directory makes partial or extra downloads visible to the importer.
     directory.mkdir()
-    command('gh', 'release', 'download', version, '--repo', CLI_REPO, '--dir', str(directory))
+    command('gh', 'release', 'download', version, '--repo', cli_repo, '--dir', str(directory))
     entries = list(directory.iterdir())
     if ({entry.name for entry in entries} != expected
             or any(entry.is_symlink() or not entry.is_file() or not entry.stat().st_size for entry in entries)):
@@ -73,14 +80,15 @@ def remote_ref(git, ref):
     return sha
 
 
-def release_prs(branch):
-    rows = json.loads(command('gh', 'pr', 'list', '--repo', SITE_REPO, '--base', 'main',
+def release_prs(site_repo, branch):
+    rows = json.loads(command('gh', 'pr', 'list', '--repo', site_repo, '--base', 'main',
                               '--head', branch, '--state', 'all', '--limit', '50',
                               '--json', 'state,url,headRefName,headRefOid,isCrossRepository'))
     return [row for row in rows if not row['isCrossRepository'] and row['headRefName'] == branch]
 
 
-def promote(version, source_sha, site, directory):
+def promote(version, source_sha, site, directory, owner):
+    site_repo = f'{owner}/godmode-build'
     validate(version, source_sha)
     branch = 'automation/cli-' + version
     branch_ref = 'refs/heads/' + branch
@@ -90,7 +98,7 @@ def promote(version, source_sha, site, directory):
 
     # The website workflow must see a trusted default-branch checkout and a clean tree.
     if git('remote', 'get-url', 'origin').strip() not in (
-            f'https://github.com/{SITE_REPO}', f'https://github.com/{SITE_REPO}.git'):
+            f'https://github.com/{site_repo}', f'https://github.com/{site_repo}.git'):
         raise PromotionError('The checkout does not target the website repository.')
     head = git('rev-parse', 'HEAD').strip()
     if git('status', '--porcelain') or remote_ref(git, 'refs/heads/main') != head:
@@ -107,7 +115,7 @@ def promote(version, source_sha, site, directory):
     if remote_ref(git, 'refs/heads/main') != head:
         raise PromotionError('Website main moved during preparation. Retry the same version and commit.')
 
-    rows = release_prs(branch)
+    rows = release_prs(site_repo, branch)
     open_rows = [row for row in rows if row['state'] == 'OPEN']
     branch_sha = remote_ref(git, branch_ref)
     if len(open_rows) > 1:
@@ -143,10 +151,10 @@ def promote(version, source_sha, site, directory):
 
     body = (f'Promotes the verified Godmode CLI {version} archives and versioned docs.\n\n'
             f'CLI source commit: `{source_sha}`\n\n'
-            f'[Release assets](https://github.com/{CLI_REPO}/releases/tag/{version})\n\n'
+            f'[Release assets](https://github.com/{owner}/godmode-cli/releases/tag/{version})\n\n'
             'Review the website changes and merge after its checks pass. The website deployment '
             'updates the customer installer channel.')
-    print(command('gh', 'pr', 'create', '--repo', SITE_REPO, '--base', 'main',
+    print(command('gh', 'pr', 'create', '--repo', site_repo, '--base', 'main',
                   '--head', branch, '--title', f'Distribute Godmode {version}', '--body', body).strip())
 
 
@@ -160,11 +168,11 @@ def main():
     args = parser.parse_args()
     try:
         if args.action == 'download':
-            download(args.version, args.source_sha, args.directory)
+            download(args.version, args.source_sha, args.directory, repository_owner('download'))
         elif args.site is None:
             parser.error('--site is required for promote')
         else:
-            promote(args.version, args.source_sha, args.site.resolve(), args.directory)
+            promote(args.version, args.source_sha, args.site.resolve(), args.directory, repository_owner('promote'))
     except (PromotionError, subprocess.CalledProcessError, OSError, ValueError) as error:
         print(f'godmode distribution: {error}', file=sys.stderr)
         return 1
