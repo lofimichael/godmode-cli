@@ -4,7 +4,7 @@
 
 November 23, 2026
 
-- Removed maintainer names and account handles from the CLI, prebuilt binaries, and bundled source and documentation.
+- Removed personal references from agent instructions, CLI help, native build metadata, and contributor guides.
 
 ## v0.22.0
 
