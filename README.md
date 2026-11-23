@@ -14,7 +14,7 @@ godmode --version
 
 Follow the [quickstart](docs/GETTING_STARTED.md) to save a key and give your agent its instructions. See [Installation](docs/INSTALLATION.md) for shell configuration, offline installs, and updates.
 
-These guides describe v0.22.0. The [public release manifest](https://godmode.build/releases/latest.json) shows the version available from the installer.
+These guides describe v0.22.1. The [public release manifest](https://godmode.build/releases/latest.json) shows the version available from the installer.
 
 ## Use Godmode
 

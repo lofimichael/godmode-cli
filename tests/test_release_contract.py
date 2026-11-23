@@ -120,7 +120,7 @@ class SourceReleaseContract(ReleaseFixture):
         # Assembly uses this checkout's real source tree. Synthetic platform
         # headers keep this inventory check fast; real native execution is tested
         # separately. The commit gate has its own packaging regression coverage.
-        with mock.patch.object(package, "verify_committed_source"), \
+        with mock.patch.object(package, "verify_committed_source"), mock.patch.object(package, "verify_build_identity"), \
                 mock.patch("sys.argv", argv), mock.patch("sys.stdout", io.StringIO()):
             package.main()
         archives = sorted(output.glob("*.tar.gz"))

@@ -34,15 +34,23 @@ def digest(path):
     return h.hexdigest()
 
 
-def files_under(directory):
-    """Explicit trees only; never include local caches, compiled tests or private state."""
-    for path in sorted(directory.rglob('*')):
-        if '__pycache__' in path.parts or path.suffix in ('.pyc', '.pyo', '.tmp') or path.name == '.DS_Store':
+def release_sources():
+    """Include only version-controlled release inputs, even in a developer checkout."""
+    names = subprocess.check_output(['git', 'ls-files', '-z', '--', *SOURCE_FILES, *SOURCE_DIRS], cwd=ROOT)
+    source = {}
+    for raw_name in names.split(b'\0'):
+        if not raw_name:
             continue
+        name = os.fsdecode(raw_name)
+        relative = Path(name)
+        if '__pycache__' in relative.parts or relative.suffix in ('.pyc', '.pyo', '.tmp') or relative.name == '.DS_Store':
+            continue
+        path = ROOT / relative
         if path.is_symlink():
-            raise ValueError('Source tree contains a symlink: ' + str(path.relative_to(ROOT)))
+            raise ValueError('Source tree contains a symlink: ' + name)
         if path.is_file():
-            yield path
+            source[name] = path
+    return source
 
 
 def verify_native(path, target):
@@ -58,6 +66,17 @@ def verify_native(path, target):
         if (len(header) < 20 or header[:6] != b'\x7fELF\x02\x01'
                 or struct.unpack('<H', header[18:20])[0] != expected):
             raise ValueError('Expected a ' + target + ' ELF executable: ' + str(path))
+
+
+def verify_build_identity(path):
+    """Check build metadata on every architecture without executing the candidate."""
+    info = json.loads(subprocess.check_output(['go', 'version', '-m', '-json', str(path)]))
+    module = 'godmode.build/cli'
+    if info.get('Path') != module + '/cmd/godmode' or info.get('Main', {}).get('Path') != module:
+        raise ValueError('Unexpected Godmode program or module path in ' + str(path))
+    settings = {item['Key']: item['Value'] for item in info.get('Settings', [])}
+    if settings.get('-trimpath') != 'true' or any(key == 'vcs' or key.startswith('vcs.') for key in settings):
+        raise ValueError('Build Godmode with -trimpath and -buildvcs=false: ' + str(path))
 
 
 def write_archive(path, entries, epoch):
@@ -141,6 +160,7 @@ def main():
         if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
             parser.error('Missing native executable: ' + str(path))
         verify_native(path, target)
+        verify_build_identity(path)
     # Building regenerates the embedded engine. It must still match the commit.
     verify_committed_source()
     build = {'version': version, 'commit': git_value('rev-parse', 'HEAD'),
@@ -149,26 +169,20 @@ def main():
              'source_date_epoch': epoch,
              'binaries': {target: digest(path) for target, path in binaries.items()}}
     build_json = (json.dumps(build, indent=2, sort_keys=True) + '\n').encode()
-    common = {name: ROOT / name for name in ('LICENSE', 'README.md', 'READTHIS.NFO', 'install.sh')}
+    source = release_sources()
+    common = {name: source[name] for name in ('LICENSE', 'README.md', 'READTHIS.NFO', 'install.sh')}
     common['BUILD.json'] = build_json
-    for path in sorted((ROOT / 'docs').glob('*.md')):
-        common[str(path.relative_to(ROOT))] = path
-    for path in files_under(ROOT / 'docs/images'):
-        common[str(path.relative_to(ROOT))] = path
-    # Module attribution accompanies binaries; complete dependency source is in -source.
-    common['licenses/modules.txt'] = ROOT / 'vendor/modules.txt'
-    for path in files_under(ROOT / 'vendor'):
-        if path.name.upper().startswith(('LICENSE', 'COPYING', 'NOTICE')):
-            common['licenses/' + str(path.relative_to(ROOT / 'vendor'))] = path
+    common['licenses/modules.txt'] = source['vendor/modules.txt']
+    for name, path in source.items():
+        if (path.parent == ROOT / 'docs' and path.suffix == '.md') or name.startswith('docs/images/'):
+            common[name] = path
+        elif name.startswith('vendor/') and path.name.upper().startswith(('LICENSE', 'COPYING', 'NOTICE')):
+            common['licenses/' + name[len('vendor/'):]] = path
     artifacts = []
     for target, binary in binaries.items():
         archive = args.output_dir / (release + '-' + target + '.tar.gz')
         write_archive(archive, dict(common, godmode=binary), epoch)
         artifacts.append(archive)
-    source = {name: ROOT / name for name in SOURCE_FILES if (ROOT / name).is_file()}
-    for directory in SOURCE_DIRS:
-        for path in files_under(ROOT / directory):
-            source[str(path.relative_to(ROOT))] = path
     source['BUILD.json'] = build_json
     archive = args.output_dir / (release + '-source.tar.gz')
     write_archive(archive, source, epoch)

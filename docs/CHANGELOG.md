@@ -1,5 +1,11 @@
 # Release notes
 
+## v0.22.1
+
+November 23, 2026
+
+- Removed personal references from agent instructions, CLI help, native build metadata, and contributor guides.
+
 ## v0.22.0
 
 November 20, 2026

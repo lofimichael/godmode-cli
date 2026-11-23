@@ -1,6 +1,7 @@
 """Native release archives retain source, licenses and reproducible metadata."""
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import struct
@@ -22,24 +23,25 @@ class NativePackagingTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
 
+    def git(self, *args):
+        subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', *args],
+                       cwd=self.root, check=True, capture_output=True)
+
     def test_uncommitted_entrypoint_or_new_source_is_refused(self):
-        def git(*args):
-            subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', *args],
-                           cwd=self.root, check=True, capture_output=True)
-        git('init', '-q')
+        self.git('init', '-q')
         entry = self.root / 'godmode.py'
         entry.write_text('original\n')
-        git('add', 'godmode.py')
-        git('commit', '-qm', 'Fixture')
+        self.git('add', 'godmode.py')
+        self.git('commit', '-qm', 'Fixture')
         with mock.patch.object(package, 'ROOT', self.root):
             package.verify_committed_source()
             entry.write_text('changed\n')
             for staged in (False, True):
                 if staged:
-                    git('add', 'godmode.py')
+                    self.git('add', 'godmode.py')
                 with self.assertRaisesRegex(ValueError, 'Commit every release source change'):
                     package.verify_committed_source()
-            git('restore', '--staged', 'godmode.py')
+            self.git('restore', '--staged', 'godmode.py')
             entry.write_text('original\n')
             package.verify_committed_source()
             for name in ('lib/new_module.py', 'internal/ui/new_view.go',
@@ -67,7 +69,7 @@ class NativePackagingTests(unittest.TestCase):
         with tarfile.open(first) as archive:
             self.assertEqual(archive.getnames(), ['LICENSE', 'godmode', 'install.sh'])
             for info in archive:
-                self.assertEqual((info.uid, info.gid, info.mtime), (0, 0, 12345678))
+                self.assertEqual((info.uid, info.gid, info.uname, info.gname, info.mtime), (0, 0, '', '', 12345678))
                 self.assertEqual(info.mode, 0o644 if info.name == 'LICENSE' else 0o755)
             self.assertEqual(archive.extractfile('godmode').read(), b'native fixture')
 
@@ -78,14 +80,24 @@ class NativePackagingTests(unittest.TestCase):
         self.assertFalse(output.exists())
         self.assertEqual(list(self.root.iterdir()), [])
 
-    def test_source_walk_omits_caches_and_refuses_links(self):
-        (self.root / '__pycache__').mkdir()
-        (self.root / '__pycache__/ignore.pyc').write_bytes(b'cache')
-        (self.root / 'source.py').write_text('x = 1\n')
-        self.assertEqual(list(package.files_under(self.root)), [self.root / 'source.py'])
-        (self.root / 'linked').symlink_to(self.root / 'source.py')
+    def test_release_sources_refuse_tracked_symlinks(self):
+        self.git('init', '-q')
+        (self.root / 'README.md').symlink_to('outside.md')
+        self.git('add', 'README.md')
         with mock.patch.object(package, 'ROOT', self.root), self.assertRaisesRegex(ValueError, 'symlink'):
-            list(package.files_under(self.root))
+            package.release_sources()
+
+    def test_build_identity_requires_product_module_and_trimmed_paths_without_vcs_metadata(self):
+        info = {'Path': 'godmode.build/cli/cmd/godmode', 'Main': {'Path': 'godmode.build/cli'},
+                'Settings': [{'Key': '-trimpath', 'Value': 'true'}]}
+        with mock.patch.object(package.subprocess, 'check_output', return_value=json.dumps(info)):
+            package.verify_build_identity(self.root / 'godmode')
+        for override in ({'Path': 'example.test/person/cli'}, {'Main': {'Path': 'example.test/person'}},
+                         {'Settings': []}, {'Settings': info['Settings'] + [{'Key': 'vcs', 'Value': 'git'}]}):
+            with self.subTest(override=override), mock.patch.object(
+                    package.subprocess, 'check_output', return_value=json.dumps({**info, **override})):
+                with self.assertRaises(ValueError):
+                    package.verify_build_identity(self.root / 'godmode')
 
     def test_native_cpu_headers_are_checked_for_all_four_targets(self):
         binary = self.root / 'godmode'
@@ -118,6 +130,16 @@ class NativePackagingTests(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('inspectable fixture\n')
+        (self.root / '.gitignore').write_text('local-*\n')
+        self.git('init', '-q')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Release sources')
+        private_files = ('docs/local-draft.md', 'docs/images/local-capture.png',
+                         'vendor/example/local-info/LICENSE', 'lib/local-skill.py')
+        for name in private_files:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('private fixture\n')
         binaries = self.root / 'native'
         for target, (system, cpu) in package.TARGETS.items():
             path = binaries / target / 'godmode'
@@ -133,11 +155,14 @@ class NativePackagingTests(unittest.TestCase):
         output = self.root / 'dist'
         argv = ['package-native.py', '--skip-build', '--binaries-dir', str(binaries),
                 '--output-dir', str(output), '--epoch', '1234']
-        with mock.patch.object(package, 'ROOT', self.root), mock.patch.object(package, 'git_value', side_effect=lambda *args: '' if args[0] == 'status' else 'a'*40), \
-             mock.patch.object(package.subprocess, 'check_output', return_value='go fixture\n'), \
+        with mock.patch.object(package, 'ROOT', self.root), mock.patch.object(package, 'verify_build_identity'), \
              mock.patch('sys.argv', argv), mock.patch('sys.stdout', io.StringIO()):
             package.main()
-        self.assertEqual(len(list(output.glob('*.tar.gz'))), 5)
+        archives = list(output.glob('*.tar.gz'))
+        self.assertEqual(len(archives), 5)
+        for path in archives:
+            with tarfile.open(path) as archive:
+                self.assertFalse(any('local-' in name for name in archive.getnames()))
         self.assertFalse((output / 'godmode-v0.15.0-unix.tar.gz').exists())
         with tarfile.open(output / 'godmode-v0.15.0-source.tar.gz') as archive:
             for name in ('cmd/godmode/main.go', 'internal/core/core.py', 'go.mod', 'go.sum',

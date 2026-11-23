@@ -162,7 +162,7 @@ class ReleasePlanTests(unittest.TestCase):
         release.validate_changelog(CHANGELOG, VERSION)
         release.validate_changelog(
             '## v0.21.0\r\n\r\nNovember 19, 2026\r\n\r\n'
-            '* See [install](/docs/install), [FAQ](#faq) and [GitHub](https://github.com/lofimichael).\r\n',
+            '* See [install](/docs/install), [FAQ](#faq) and [GitHub](https://github.com/example-org).\r\n',
             VERSION,
         )
 

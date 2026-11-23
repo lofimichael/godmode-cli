@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Godmode 0.22.0: readable source, no bundled interpreter or dependencies.
+# Godmode 0.22.1: readable source, no bundled interpreter or dependencies.
 import sys
 if sys.version_info < (3, 9):
     sys.exit("Godmode needs Python 3.9 or newer. No files changed.")
@@ -2883,7 +2883,7 @@ from urllib.parse import urlsplit
 
 # These imports become ordinary, readable source sections in the installed script.
 
-VERSION = '0.22.0'
+VERSION = '0.22.1'
 ACTIVE_CONTEXT = None
 ACTIVE_ENVIRONMENT = 'default'
 ACTIVE_SOURCES = {'environment': 'default', 'context': 'default'}
@@ -5128,8 +5128,8 @@ def provider_list(store, providers, back=False):
 
 PROFILE_BLURB = 'Names and contact details for websites, invoices and signatures. All fields are optional.'
 PROVIDERS_BLURB = 'Save keys for your task. Saved does not mean verified.'
-SOURCE_URL = 'https://github.com/lofimichael/godmode-cli'
-ISSUE_URL = SOURCE_URL + '/issues/new'
+SOURCE_URL = 'https://godmode.build/install#source'
+ISSUE_URL = 'https://godmode.build/issues/new'
 
 
 def section_blurb(text):
@@ -5185,9 +5185,9 @@ def faq_entries(home=None):
         ('Where are my tokens?', [where,
             'godmode path prints this path. godmode list prints key names. godmode run passes '
             'selected keys to a command. seal.key sits beside the key file.']),
-        ('Where is the source code?', ['https://godmode.build',
+        ('Where is the source code?', [SOURCE_URL,
             'The Go interface and Python file engine ship with source. godmode source prints the embedded '
-            'file engine. First-party code is source-available under the Godmode Commercial Source License.']),
+            'file engine. First-party code uses the Godmode Free Source-Available License.']),
         ('Does Godmode make network calls?', [
             'Profile, key and doctor commands run locally. Doctor does not verify provider access.',
             'License activation, deactivation, godmode update and godmodeup contact godmode.build. Provider links open '
@@ -5328,7 +5328,7 @@ def guide(store, home=None):
         'short-lived tokens themselves; godmode run never writes refreshed credentials',
         'back, so save any replacement the tool returns.', '',
         'These files belong to this machine. Remote installation:',
-        'https://github.com/lofimichael/godmode-cli/blob/main/docs/REMOTE.md']
+        'https://godmode.build/docs/remote']
     if ACTIVE_CONTEXT is not None:
         rows += ['', 'Profile: ' + ACTIVE_CONTEXT.name,
                  'Use godmode --context ' + ACTIVE_CONTEXT.name + ' for every profile and run command in this task.',
